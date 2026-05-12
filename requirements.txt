@@ -1,0 +1,7 @@
+streamlit>=1.33.0
+pdfplumber>=0.11.0
+plotly>=5.22.0
+pandas>=2.2.0
+# watchdog is optional — enables live folder watching in Settings → Data & Export.
+# Install if you want live detection: pip install watchdog
+# watchdog>=4.0.0

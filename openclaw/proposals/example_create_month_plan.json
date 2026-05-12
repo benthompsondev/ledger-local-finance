@@ -1,0 +1,33 @@
+{
+  "proposal_id": "create_month_plan_2026-05",
+  "type": "create_month_plan",
+  "title": "Set a Tight Month plan for 2026-05",
+  "reason": "Subscriptions cluster + 12% over-target Food & Convenience trend over the last 3 months. A Tight Month locks in a 20% controllable cut without touching fixed costs.",
+  "evidence": {
+    "section": "recommendations.top[0]",
+    "context_used": [
+      "kpis.savings_rate",
+      "subscriptions.active_monthly_estimate",
+      "reduce_summary.controllable_categories"
+    ]
+  },
+  "proposed_change": {
+    "month":            "2026-05",
+    "mode":             "tight",
+    "income_target":    6500,
+    "spending_target":  4200,
+    "savings_target":   2300,
+    "category_targets": [
+      { "category": "Groceries",                "target_amount": 600,  "difficulty": "normal" },
+      { "category": "Food & Convenience",       "target_amount": 300,  "difficulty": "tight" },
+      { "category": "Subscriptions & Digital",  "target_amount": 80,   "difficulty": "tight" },
+      { "category": "Shopping",                 "target_amount": 200,  "difficulty": "tight" },
+      { "category": "Gas / Transport",          "target_amount": 220,  "difficulty": "normal" },
+      { "category": "Utilities / Bills",        "target_amount": 350,  "difficulty": "conservative" }
+    ]
+  },
+  "risk":  "medium",
+  "requires_user_approval": true,
+  "created_at": "2026-05-05T12:00:00Z",
+  "agent_version": "openclaw-finance-1.0"
+}

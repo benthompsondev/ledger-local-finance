@@ -1,0 +1,25 @@
+{
+  "proposal_id": "create_goal_cash_buffer_2026-05",
+  "type": "create_goal",
+  "title": "Create a $5,000 cash buffer goal",
+  "reason": "Net worth is positive but cash balance is < $1k. A $5k cash buffer covers ~1 month of expenses based on the user's recent spending and reduces forecast risk on the next Tight Month.",
+  "evidence": {
+    "section": "net_worth_summary",
+    "context_used": [
+      "net_worth_summary.total_assets",
+      "kpis.spending"
+    ]
+  },
+  "proposed_change": {
+    "name":          "Cash buffer (1 month expenses)",
+    "type":          "cash_buffer",
+    "target_amount": 5000,
+    "linked_metric": "cash_balance",
+    "target_date":   "2026-12-31",
+    "notes":         "Ledger auto-tracks current_amount from cash + chequing + savings balances."
+  },
+  "risk":  "low",
+  "requires_user_approval": true,
+  "created_at": "2026-05-05T12:01:00Z",
+  "agent_version": "openclaw-finance-1.0"
+}

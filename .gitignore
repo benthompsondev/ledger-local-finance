@@ -1,0 +1,62 @@
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# ── Database (contains personal financial data — do NOT commit) ──────────
+data/finance.db
+data/watcher_state.json
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.json
+
+# Demo data should be generated locally and reviewed before sharing.
+
+# ── Launcher / runtime artifacts ─────────────────────────────────────────
+launcher.log
+launcher.log.prev
+launcher.log.*
+exports/
+
+# ── Bug-report bundles (sanitized but local-only) ───────────────────────
+exports/bug_reports/
+
+# ── Streamlit secrets ────────────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── AI categorization config (contains API key — never commit, never export) ─
+config.json
+
+# ── OS files ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ───────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+
+# ── Temp / test files ─────────────────────────────────────────────────────
+*.tmp
+*.bak
+ledger_test_*.pdf
+
+# Internal handoff / local working notes
+CLAUDE_HANDOFF.md

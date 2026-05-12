@@ -1,0 +1,24 @@
+[theme]
+base                     = "dark"
+primaryColor             = "#34d058"
+backgroundColor          = "#0d1117"
+secondaryBackgroundColor = "#161b22"
+textColor                = "#e6edf3"
+font                     = "sans serif"
+
+[server]
+headless     = true
+# Pass 19: bind to localhost only by default. Avoids exposing Ledger on
+# the LAN when run on a shared/public network. Override on the CLI if you
+# explicitly want LAN access.
+address      = "127.0.0.1"
+port         = 8501
+enableCORS   = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Silence deprecation noise in logs
+magicEnabled = false

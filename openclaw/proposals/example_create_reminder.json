@@ -1,0 +1,25 @@
+{
+  "proposal_id": "create_reminder_check_safe_to_spend_2026-05",
+  "type": "create_reminder",
+  "title": "Weekly: check safe-to-spend before the weekend",
+  "reason": "Forecast risk is currently 'watch' and the saved plan's spending_target is tight enough that mid-week impulse spending could break it. A Friday reminder lets the user pause one purchase if needed.",
+  "evidence": {
+    "section": "forecast",
+    "context_used": [
+      "forecast.risk_level",
+      "forecast.safe_to_spend",
+      "month_plan.mode"
+    ]
+  },
+  "proposed_change": {
+    "title":     "Check safe-to-spend before the weekend",
+    "due_date":  "2026-05-09",
+    "cadence":   "weekly",
+    "linked_to": "forecast.safe_to_spend",
+    "notes":     "Open Month Plan → Forecast tab. If safe-to-spend < $200, defer non-essential spending until the next payroll deposit."
+  },
+  "risk":  "low",
+  "requires_user_approval": true,
+  "created_at": "2026-05-05T12:02:00Z",
+  "agent_version": "openclaw-finance-1.0"
+}
