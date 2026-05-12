@@ -320,6 +320,27 @@ def main() -> int:
         _mr_blob = json.dumps(_mr_ctx, default=str)
         check("ctx monthly_review safe-to-export",
               "sk-" not in _mr_blob and "Bearer " not in _mr_blob)
+        _rw_ctx = ctx.get("money_runway") or {}
+        _md_ctx = ctx.get("mission_deck") or []
+        _fm_ctx = ctx.get("found_money") or {}
+        check("ctx money_runway dict",
+              isinstance(_rw_ctx, dict))
+        check("ctx money_runway has safe_to_spend shape",
+              isinstance(_rw_ctx.get("safe_to_spend"), dict)
+              or _rw_ctx.get("available") is False)
+        check("ctx mission_deck list",
+              isinstance(_md_ctx, list))
+        check("ctx found_money dict",
+              isinstance(_fm_ctx, dict))
+        _habit_blob = json.dumps({
+            "money_runway": _rw_ctx,
+            "mission_deck": _md_ctx,
+            "found_money": _fm_ctx,
+        }, default=str)
+        check("ctx runway/mission/found-money safe-to-export",
+              all(x not in _habit_blob for x in (
+                  "sk-", "Bearer ", '"api_key"', "finance.db", "config.json"
+              )))
         check("ctx money_moves_summary has buckets",
               all(k in (ctx.get("money_moves_summary") or {})
                   for k in ("do_now", "review_week", "watch", "total")))
@@ -919,6 +940,67 @@ def main() -> int:
               "ledger_document" not in fip.lower())
         check("p35 period: friendly label mentions 2026-04",
               "2026-04" in fip)
+
+        # --- Money Runway + Mission Deck stable packets ---
+        c35.execute(
+            "INSERT INTO transactions "
+            "(account_type, transaction_date, raw_description, merchant, "
+            " amount, direction, category, dedup_hash) "
+            "VALUES "
+            "('mastercard','2026-04-12','DEMO STREAM','DEMO STREAM',"
+            " 20.00,'debit','Subscriptions & Digital','p36-sub-active-1'),"
+            "('mastercard','2026-05-04','DEMO STREAM','DEMO STREAM',"
+            " 20.00,'debit','Subscriptions & Digital','p36-sub-active-2'),"
+            "('mastercard','2026-01-05','DEMO OLD SUB','DEMO OLD SUB',"
+            " 15.00,'debit','Subscriptions & Digital','p36-sub-stale-1'),"
+            "('mastercard','2026-02-05','DEMO OLD SUB','DEMO OLD SUB',"
+            " 15.00,'debit','Subscriptions & Digital','p36-sub-stale-2')"
+        )
+        c35.commit()
+        from utils.insights import (
+            money_runway, mission_deck, found_money, subscription_detective,
+        )
+        rw36 = money_runway(conn=c35)
+        check("p36 runway: returns dict",
+              isinstance(rw36, dict))
+        check("p36 runway: available bool",
+              isinstance(rw36.get("available"), bool))
+        check("p36 runway: safe_to_spend shape exists",
+              all(k in (rw36.get("safe_to_spend") or {}) for k in (
+                  "amount", "daily_amount", "days_left", "period_end",
+                  "confidence", "formula"
+              )))
+        check("p36 runway: formula has core fields",
+              all(k in ((rw36.get("safe_to_spend") or {}).get("formula") or {})
+                  for k in (
+                      "income_available_or_expected", "spending_so_far",
+                      "planned_bills_remaining",
+                      "active_subscriptions_remaining",
+                      "goal_commitments", "debt_or_fee_reserve", "buffer"
+                  )))
+        check("p36 runway: watchlists list",
+              isinstance(rw36.get("watchlists"), list))
+        md36 = mission_deck(conn=c35, limit=3)
+        check("p36 missions: returns list",
+              isinstance(md36, list))
+        check("p36 missions: every mission has if_then_plan",
+              bool(md36) and all(m.get("if_then_plan") for m in md36))
+        _md_blob = json.dumps(md36, default=str).lower()
+        check("p36 missions: cash advance mission does not say pay off",
+              "pay off" not in _md_blob)
+        fm36 = found_money(conn=c35)
+        check("p36 found_money: stable dict",
+              isinstance(fm36, dict)
+              and isinstance(fm36.get("wins"), list)
+              and "potential_redirect" in fm36)
+        sub36 = subscription_detective(conn=c35)
+        stale_names = {s.get("merchant") for s in sub36.get("stale_subs", [])}
+        active_candidate_names = {
+            s.get("merchant") for s in sub36.get("active_candidates", [])
+        }
+        check("p36 subs: inactive not active savings opportunities",
+              "DEMO OLD SUB" in stale_names
+              and "DEMO OLD SUB" not in active_candidate_names)
 
         c35.close()
         try:

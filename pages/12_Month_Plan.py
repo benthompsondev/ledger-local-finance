@@ -31,6 +31,7 @@ from utils.ai_explainer import (
 )
 from utils.ai_cache import evidence_hash, get_cached, get_or_compute
 from utils.styles import inject_styles
+from utils.insights import money_runway, mission_deck
 
 st.set_page_config(page_title="Month Plan · Ledger", page_icon="🗓",
                    layout="wide")
@@ -185,6 +186,45 @@ else:
         "</div>",
         unsafe_allow_html=True,
     )
+
+try:
+    _runway = money_runway(conn=conn) or {}
+    _missions = mission_deck(conn=conn, limit=1) or []
+except Exception:
+    _runway, _missions = {}, []
+
+if _runway.get("available"):
+    _safe = _runway.get("safe_to_spend") or {}
+    _top_mission = _missions[0] if _missions else {}
+    st.markdown("#### This week inside the plan")
+    p1, p2, p3 = st.columns([1, 2, 1])
+    with p1:
+        st.metric(
+            "Runway",
+            f"${float(_safe.get('amount') or 0):,.0f}",
+            delta=f"{_runway.get('runway_status','watch').title()}",
+        )
+    with p2:
+        if _top_mission:
+            st.markdown(f"**{_top_mission.get('title', 'Next money move')}**")
+            st.caption(str(_top_mission.get("if_then_plan") or "").replace("$", r"\$"))
+        elif _runway.get("partial_month_note"):
+            st.caption(str(_runway["partial_month_note"]).replace("$", r"\$"))
+        else:
+            st.caption("No urgent mission detected. Keep the plan steady.")
+    with p3:
+        _target = (_top_mission.get("target_page") if _top_mission else "Dashboard")
+        _page = {
+            "Dashboard": "pages/1_Dashboard.py",
+            "Reduce": "pages/11_Reduce.py",
+            "Review queue": "pages/8_Review.py",
+            "Spending": "pages/5_Spending.py",
+            "Plan": "pages/12_Month_Plan.py",
+        }.get(_target, "pages/1_Dashboard.py")
+        if st.button(_top_mission.get("action_label") or "Open Dashboard",
+                     key="plan_weekly_mission_jump",
+                     use_container_width=True):
+            st.switch_page(_page)
 
 # ── Pass 22: data-caveat banner ────────────────────────────────────
 # Surfaces the analysis anchor, missing-income state, and stale-data

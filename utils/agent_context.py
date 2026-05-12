@@ -793,6 +793,25 @@ def build_agent_context(
                 "suggested_action": None,
             }
 
+        # Money Runway + Mission Deck — read-only weekly habit loop.
+        # These packets are deterministic and safe for OpenClaw: no raw
+        # prompts, no secrets, no account numbers, no private DB path.
+        try:
+            from utils.insights import money_runway as _runway_fn
+            out["money_runway"] = _runway_fn(conn=conn) or {}
+        except Exception:
+            out["money_runway"] = {"available": False, "reason": "build_error"}
+        try:
+            from utils.insights import mission_deck as _mission_fn
+            out["mission_deck"] = _mission_fn(conn=conn, limit=3) or []
+        except Exception:
+            out["mission_deck"] = []
+        try:
+            from utils.insights import found_money as _found_fn
+            out["found_money"] = _found_fn(conn=conn) or {}
+        except Exception:
+            out["found_money"] = {"available": False, "wins": []}
+
         # 4. trend_summary — what changed since prior month.
         _trend = {"month": None, "spending_delta": None,
                   "income_delta": None, "net_delta": None,
@@ -895,6 +914,9 @@ def build_agent_context(
         out.setdefault("reduce_plan", {})
         out.setdefault("trend_summary", {})
         out.setdefault("monthly_review", {"available": False})
+        out.setdefault("money_runway", {"available": False})
+        out.setdefault("mission_deck", [])
+        out.setdefault("found_money", {"available": False, "wins": []})
         out.setdefault("money_moves_summary",
                        {"do_now": [], "review_week": [], "watch": [],
                         "total": 0})

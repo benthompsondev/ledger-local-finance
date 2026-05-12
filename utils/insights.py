@@ -2574,3 +2574,614 @@ def top_controllable_categories(conn=None, limit: int = 5) -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ── Money Runway + Mission Deck ────────────────────────────────────────
+
+_RUNWAY_FIXED_CATEGORIES = {
+    "Housing / Mortgage",
+    "Utilities / Bills",
+    "Insurance",
+}
+_RUNWAY_EXCLUDED_CATEGORIES = {
+    "Transfer", "Transfer Out", "Transfer In",
+    "Payment", "Credit Card Payment", "Cancelled",
+    "Internal Transfer", "Savings", "Fees / Interest", "Cash Advance",
+}
+
+
+def _month_bounds_from_label(month: str) -> tuple[str, str, int]:
+    import calendar
+    y, m = int(month[:4]), int(month[5:7])
+    days = calendar.monthrange(y, m)[1]
+    return f"{month}-01", f"{month}-{days:02d}", days
+
+
+def _latest_tx_date_for_month(month: str, conn) -> str:
+    start, end, _days = _month_bounds_from_label(month)
+    row = conn.execute(
+        "SELECT MAX(transaction_date) AS d FROM transactions "
+        "WHERE transaction_date BETWEEN ? AND ?",
+        (start, end),
+    ).fetchone()
+    return (row["d"] if row and row["d"] else end)
+
+
+def _cashflow_for_month(month: str, conn) -> dict:
+    from utils.analytics import compute_cashflow
+    start, end, _days = _month_bounds_from_label(month)
+    return compute_cashflow(start, end, conn=conn) or {}
+
+
+def _current_month_activity(month: str, anchor_date: str, conn) -> dict:
+    from utils.analytics import compute_cashflow
+    start, _end, _days = _month_bounds_from_label(month)
+    return compute_cashflow(start, anchor_date, conn=conn) or {}
+
+
+def _remaining_commitments(month: str, anchor_date: str, conn) -> dict:
+    """Split remaining fixed bills and active subscriptions for a month."""
+    from utils.planner import bills_and_commitments
+
+    start, _end, _days = _month_bounds_from_label(month)
+    month_start = date.fromisoformat(start)
+    anchor = date.fromisoformat(anchor_date)
+    bills = bills_and_commitments(conn=conn) or {}
+    fixed = 0.0
+    subs = 0.0
+    upcoming: list[dict] = []
+
+    for item in bills.get("items") or []:
+        if not item.get("included_in_forecast"):
+            continue
+        last_seen = item.get("last_seen") or ""
+        try:
+            last_dt = date.fromisoformat(last_seen) if last_seen else None
+        except Exception:
+            last_dt = None
+        already_seen_this_month = bool(
+            last_dt and month_start <= last_dt <= anchor
+        )
+        if already_seen_this_month:
+            continue
+
+        amount = float(item.get("est_amount") or 0)
+        group = item.get("group") or ""
+        if group == "active_subscriptions":
+            subs += amount
+        else:
+            fixed += amount
+        upcoming.append({
+            "merchant": item.get("merchant") or "Upcoming bill",
+            "category": item.get("category") or "",
+            "amount": round(amount, 2),
+            "group": group or "commitment",
+            "confidence": item.get("confidence") or "medium",
+            "reason": item.get("reason") or "",
+            "target_page": "Plan",
+        })
+
+    upcoming.sort(key=lambda r: -float(r.get("amount") or 0))
+    return {
+        "fixed_remaining": round(fixed, 2),
+        "active_subscriptions_remaining": round(subs, 2),
+        "upcoming": upcoming[:6],
+        "active_monthly_estimate": round(
+            float(bills.get("active_monthly_estimate") or 0), 2
+        ),
+    }
+
+
+def _category_totals(month: str, through_date: str, conn) -> dict[str, float]:
+    start, _end, _days = _month_bounds_from_label(month)
+    rows = conn.execute(
+        """
+        SELECT category, SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE transaction_date BETWEEN ? AND ?
+          AND direction='debit'
+          AND is_transfer=0
+          AND category NOT IN ('Transfer','Transfer Out','Transfer In',
+                               'Payment','Credit Card Payment','Cancelled',
+                               'Internal Transfer')
+        GROUP BY category
+        """,
+        (start, through_date),
+    ).fetchall()
+    return {r["category"] or "Uncategorized": float(r["total"] or 0) for r in rows}
+
+
+def _plan_category_targets(month: str, conn) -> dict[str, float]:
+    from utils.database import get_monthly_plan
+    plan = get_monthly_plan(month, conn=conn) or {}
+    return {
+        r.get("category"): float(r.get("target_amount") or 0)
+        for r in (plan.get("category_targets") or [])
+        if r.get("category")
+    }
+
+
+def _build_watchlists(
+    *,
+    current_month: str,
+    truth_month: str,
+    anchor_date: str,
+    days_elapsed: int,
+    days_in_month: int,
+    conn,
+) -> list[dict]:
+    current_totals = _category_totals(current_month, anchor_date, conn)
+    truth_totals = _category_totals(truth_month, _month_bounds_from_label(truth_month)[1], conn)
+    targets = _plan_category_targets(current_month, conn)
+    watchlists: list[dict] = []
+
+    candidates = []
+    for cat, amount in current_totals.items():
+        if cat in _RUNWAY_EXCLUDED_CATEGORIES or cat in _RUNWAY_FIXED_CATEGORIES:
+            continue
+        target = targets.get(cat)
+        typical = truth_totals.get(cat, 0.0)
+        if target is None or target <= 0:
+            target = typical if typical > 0 else max(amount, 1.0)
+        expected_to_date = target * min(1.0, days_elapsed / max(days_in_month, 1))
+        over_by = amount - expected_to_date
+        pace_ratio = amount / max(expected_to_date, 1.0)
+        if pace_ratio >= 1.15:
+            status = "over"
+        elif pace_ratio >= 0.90:
+            status = "watch"
+        else:
+            status = "on_track"
+        candidates.append((status != "on_track", over_by, amount, cat, target, typical, status))
+
+    candidates.sort(key=lambda x: (not x[0], -x[1], -x[2]))
+    for _flagged, over_by, amount, cat, target, typical, status in candidates[:3]:
+        watchlists.append({
+            "id": f"category:{cat.lower().replace(' ', '_').replace('/', '_')}",
+            "kind": "category",
+            "label": cat,
+            "current_amount": round(amount, 2),
+            "target_amount": round(target, 2),
+            "typical_amount": round(typical, 2),
+            "pace_status": status,
+            "reason": (
+                f"{cat} is ${amount:,.0f} so far vs a pace target of "
+                f"${target:,.0f}/mo."
+            ),
+            "target_page": "Spending",
+            "action_label": f"Review {cat}",
+        })
+
+    flagged_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM transactions WHERE is_flagged=1"
+    ).fetchone()["n"] or 0
+    if flagged_count:
+        watchlists.append({
+            "id": "review_queue",
+            "kind": "review",
+            "label": "Review queue",
+            "current_amount": float(flagged_count),
+            "target_amount": 0.0,
+            "typical_amount": 0.0,
+            "pace_status": "watch",
+            "reason": f"{flagged_count} transaction(s) still need review.",
+            "target_page": "Review queue",
+            "action_label": "Clear review rows",
+        })
+
+    sub = subscription_detective(conn=conn) or {}
+    active_monthly = float(sub.get("active_monthly_estimate") or 0)
+    if active_monthly > 0 and len(watchlists) < 4:
+        watchlists.append({
+            "id": "active_subscriptions",
+            "kind": "subscription",
+            "label": "Active subscriptions",
+            "current_amount": round(active_monthly, 2),
+            "target_amount": round(active_monthly * 0.8, 2),
+            "typical_amount": round(active_monthly, 2),
+            "pace_status": "watch",
+            "reason": (
+                f"Active recurring subscriptions are about ${active_monthly:,.0f}/mo."
+            ),
+            "target_page": "Reduce",
+            "action_label": "Audit subscriptions",
+        })
+
+    return watchlists[:4]
+
+
+def money_runway(conn=None) -> dict:
+    """Deterministic safe-to-spend and weekly-control packet."""
+    c, opened = _conn(conn)
+    try:
+        cov = statement_coverage(conn=c) or {}
+        truth_month = cov.get("latest_complete_month") or ""
+        latest_data_month = cov.get("latest_data_month") or ""
+        if not truth_month and latest_data_month:
+            truth_month = latest_data_month
+        if not truth_month:
+            return {
+                "available": False,
+                "reason": "Import at least one month of transactions to build a runway.",
+                "truth_month": "",
+                "latest_data_month": latest_data_month,
+                "using_partial_month": False,
+                "partial_month_note": "",
+                "safe_to_spend": {
+                    "amount": 0.0, "daily_amount": 0.0, "days_left": 0,
+                    "period_end": "", "confidence": "low", "formula": {},
+                },
+                "runway_status": "unknown",
+                "why": ["Ledger needs a complete statement month before it can estimate runway."],
+                "watchlists": [],
+                "upcoming": [],
+                "wins": [],
+                "data_caveats": ["Not enough imported data yet."],
+            }
+
+        current_month = latest_data_month or truth_month
+        using_partial = bool(
+            current_month
+            and current_month != truth_month
+            and current_month in (cov.get("partial_months") or [])
+        )
+        partial_note = ""
+        caveats: list[str] = []
+        if using_partial:
+            partial_note = (
+                f"{current_month} is partial: "
+                f"{cov.get('incomplete_reason') or 'not enough days imported'}. "
+                f"Ledger uses {truth_month} as the trusted baseline."
+            )
+            caveats.append(partial_note)
+
+        anchor_date = _latest_tx_date_for_month(current_month, c)
+        start, period_end, days_in_month = _month_bounds_from_label(current_month)
+        month_start = date.fromisoformat(start)
+        anchor = date.fromisoformat(anchor_date)
+        days_elapsed = max(1, (anchor - month_start).days + 1)
+        days_left = max(0, (date.fromisoformat(period_end) - anchor).days)
+
+        truth_cf = _cashflow_for_month(truth_month, c)
+        current_cf = _current_month_activity(current_month, anchor_date, c)
+
+        from utils.database import get_monthly_plan
+        plan = get_monthly_plan(current_month, conn=c)
+        income_expected = float(
+            (plan or {}).get("income_target")
+            or truth_cf.get("income")
+            or current_cf.get("income")
+            or 0
+        )
+        spending_so_far = float(current_cf.get("spending") or 0)
+        remaining = _remaining_commitments(current_month, anchor_date, c)
+        goal_commitments = float((plan or {}).get("savings_target") or 0)
+
+        from utils.analytics import compute_score
+        score = compute_score(conn=c) or {}
+        fc = score.get("finance_charges") or {}
+        debt_or_fee_reserve = float(fc.get("total") or 0)
+
+        buffer = round(max(25.0, min(250.0, income_expected * 0.05)), 2) if income_expected > 0 else 0.0
+        amount = (
+            income_expected
+            - spending_so_far
+            - float(remaining["fixed_remaining"])
+            - float(remaining["active_subscriptions_remaining"])
+            - goal_commitments
+            - debt_or_fee_reserve
+            - buffer
+        )
+        daily_amount = amount / max(days_left, 1) if days_left > 0 else amount
+        if amount < 0:
+            status = "danger"
+        elif daily_amount < 15:
+            status = "tight"
+        elif daily_amount < 35:
+            status = "watch"
+        else:
+            status = "clear"
+
+        confidence = "high" if plan and not using_partial else ("medium" if truth_month else "low")
+        why = [
+            f"Baseline month: {truth_month}.",
+            f"${spending_so_far:,.0f} spent so far in {current_month}.",
+            f"${float(remaining['fixed_remaining']) + float(remaining['active_subscriptions_remaining']):,.0f} reserved for remaining bills/subscriptions.",
+        ]
+        if goal_commitments:
+            why.append(f"${goal_commitments:,.0f} reserved for this month's savings goal.")
+        if buffer:
+            why.append(f"${buffer:,.0f} kept as a small safety buffer.")
+        if using_partial:
+            why.append("Partial current-month data is shown as recent activity, not as the monthly truth.")
+
+        watchlists = _build_watchlists(
+            current_month=current_month,
+            truth_month=truth_month,
+            anchor_date=anchor_date,
+            days_elapsed=days_elapsed,
+            days_in_month=days_in_month,
+            conn=c,
+        )
+        packet = {
+            "available": True,
+            "truth_month": truth_month,
+            "latest_data_month": latest_data_month,
+            "using_partial_month": using_partial,
+            "partial_month_note": partial_note,
+            "safe_to_spend": {
+                "amount": round(amount, 2),
+                "daily_amount": round(daily_amount, 2),
+                "days_left": int(days_left),
+                "period_end": period_end,
+                "confidence": confidence,
+                "formula": {
+                    "income_available_or_expected": round(income_expected, 2),
+                    "spending_so_far": round(spending_so_far, 2),
+                    "planned_bills_remaining": remaining["fixed_remaining"],
+                    "active_subscriptions_remaining": remaining["active_subscriptions_remaining"],
+                    "goal_commitments": round(goal_commitments, 2),
+                    "debt_or_fee_reserve": round(debt_or_fee_reserve, 2),
+                    "buffer": buffer,
+                },
+            },
+            "runway_status": status,
+            "why": why[:5],
+            "watchlists": watchlists,
+            "upcoming": remaining["upcoming"],
+            "wins": [],
+            "data_caveats": caveats,
+        }
+        packet["wins"] = found_money(conn=c).get("wins", [])
+        return packet
+    finally:
+        _close(c, opened)
+
+
+def found_money(conn=None) -> dict:
+    """Read-only tiny-wins packet. It never moves or creates money."""
+    c, opened = _conn(conn)
+    try:
+        cov = statement_coverage(conn=c) or {}
+        truth_month = cov.get("latest_complete_month") or cov.get("latest_data_month") or ""
+        if not truth_month:
+            return {
+                "available": False,
+                "truth_month": "",
+                "potential_redirect": 0.0,
+                "wins": [],
+                "data_caveats": ["Import data to find tiny wins."],
+            }
+        start, end, _days = _month_bounds_from_label(truth_month)
+        import math
+        rows = c.execute(
+            """
+            SELECT ABS(amount) AS amt
+            FROM transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND direction='debit'
+              AND is_transfer=0
+              AND amount > 0
+              AND category NOT IN ('Transfer','Transfer Out','Transfer In',
+                                   'Payment','Credit Card Payment','Cancelled',
+                                   'Internal Transfer')
+            """,
+            (start, end),
+        ).fetchall()
+        roundup = sum(max(0.0, math.ceil(float(r["amt"] or 0)) - float(r["amt"] or 0)) for r in rows)
+
+        score = None
+        try:
+            from utils.analytics import compute_score
+            score = compute_score(conn=c)
+        except Exception:
+            score = {}
+        fc = (score or {}).get("finance_charges") or {}
+        fee_total = float(fc.get("total") or 0)
+
+        sub = subscription_detective(conn=c) or {}
+        inactive_count = len(sub.get("stale_subs") or [])
+        flagged = c.execute(
+            "SELECT COUNT(*) AS n FROM transactions WHERE is_flagged=1"
+        ).fetchone()["n"] or 0
+
+        wins: list[dict] = []
+        wins.append({
+            "id": "roundup_potential",
+            "title": f"Roundup potential: ${roundup:,.2f}",
+            "kind": "save",
+            "amount": round(roundup, 2),
+            "detail": "If you chose to round purchases to the next dollar, this is the trusted-month redirect amount.",
+        })
+        if fee_total <= 0.50:
+            wins.append({
+                "id": "low_fees",
+                "title": "Almost no finance charges in the trusted month",
+                "kind": "protect",
+                "amount": round(fee_total, 2),
+                "detail": f"Statement interest + fees were ${fee_total:,.2f}.",
+            })
+        if inactive_count:
+            wins.append({
+                "id": "inactive_excluded",
+                "title": f"{inactive_count} inactive recurring service(s) excluded",
+                "kind": "reduce",
+                "amount": 0.0,
+                "detail": "Inactive services are audit items, not active savings claims.",
+            })
+        if not flagged:
+            wins.append({
+                "id": "review_clear",
+                "title": "Review queue is clear",
+                "kind": "review",
+                "amount": 0.0,
+                "detail": "No flagged transactions are waiting for cleanup.",
+            })
+
+        potential = round(roundup, 2)
+        return {
+            "available": True,
+            "truth_month": truth_month,
+            "potential_redirect": potential,
+            "wins": wins[:4],
+            "data_caveats": [],
+        }
+    finally:
+        _close(c, opened)
+
+
+def mission_deck(conn=None, limit: int = 3) -> list[dict]:
+    """Return the highest-value practical missions for the weekly loop."""
+    c, opened = _conn(conn)
+    try:
+        runway = money_runway(conn=c)
+        wins = found_money(conn=c)
+        missions: list[dict] = []
+
+        def _add(m: dict) -> None:
+            if len(missions) >= max(1, limit):
+                return
+            if any(x.get("id") == m.get("id") for x in missions):
+                return
+            missions.append(m)
+
+        safe = runway.get("safe_to_spend") or {}
+        safe_amount = float(safe.get("amount") or 0)
+        daily = float(safe.get("daily_amount") or 0)
+        status = runway.get("runway_status") or "watch"
+
+        if runway.get("available") and status in {"danger", "tight", "watch"}:
+            _add({
+                "id": "protect_runway",
+                "title": "Protect the month",
+                "kind": "protect",
+                "why_it_matters": (
+                    f"Safe-to-spend is ${safe_amount:,.0f} "
+                    f"(${daily:,.0f}/day). Keep the month from drifting."
+                ),
+                "effort": "5 min",
+                "impact_label": "Protects cashflow",
+                "impact_amount": round(max(0.0, abs(safe_amount)), 2) if safe_amount < 0 else None,
+                "confidence": safe.get("confidence") or "medium",
+                "if_then_plan": (
+                    f"If daily spend is over ${max(1, daily):,.0f}, then I will pause one flexible category for 48 hours."
+                ),
+                "action_label": "Open Plan",
+                "target_page": "Plan",
+                "evidence": [{"type": "money_runway", "status": status, "safe_to_spend": safe_amount}],
+            })
+
+        review_count = c.execute(
+            "SELECT COUNT(*) AS n FROM transactions WHERE is_flagged=1"
+        ).fetchone()["n"] or 0
+        if review_count:
+            _add({
+                "id": "clear_review_queue",
+                "title": f"Clear {min(3, int(review_count))} Review row(s)",
+                "kind": "review",
+                "why_it_matters": "Cleaner categories make every score, chart, and export more trustworthy.",
+                "effort": "5 min",
+                "impact_label": "Improves data quality",
+                "impact_amount": None,
+                "confidence": "high",
+                "if_then_plan": "If I open Ledger this week, then I will clear 3 Review rows before changing the plan.",
+                "action_label": "Open Review",
+                "target_page": "Review queue",
+                "evidence": [{"type": "review_queue", "count": int(review_count)}],
+            })
+
+        for w in runway.get("watchlists") or []:
+            if w.get("kind") != "category" or w.get("pace_status") == "on_track":
+                continue
+            label = w.get("label") or "Top category"
+            target = float(w.get("target_amount") or 0)
+            current = float(w.get("current_amount") or 0)
+            _add({
+                "id": f"watch_{w.get('id','category')}",
+                "title": f"Keep {label} under ${target:,.0f}",
+                "kind": "reduce",
+                "why_it_matters": f"{label} is at ${current:,.0f}; it is the clearest flexible area to control.",
+                "effort": "this week",
+                "impact_label": "Controls spending pace",
+                "impact_amount": round(max(0.0, current - target), 2),
+                "confidence": "medium",
+                "if_then_plan": f"If {label} passes ${target:,.0f}, then I will switch to a no-spend version of that category for two days.",
+                "action_label": w.get("action_label") or "Open Spending",
+                "target_page": w.get("target_page") or "Spending",
+                "evidence": [{"type": "watchlist", "label": label, "current": current, "target": target}],
+            })
+            break
+
+        ca = cash_advance_status(conn=c) or {}
+        if ca.get("ca_count") and ca.get("verdict") in {"covered", "uncertain"}:
+            total = float(ca.get("ca_total") or 0)
+            _add({
+                "id": "verify_cash_advance",
+                "title": f"Verify the ${total:,.0f} cash-advance category",
+                "kind": "verify",
+                "why_it_matters": "Ledger sees the transaction and later card payments, but it should not claim unpaid debt without balance evidence.",
+                "effort": "2 min",
+                "impact_label": "Prevents bad advice",
+                "impact_amount": None,
+                "confidence": ca.get("confidence") or "medium",
+                "if_then_plan": "If the statement confirms the card is paid, then I will treat this as historical/category cleanup, not a payoff task.",
+                "action_label": "Open Transactions",
+                "target_page": "Transactions",
+                "evidence": [{"type": "cash_advance_status", "verdict": ca.get("verdict"), "total": total}],
+            })
+
+        sub = subscription_detective(conn=c) or {}
+        active_candidates = sub.get("active_candidates") or []
+        if active_candidates:
+            amount = float(active_candidates[0].get("annual") or 0)
+            _add({
+                "id": "trim_subscription_bill",
+                "title": "Trim one active subscription",
+                "kind": "reduce",
+                "why_it_matters": "A recurring cut keeps paying you back every month.",
+                "effort": "15 min",
+                "impact_label": f"Up to ${amount:,.0f}/yr reviewed",
+                "impact_amount": round(amount, 2),
+                "confidence": "medium",
+                "if_then_plan": "If I do one money task this week, then I will open Reduce and cancel or confirm one active subscription.",
+                "action_label": "Open Reduce",
+                "target_page": "Reduce",
+                "evidence": [{"type": "subscription_candidate", "merchant": active_candidates[0].get("merchant"), "annual": amount}],
+            })
+
+        potential = float(wins.get("potential_redirect") or 0)
+        if safe_amount > 0 and potential > 0:
+            _add({
+                "id": "redirect_found_money",
+                "title": "Redirect a tiny win",
+                "kind": "save",
+                "why_it_matters": f"Roundups in the trusted month suggest ${potential:,.2f} could be redirected without changing transactions.",
+                "effort": "2 min",
+                "impact_label": f"${potential:,.2f} potential",
+                "impact_amount": round(potential, 2),
+                "confidence": "medium",
+                "if_then_plan": "If safe-to-spend stays positive, then I will move one small chosen amount to my top goal.",
+                "action_label": "Open Plan",
+                "target_page": "Plan",
+                "evidence": [{"type": "found_money", "potential_redirect": potential}],
+            })
+
+        if len(missions) < max(1, limit) and runway.get("available"):
+            _add({
+                "id": "maintain_streak",
+                "title": "Keep the month steady",
+                "kind": "protect",
+                "why_it_matters": "Your current runway is positive; the best move is to avoid avoidable drift.",
+                "effort": "2 min",
+                "impact_label": "Maintain control",
+                "impact_amount": None,
+                "confidence": "medium",
+                "if_then_plan": "If I make an unplanned purchase, then I will check the Dashboard before making a second one.",
+                "action_label": "Open Dashboard",
+                "target_page": "Dashboard",
+                "evidence": [{"type": "money_runway", "status": status}],
+            })
+
+        return missions[:limit]
+    finally:
+        _close(c, opened)

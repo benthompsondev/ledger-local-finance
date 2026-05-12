@@ -44,6 +44,9 @@ It is also a portfolio project showing:
 
 - income, spending, net, and savings rate
 - Money Pulse score based on complete statement months
+- Money Runway safe-to-spend number after bills, subscriptions, goals, fees, and a buffer
+- Mission Deck with three practical weekly actions
+- Tiny Wins that make small savings opportunities visible without moving money automatically
 - top spending categories and merchants
 - statement-aware score explanations
 - optional local-data-grounded copilot summary
@@ -82,6 +85,7 @@ The design borrows the best idea from modern finance apps: watch the few categor
 The Plan page turns recent spending into a monthly operating plan:
 
 - mode-based starter plans
+- weekly runway callout connected back to the Dashboard mission deck
 - income, spending, and savings targets
 - safe-to-spend after reserved bills
 - forecast risk
@@ -123,6 +127,7 @@ Guardrails:
 - AI cannot mutate the database
 - AI cannot create transactions, budgets, goals, or recommendations by itself
 - AI outputs must be grounded in deterministic local data
+- Money Runway, Mission Deck, Found Money, and Money Pulse are deterministic packets first
 - API keys stay in `config.json`, which is excluded from share zips and git
 - OpenClaw exports are read-only unless future proposal files are explicitly reviewed
 

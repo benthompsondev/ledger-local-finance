@@ -12,7 +12,7 @@ from utils.database import (
 from utils.analytics import compute_cashflow, period_cashflow, spending_by_category, top_merchants, compute_score, score_label
 from utils.insights import (
     generate_insights, budget_vs_actuals, coverage_summary, compute_recommendations,
-    subscription_detective,
+    subscription_detective, money_runway, mission_deck, found_money,
 )
 from utils.styles import inject_styles
 from utils.ai_explainer import (
@@ -227,6 +227,133 @@ k5.metric("Flagged",        flagged_count,
 k6.metric("High-Priority Recs", high_recs,
           delta="action needed" if high_recs else "none",
           delta_color="inverse" if high_recs else "normal")
+
+# ── Money Runway + Mission Deck ──────────────────────────────────────
+try:
+    _runway = money_runway(conn=conn) or {}
+except Exception as _e:
+    _runway = {"available": False, "reason": f"Runway unavailable: {_e}"}
+try:
+    _missions = mission_deck(conn=conn, limit=3) or []
+except Exception:
+    _missions = []
+try:
+    _wins_packet = found_money(conn=conn) or {}
+except Exception:
+    _wins_packet = {"wins": []}
+
+
+def _route_to_page(target: str | None) -> str | None:
+    mapping = {
+        "Dashboard": "pages/1_Dashboard.py",
+        "Spending": "pages/5_Spending.py",
+        "Reduce": "pages/11_Reduce.py",
+        "Plan": "pages/12_Month_Plan.py",
+        "Review queue": "pages/8_Review.py",
+        "Transactions": "pages/2_Transactions.py",
+    }
+    return mapping.get(target or "")
+
+
+if _runway.get("available"):
+    _safe = _runway.get("safe_to_spend") or {}
+    _status = str(_runway.get("runway_status") or "watch")
+    _status_color = {
+        "clear": "#3fb950",
+        "watch": "#e3b341",
+        "tight": "#f59e0b",
+        "danger": "#f85149",
+    }.get(_status, "#8b949e")
+    st.markdown(
+        '<p class="ledger-section-header">Money Runway</p>',
+        unsafe_allow_html=True,
+    )
+    r1, r2, r3, r4 = st.columns([1.2, 1, 1, 2.2])
+    with r1:
+        st.metric(
+            "Safe to spend",
+            f"${float(_safe.get('amount') or 0):,.0f}",
+            help="Expected income minus spending so far, remaining bills/subscriptions, savings goal, exact debt/fee reserve, and a small buffer.",
+        )
+    with r2:
+        st.metric("Daily pace", f"${float(_safe.get('daily_amount') or 0):,.0f}/day")
+    with r3:
+        st.markdown(
+            f"<div style='font-size:0.82rem;color:#8b949e'>Runway status</div>"
+            f"<div style='font-size:1.8rem;color:{_status_color};font-weight:700'>"
+            f"{html.escape(_status.title())}</div>",
+            unsafe_allow_html=True,
+        )
+    with r4:
+        for why in (_runway.get("why") or [])[:3]:
+            st.caption("• " + str(why).replace("$", r"\$"))
+        if _runway.get("partial_month_note"):
+            st.info(str(_runway["partial_month_note"]).replace("$", r"\$"))
+
+    _upcoming = _runway.get("upcoming") or []
+    _watch = _runway.get("watchlists") or []
+    if _upcoming or _watch:
+        ucol, wcol = st.columns(2)
+        with ucol:
+            st.markdown("**Upcoming / Reserved**")
+            if _upcoming:
+                for item in _upcoming[:3]:
+                    st.caption(
+                        f"{item.get('merchant','Upcoming')} · "
+                        f"${float(item.get('amount') or 0):,.0f} · "
+                        f"{item.get('confidence','medium')}"
+                    )
+            else:
+                st.caption("No remaining fixed bills detected for this period.")
+        with wcol:
+            st.markdown("**Watchlists**")
+            if _watch:
+                for item in _watch[:3]:
+                    st.caption(
+                        f"{item.get('label','Watch')} · "
+                        f"{item.get('pace_status','watch').replace('_',' ')} · "
+                        f"${float(item.get('current_amount') or 0):,.0f}"
+                    )
+            else:
+                st.caption("No risky watchlist items detected.")
+else:
+    st.info(_runway.get("reason") or "Import transactions to unlock Money Runway.")
+
+if _missions:
+    st.markdown(
+        '<p class="ledger-section-header">Mission Deck</p>',
+        unsafe_allow_html=True,
+    )
+    mcols = st.columns(len(_missions))
+    for i, mission in enumerate(_missions):
+        with mcols[i]:
+            st.markdown(f"**{mission.get('title','Mission')}**")
+            st.caption(str(mission.get("why_it_matters") or "").replace("$", r"\$"))
+            st.caption(
+                f"Effort: {mission.get('effort','5 min')} · "
+                f"Impact: {mission.get('impact_label','practical')}"
+            )
+            st.info(str(mission.get("if_then_plan") or "").replace("$", r"\$"))
+            _target = _route_to_page(mission.get("target_page"))
+            if _target and st.button(
+                mission.get("action_label") or "Open",
+                key=f"mission_deck_{i}_{mission.get('id','mission')}",
+                use_container_width=True,
+            ):
+                st.switch_page(_target)
+
+_wins = (_wins_packet.get("wins") or [])[:4]
+if _wins:
+    st.markdown(
+        '<p class="ledger-section-header">Tiny Wins</p>',
+        unsafe_allow_html=True,
+    )
+    wcols = st.columns(min(4, len(_wins)))
+    for i, win in enumerate(_wins[:4]):
+        with wcols[i]:
+            st.markdown(f"**{win.get('title','Win')}**")
+            st.caption(str(win.get("detail") or "").replace("$", r"\$"))
+    st.divider()
 
 # ══════════════════════════════════════════════════════════════════
 # WHERE THE MONEY WENT — top categories teaser (Pass 15)
