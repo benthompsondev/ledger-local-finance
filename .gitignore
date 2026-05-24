@@ -50,6 +50,7 @@ desktop.ini
 .idea/
 .vscode/
 .claude/
+.codegraph/
 *.swp
 *.swo
 
