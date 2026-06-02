@@ -1,5 +1,10 @@
 # Ledger
 
+[![Ledger validation](https://github.com/BenThompsonBTC/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/BenThompsonBTC/ledger-local-finance/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](requirements.txt)
+[![Local-first](https://img.shields.io/badge/local--first-privacy--focused-brightgreen.svg)](SECURITY.md)
+
 Open-source local-first personal finance app built with Python, Streamlit,
 Plotly, and SQLite.
 
@@ -219,6 +224,8 @@ Start with:
 - `SECURITY.md` for privacy and secret-handling rules
 - `AGENTS.md` for AI-agent coding rules
 - `docs/MAINTAINER_WORKFLOW.md` for the Codex-assisted maintenance workflow
+- `docs/CODEX_ASSISTED_OSS.md` for the OSS maintenance story behind this repo
+- `docs/PORTFOLIO_NOTES.md` for the technical portfolio framing
 
 Codex and other AI coding tools can help inspect, test, document, and implement
 changes, but human review remains responsible for financial logic, privacy, and
