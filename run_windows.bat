@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM =====================================================================
-REM Ledger - Windows launcher (Pass 18: robust + shareable)
+REM Ledger - Windows launcher
 REM
 REM Goals:
 REM   - No hardcoded Python paths or usernames.
@@ -302,7 +302,7 @@ echo Starting Ledger at http://localhost:8501
 echo Press Ctrl+C in this window to stop.
 echo.
 
-REM Pass 19: bind to localhost only by default.
+REM Bind to localhost only by default.
 "%VPY%" -m streamlit run "%APP%" --server.address 127.0.0.1 --server.port 8501
 set "RC=%ERRORLEVEL%"
 call :LOG "streamlit exited with rc=%RC%"

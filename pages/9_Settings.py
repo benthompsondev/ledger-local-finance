@@ -624,8 +624,8 @@ elif section == "Rules":
 
             st.caption(
                 "**Self-transfer names:** The rules near the top contain "
-                "`INTERAC e-Transfer To/From: Benjamin Thompson`. "
-                "Update these two lines to match the account holder's name exactly "
+                "placeholder examples for e-Transfers to/from the account holder. "
+                "Update those lines to match the account holder's name exactly "
                 "as it appears in bank statements, so own-name transfers are excluded from spending."
             )
 

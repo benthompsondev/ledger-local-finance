@@ -1,6 +1,7 @@
 # Ledger
 
-Local-first personal finance dashboard built with Python, Streamlit, Plotly, and SQLite.
+Open-source local-first personal finance app built with Python, Streamlit,
+Plotly, and SQLite.
 
 Ledger helps a normal person answer the weekly money questions that actually matter:
 
@@ -14,6 +15,10 @@ Ledger helps a normal person answer the weekly money questions that actually mat
 It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI features can explain the numbers, but AI never edits financial data or invents figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
+
+Ledger is MIT licensed. It is useful as a personal finance tool, and also as a
+portfolio project for practical Python, Streamlit, SQLite, data import,
+privacy-safe local apps, and AI-assisted development with strict guardrails.
 
 ## Why This Project Exists
 
@@ -29,6 +34,7 @@ It is also a portfolio project showing:
 - privacy-safe exports
 - smoke tests and share-package safety checks
 - optional AI integration with strict read-only guardrails
+- GitHub Actions validation and contributor safety checks
 
 ## Core Features
 
@@ -194,14 +200,29 @@ Run these from the project virtual environment:
 
 ```powershell
 $env:PYTHONIOENCODING="utf-8"
-$files = @("app.py") + (Get-ChildItem pages,utils,parsers,scripts,components -Filter *.py -File | ForEach-Object { $_.FullName })
-.\.venv\Scripts\python.exe -m py_compile @files
+.\.venv\Scripts\python.exe -m compileall -q app.py pages utils parsers scripts components
 .\.venv\Scripts\python.exe -m scripts.smoke_test
 .\.venv\Scripts\python.exe -m scripts.export_agent_context
 .\.venv\Scripts\python.exe -m scripts.make_share_zip
 ```
 
 The smoke test covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, agent-context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
+
+## Contributing And Maintainer Workflow
+
+Ledger is open source under the MIT license. Contributions should preserve the
+local-first privacy model and the deterministic finance truth layer.
+
+Start with:
+
+- `CONTRIBUTING.md` for setup, validation, and pull-request expectations
+- `SECURITY.md` for privacy and secret-handling rules
+- `AGENTS.md` for AI-agent coding rules
+- `docs/MAINTAINER_WORKFLOW.md` for the Codex-assisted maintenance workflow
+
+Codex and other AI coding tools can help inspect, test, document, and implement
+changes, but human review remains responsible for financial logic, privacy, and
+publishing.
 
 ## Privacy And Share Safety
 
@@ -276,4 +297,4 @@ Longer-term ideas:
 
 ## License
 
-No license has been selected yet. Add one before publishing broadly.
+MIT. See `LICENSE`.

@@ -1,5 +1,5 @@
 """
-Ledger desktop launcher (Pass 18: robust + shareable).
+Ledger desktop launcher.
 
 What this fixes
 ───────────────
@@ -134,7 +134,7 @@ def _try(cmd: list[str]) -> bool:
 def detect_host_python(*, allow_existing_venv: bool = True) -> Optional[list[str]]:
     """Return the argv prefix of a working Python interpreter, or None.
 
-    Detection order, per Pass 18 spec:
+    Detection order:
       1. existing project .venv\\Scripts\\python.exe (only if --version works)
       2. py -3.14
       3. py -3
@@ -318,11 +318,9 @@ def launch_streamlit() -> None:
     if not APP_FILE.exists():
         raise RuntimeError(f"app.py not found at {APP_FILE}")
     _log_section("launching Streamlit")
-    # Pass 19: bind to localhost only. Streamlit defaults to 0.0.0.0 which
-    # exposes the app on every network interface — fine on a single-user
-    # laptop, but a footgun the moment Ledger is shared with someone on a
-    # café Wi-Fi. We always bind 127.0.0.1; users who need LAN access can
-    # edit this one line.
+    # Bind to localhost only. Streamlit defaults can expose the app on
+    # every network interface; Ledger should stay local unless the user
+    # deliberately changes this.
     cmd = [
         str(VENV_PYTHON), "-m", "streamlit", "run", str(APP_FILE),
         "--server.address", "127.0.0.1",

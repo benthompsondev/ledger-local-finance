@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  Ledger — Windows PowerShell launcher (Pass 18: robust + shareable)
+#  Ledger — Windows PowerShell launcher
 #
 #  Right-click → "Run with PowerShell", or run from a PS terminal.
 #
@@ -254,7 +254,7 @@ try {
     Write-Host "Starting Ledger at http://localhost:8501" -ForegroundColor Green
     Write-Host "Press Ctrl+C in this window to stop."
     Write-Host ""
-    # Pass 19: bind to localhost only by default.
+    # Bind to localhost only by default.
     & $VPy "-m" "streamlit" "run" $App "--server.address" "127.0.0.1" "--server.port" "8501"
     $rc = $LASTEXITCODE
     Write-Log "streamlit exited with rc=$rc"

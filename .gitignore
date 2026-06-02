@@ -58,5 +58,13 @@ desktop.ini
 *.bak
 ledger_test_*.pdf
 
+# ── Statement / import artifacts (use demo data in public examples) ───────
+*.pdf
+*.ofx
+*.qfx
+*.qif
+*.ofc
+Tangerine Statements/
+
 # Internal handoff / local working notes
 CLAUDE_HANDOFF.md

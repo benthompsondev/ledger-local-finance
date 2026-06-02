@@ -40,10 +40,10 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-# Pass 35 Phase 0: force stdout/stderr to UTF-8 so the script's printed
+# Force stdout/stderr to UTF-8 so the script's printed
 # summary doesn't crash on the default Windows cp1252 console. Without
 # this, the closing emoji warning (kept as ASCII below) used to raise
-# UnicodeEncodeError after the zip was already on disk — making the
+# UnicodeEncodeError after the zip was already on disk, making the
 # script exit non-zero even though the safety work succeeded. The
 # share-zip-exits-0 smoke check flips back to PASS once we reconfigure.
 try:
@@ -61,9 +61,7 @@ EXCLUDE_DIRS = {
     ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     ".idea", ".vscode", ".git", "node_modules", "exports", "data",
     "dist",
-    # Pass 32: editor / IDE workspace metadata never goes in the share.
-    # `.claude/launch.json` was sneaking through pre-Pass-32 even though
-    # the directory is private to the developer's setup.
+    # Editor and AI workspace metadata never go in a user share.
     ".claude",
 }
 
@@ -77,8 +75,8 @@ EXCLUDE_FILES = {
     "finance.db", "finance.db-wal", "finance.db-shm",
 }
 
-# Pass 23: developer-only files. Excluded from the default user share
-# but can be opted back in with --include-dev-notes.
+# Developer-only files are excluded from the default user share but can be
+# opted back in with --include-dev-notes for a maintainer handoff.
 DEV_ONLY_FILES = {
     "CLAUDE_HANDOFF.md",
 }
@@ -292,9 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     print("Recipient should run Ledger_Launcher.py - first launch")
     print("rebuilds .venv and prompts for any AI keys via Settings.")
     print()
-    # Pass 35 Phase 0: ASCII-only warning so this print can't crash a
-    # cp1252 console even if the reconfigure() at the top failed. The
-    # safety message is what matters, not the glyph.
+    # ASCII-only warning so this print cannot crash a cp1252 console even
+    # if the reconfigure() at the top failed.
     print("WARNING: If you ever shared an unzipped project folder that")
     print("         contained config.json, ROTATE the AI API key now.")
     return 0

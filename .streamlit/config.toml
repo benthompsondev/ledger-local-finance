@@ -8,9 +8,8 @@ font                     = "sans serif"
 
 [server]
 headless     = true
-# Pass 19: bind to localhost only by default. Avoids exposing Ledger on
-# the LAN when run on a shared/public network. Override on the CLI if you
-# explicitly want LAN access.
+# Bind to localhost only by default so Ledger is not exposed on a shared
+# or public network. Override on the CLI only when LAN access is intentional.
 address      = "127.0.0.1"
 port         = 8501
 enableCORS   = false
