@@ -21,7 +21,7 @@ It runs on your own computer, stores data in a local SQLite database, and treats
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
-Ledger is MIT licensed. It is useful as a personal finance tool, and also as a portfolio project for practical Python, Streamlit, SQLite, data import, privacy-safe local apps, and AI-assisted development with strict guardrails.
+Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and AI-assisted development with strict guardrails.
 
 ## Why I Built This
 
