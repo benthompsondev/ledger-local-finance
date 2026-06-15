@@ -1,6 +1,6 @@
 # Ledger
 
-[![Ledger validation](https://github.com/BenThompsonBTC/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/BenThompsonBTC/ledger-local-finance/actions/workflows/ci.yml)
+[![Ledger validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](requirements.txt)
 [![Local-first](https://img.shields.io/badge/local--first-privacy--focused-brightgreen.svg)](SECURITY.md)
@@ -8,7 +8,7 @@
 Open-source local-first personal finance app built with Python, Streamlit,
 Plotly, and SQLite.
 
-Ledger helps a normal person answer the weekly money questions that actually matter:
+Ledger is my work-in-progress local finance app. The goal is to answer the weekly money questions that actually matter:
 
 - Where am I financially right now?
 - Am I better or worse than last month?
@@ -17,19 +17,17 @@ Ledger helps a normal person answer the weekly money questions that actually mat
 - What should I cut first?
 - Am I building savings, reducing waste, and improving net worth?
 
-It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI features can explain the numbers, but AI never edits financial data or invents figures.
+It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI features can explain the numbers, but AI does not edit financial data or invent figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
-Ledger is MIT licensed. It is useful as a personal finance tool, and also as a
-portfolio project for practical Python, Streamlit, SQLite, data import,
-privacy-safe local apps, and AI-assisted development with strict guardrails.
+Ledger is MIT licensed. It is useful as a personal finance tool, and also as a portfolio project for practical Python, Streamlit, SQLite, data import, privacy-safe local apps, and AI-assisted development with strict guardrails.
 
-## Why This Project Exists
+## Why I Built This
 
-Most budgeting tools are either too manual, too cloud-dependent, or too focused on charts instead of decisions. Ledger is a practical local-first experiment: import statements, clean up transactions, understand what changed, make a month plan, reduce waste, and track progress.
+Most budgeting tools I tried were either too manual, too cloud-dependent, or too focused on charts instead of decisions. Ledger is my attempt at a practical local-first version: import statements, clean up transactions, understand what changed, make a month plan, reduce waste, and track progress.
 
-It is also a portfolio project showing:
+It is also a portfolio project because it shows:
 
 - Python application structure
 - Streamlit UI development
@@ -37,11 +35,11 @@ It is also a portfolio project showing:
 - PDF and CSV parsing
 - deterministic finance calculations
 - privacy-safe exports
-- smoke tests and share-package safety checks
+- test runs and share-package safety checks
 - optional AI integration with strict read-only guardrails
 - GitHub Actions validation and contributor safety checks
 
-## Core Features
+## What It Does
 
 ### Import
 
@@ -89,7 +87,7 @@ Reduce is the action workspace. It turns spending data into practical cut target
 - inactive recurring services separated from active savings opportunities
 - quick links into filtered transaction history
 
-The design borrows the best idea from modern finance apps: watch the few categories that matter instead of trying to micromanage everything.
+The idea is to watch the few categories that matter instead of trying to micromanage everything.
 
 ### Plan
 
@@ -104,7 +102,7 @@ The Plan page turns recent spending into a monthly operating plan:
 - bills and recurring commitments
 - goals and net-worth progress
 
-The planning model is inspired by the useful parts of zero-based budgeting: give the month a job, reserve true expenses, and make tradeoffs visible.
+The planning model uses the useful parts of zero-based budgeting: give the month a job, reserve true expenses, and make tradeoffs visible.
 
 ### Reports
 
@@ -117,7 +115,7 @@ Reports is the deeper analytics hub:
 - Monthly Review
 - details on what changed and why
 
-Dashboard stays practical; Reports keeps the inspection tools.
+Dashboard stays practical. Reports is where the deeper inspection lives.
 
 ### Net Worth
 
@@ -225,7 +223,6 @@ Start with:
 - `AGENTS.md` for AI-agent coding rules
 - `docs/MAINTAINER_WORKFLOW.md` for the Codex-assisted maintenance workflow
 - `docs/CODEX_ASSISTED_OSS.md` for the OSS maintenance story behind this repo
-- `docs/PORTFOLIO_NOTES.md` for the technical portfolio framing
 
 Codex and other AI coding tools can help inspect, test, document, and implement
 changes, but human review remains responsible for financial logic, privacy, and
@@ -282,7 +279,7 @@ openclaw/                  read-only finance-agent prompt/contracts
 - AI can explain deterministic data but cannot mutate financial records.
 - Share artifacts are privacy-checked before distribution.
 
-## Roadmap
+## What I Would Add Next
 
 Near-term improvements:
 

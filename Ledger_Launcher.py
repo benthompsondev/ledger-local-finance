@@ -1,36 +1,13 @@
 """
 Ledger desktop launcher.
 
-What this fixes
-───────────────
-The previous version assumed:
-  • the host Python that runs THIS file is fine, and
-  • the existing .venv is fine, and
-  • `python -m pip install --upgrade pip` will always work.
+This script gets Ledger running on Windows without assuming the local Python
+environment is already healthy. It checks the existing venv, falls back through
+common Python launchers, rebuilds a broken venv when needed, writes a local log,
+and shows copy/paste repair commands if startup fails.
 
-When the host Python's pip vendoring is corrupted (the user's actual
-failure: `cannot import name 'idnadata' from partially initialized module
-'pip._vendor.idna'`), the upgrade-pip step inside the venv fails too,
-because the venv inherits the broken-bootstrap state. The launcher then
-showed a vague popup ("Upgrading pip failed.") with no recovery.
-
-This rewrite:
-  • Detects a usable Python via a documented chain — the existing venv
-    Python (only if it actually works), then `py -3.14`, `py -3`, `py`,
-    `python`, `python3`. No hardcoded paths, no hardcoded usernames.
-  • Validates the venv with two probes (`python --version` AND
-    `python -m pip --version`) BEFORE trusting it.
-  • If the venv is missing/invalid/pip-broken, renames it to
-    `.venv.broken-YYYYMMDD-HHMMSS` (preserves it for forensics), creates
-    a fresh one with the detected host Python, and bootstraps pip via
-    `ensurepip --upgrade` (avoids the corrupted-vendored-idna trap).
-  • Always uses `python -m pip ...`. Never relies on a `pip` script.
-  • Logs every decision to `launcher.log`. No secrets, no env dumps.
-  • On any failure, surfaces a Tk error dialog with the exact manual
-    repair commands the user can copy/paste.
-
-The launcher does not change finance app business logic. It only
-prepares the environment and starts Streamlit.
+It does not change finance app data or business logic. It only prepares the
+environment and starts Streamlit.
 """
 from __future__ import annotations
 

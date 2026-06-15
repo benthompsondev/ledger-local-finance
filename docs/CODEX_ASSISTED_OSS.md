@@ -58,9 +58,9 @@ Codex and other AI tools must follow these rules:
 - Summarize a PR and point out missing privacy checks.
 - Prepare release notes after a passing validation run.
 
-## What This Shows As An OSS Project
+## What This Shows As A Project
 
-Ledger demonstrates a practical pattern for AI-assisted maintenance:
+Ledger shows a practical pattern for AI-assisted maintenance:
 
 - AI helps with code navigation, tests, docs, and review.
 - The application keeps data ownership local.

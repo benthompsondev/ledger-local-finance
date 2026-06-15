@@ -7,7 +7,7 @@
 #    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 #  then try again.
 #
-#  Mirrors the recovery logic in run_windows.bat / Ledger_Launcher.py:
+#  Mirrors the recovery logic in Ledger_Launcher.py:
 #    • detect Python via existing venv → py -3.14 → py -3 → py → python → python3
 #    • validate the venv (python --version + python -m pip --version)
 #    • on corruption: rename .venv to .venv.broken-YYYYMMDD-HHMMSS,
