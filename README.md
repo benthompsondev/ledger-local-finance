@@ -21,7 +21,7 @@ It runs on your own computer, stores data in a local SQLite database, and treats
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
-Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and AI-assisted development with strict guardrails.
+Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and maintenance guardrails.
 
 ## Why I Built This
 
@@ -221,8 +221,8 @@ Start with:
 - `CONTRIBUTING.md` for setup, validation, and pull-request expectations
 - `SECURITY.md` for privacy and secret-handling rules
 - `AGENTS.md` for AI-agent coding rules
-- `docs/MAINTAINER_WORKFLOW.md` for the Codex-assisted maintenance workflow
-- `docs/CODEX_ASSISTED_OSS.md` for the OSS maintenance story behind this repo
+- `docs/MAINTAINER_WORKFLOW.md` for the maintenance workflow
+- `docs/MAINTENANCE_GUARDRAILS.md` for the maintenance and privacy story behind this repo
 
 Codex and other AI coding tools can help inspect, test, document, and implement
 changes, but human review remains responsible for financial logic, privacy, and

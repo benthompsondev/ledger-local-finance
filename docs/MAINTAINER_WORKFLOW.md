@@ -15,9 +15,9 @@ private data out of the repository.
 7. Scan for private data before committing.
 8. Write a plain-English commit message.
 
-## Codex-Assisted OSS Workflow
+## Tool-Assisted Maintenance Workflow
 
-Codex can help with:
+Coding tools can help with:
 
 - code inspection and call-path tracing;
 - issue triage and reproduction steps;
@@ -27,7 +27,7 @@ Codex can help with:
 - README and contributor documentation;
 - release checklists and GitHub Actions cleanup.
 
-Codex should not:
+Coding tools should not:
 
 - commit real financial data;
 - invent finance numbers;
