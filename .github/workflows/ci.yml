@@ -28,6 +28,9 @@ jobs:
           $env:PYTHONIOENCODING = "utf-8"
           python -m compileall -q app.py pages utils parsers scripts components
 
+      - name: Run local readiness check
+        run: python -m scripts.doctor
+
       - name: Check tracked files for private artifacts
         shell: pwsh
         run: |

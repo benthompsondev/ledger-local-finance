@@ -18,6 +18,8 @@ python --version
 
 ## 2. Download And Set Up
 
+Windows PowerShell:
+
 ```powershell
 git clone https://github.com/benthompsondev/ledger-local-finance.git
 cd ledger-local-finance
@@ -25,12 +27,28 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+Linux/macOS:
+
+```bash
+git clone https://github.com/benthompsondev/ledger-local-finance.git
+cd ledger-local-finance
+make setup
+```
+
 ## 3. Run With Demo Data
+
+Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.create_demo_data
 $env:LEDGER_DEMO_DB="1"
 .\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Linux/macOS:
+
+```bash
+make demo
 ```
 
 Open:
@@ -58,6 +76,22 @@ Go to the Import page and upload supported files:
 - holdings CSV snapshots
 
 Ledger stores imported data in `data/finance.db`. That file stays local and is ignored by git.
+
+## Quick Health Check
+
+If something feels off, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.doctor
+```
+
+Or on Linux/macOS:
+
+```bash
+make check
+```
+
+This checks the Python version, main dependencies, required files, demo-data status, and whether private-looking files are tracked by git.
 
 ## 5. What To Look At First
 

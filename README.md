@@ -48,6 +48,15 @@ Remove-Item Env:\LEDGER_DEMO_DB -ErrorAction SilentlyContinue
 
 There is also a shorter first-time user guide in [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
 
+On Linux or macOS, the repo also includes a small Makefile:
+
+```bash
+git clone https://github.com/benthompsondev/ledger-local-finance.git
+cd ledger-local-finance
+make setup
+make demo
+```
+
 ## Why I Built This
 
 Most budgeting tools I tried were either too manual, too cloud-dependent, or too focused on charts instead of decisions. Ledger is my attempt at a practical local-first version: import statements, clean up transactions, understand what changed, make a month plan, reduce waste, and track progress.
@@ -201,10 +210,20 @@ The launcher creates a local virtual environment, installs dependencies, and sta
 
 ### Manual Run
 
+PowerShell:
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
 ```
 
 Open:
@@ -212,6 +231,22 @@ Open:
 ```text
 http://127.0.0.1:8501
 ```
+
+### Quick Local Check
+
+After installing dependencies, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.doctor
+```
+
+Or on Linux/macOS:
+
+```bash
+./.venv/bin/python -m scripts.doctor
+```
+
+The check verifies the main dependencies, required files, demo-data status, and whether private-looking files are tracked by git.
 
 ## Demo Mode
 
@@ -306,6 +341,7 @@ utils/planner.py           plan, forecast, safe-to-spend, goals, bills
 utils/insights.py          recommendations, subscriptions, monthly review
 utils/agent_context.py     read-only OpenClaw export context
 scripts/smoke_test.py      regression/safety smoke suite
+scripts/doctor.py          quick local readiness check
 scripts/make_share_zip.py  privacy-safe share artifact builder
 scripts/export_agent_context.py
 openclaw/                  read-only finance-agent prompt/contracts
@@ -324,9 +360,7 @@ openclaw/                  read-only finance-agent prompt/contracts
 
 Near-term improvements:
 
-- polished demo screenshots
-- GitHub Actions validation on push
-- friend-safe onboarding flow
+- importer examples for non-Tangerine CSV formats
 - stronger Plan page interaction
 - richer Reduce watchlists and weekly challenges
 - better recurring charge confirmation workflow
