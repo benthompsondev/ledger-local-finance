@@ -23,6 +23,31 @@ It runs on your own computer, stores data in a local SQLite database, and treats
 
 Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and maintenance guardrails.
 
+## Try It First
+
+If you are just checking out the project, start with demo mode. It creates a fake local database, opens the app on your computer, and avoids mixing your own financial data into screenshots or tests.
+
+```powershell
+git clone https://github.com/benthompsondev/ledger-local-finance.git
+cd ledger-local-finance
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m scripts.create_demo_data
+$env:LEDGER_DEMO_DB="1"
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Open `http://127.0.0.1:8501`.
+
+After that, turn demo mode off in a new terminal and use the Import page with your own PDFs or CSVs:
+
+```powershell
+Remove-Item Env:\LEDGER_DEMO_DB -ErrorAction SilentlyContinue
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+There is also a shorter first-time user guide in [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
+
 ## Why I Built This
 
 Most budgeting tools I tried were either too manual, too cloud-dependent, or too focused on charts instead of decisions. Ledger is my attempt at a practical local-first version: import statements, clean up transactions, understand what changed, make a month plan, reduce waste, and track progress.
@@ -142,16 +167,19 @@ Guardrails:
 
 ## Screenshots
 
-Screenshots should be captured against demo data only. Real financial data should never be committed.
+These screenshots use generated demo data only. Real financial data should never be committed.
 
-Planned public screenshots:
+| Dashboard | Import |
+|---|---|
+| ![Dashboard showing Money Pulse, runway, and weekly actions](docs/screenshots/dashboard.png) | ![Import page showing PDF and CSV upload workflow](docs/screenshots/import.png) |
 
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/import.png`
-- `docs/screenshots/reduce.png`
-- `docs/screenshots/plan.png`
-- `docs/screenshots/net_worth.png`
-- `docs/screenshots/reports.png`
+| Reduce | Plan |
+|---|---|
+| ![Reduce page showing subscription and trim-spend actions](docs/screenshots/reduce.png) | ![Plan page showing monthly planning and safe-to-spend workflow](docs/screenshots/plan.png) |
+
+| Net Worth | Reports |
+|---|---|
+| ![Net Worth page showing assets, liabilities, and trend line](docs/screenshots/net_worth.png) | ![Reports page showing monthly review and analytics routing](docs/screenshots/reports.png) |
 
 ## Quick Start
 
@@ -196,6 +224,19 @@ $env:LEDGER_DEMO_DB="1"
 ```
 
 Never use real financial screenshots in a public portfolio.
+
+## Using Your Own Data
+
+Ledger stores your data locally in `data/finance.db`. That file is ignored by git.
+
+The Import page supports:
+
+- Tangerine Mastercard PDFs
+- Tangerine Chequing and Savings PDFs
+- generic transaction CSV files
+- holdings CSV snapshots for net worth tracking
+
+The app checks duplicate files and duplicate transactions, then lets you review the results. For a public demo, use demo mode. For real use, keep the project folder private and never upload `data/`, `config.json`, statement PDFs, exports, or screenshots with real accounts.
 
 ## Verification
 
