@@ -6,9 +6,11 @@
 [![Local-first](https://img.shields.io/badge/local--first-privacy--focused-brightgreen.svg)](SECURITY.md)
 
 Open-source local-first personal finance app built with Python, Streamlit,
-Plotly, and SQLite.
+Plotly, SQLite, local run checks, screenshots, demo data, and GitHub Actions.
 
-Ledger is my work-in-progress local finance app. The goal is to answer the weekly money questions that actually matter:
+Ledger is my work-in-progress local finance app. I am building it for people who want more control over their own financial data without subscriptions, cloud lock-in, or handing everything to a third-party service.
+
+The goal is to answer the weekly money questions that actually matter:
 
 - Where am I financially right now?
 - Am I better or worse than last month?
@@ -17,11 +19,11 @@ Ledger is my work-in-progress local finance app. The goal is to answer the weekl
 - What should I cut first?
 - Am I building savings, reducing waste, and improving net worth?
 
-It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI features can explain the numbers, but AI does not edit financial data or invent figures.
+It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI-assisted features can explain the numbers, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
-Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and maintenance guardrails.
+Ledger is MIT licensed. I am building it to be customizable, understandable, and easy to run locally. It also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, GitHub Actions, and maintenance guardrails.
 
 ## If You Are Reviewing This Quickly
 
@@ -31,7 +33,7 @@ Ledger is MIT licensed. I built it to be useful as a real local app, but it also
 - Check the GitHub Actions badge above to see the validation run.
 - Run `python -m scripts.doctor` after setup if something feels off locally.
 
-The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries.
+The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries. Longer term, I want it to fit into local homelab and agent-assisted workflows while keeping finance data local.
 
 ## Try It First
 
