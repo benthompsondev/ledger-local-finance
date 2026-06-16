@@ -23,6 +23,16 @@ It runs on your own computer, stores data in a local SQLite database, and treats
 
 Ledger is MIT licensed. I built it to be useful as a real local app, but it also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, and maintenance guardrails.
 
+## If You Are Reviewing This Quickly
+
+- Start with demo mode so you can see the app without using real financial data.
+- Open [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the short setup path.
+- Skim the screenshots below for the main workflow.
+- Check the GitHub Actions badge above to see the validation run.
+- Run `python -m scripts.doctor` after setup if something feels off locally.
+
+The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries.
+
 ## Try It First
 
 If you are just checking out the project, start with demo mode. It creates a fake local database, opens the app on your computer, and avoids mixing your own financial data into screenshots or tests.
