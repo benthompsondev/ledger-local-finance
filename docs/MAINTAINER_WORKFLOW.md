@@ -1,7 +1,7 @@
 # Maintainer Workflow
 
 Ledger is maintained as a practical local-first finance app. The workflow is
-designed to be friendly to human maintainers and AI coding agents while keeping
+designed to be friendly to human maintainers and automation helpers while keeping
 private data out of the repository.
 
 ## Weekly Maintenance Loop

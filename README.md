@@ -312,7 +312,7 @@ Start with:
 - `docs/MAINTAINER_WORKFLOW.md` for the maintenance workflow
 - `docs/MAINTENANCE_GUARDRAILS.md` for the maintenance and privacy story behind this repo
 
-Codex and other AI coding tools can help inspect, test, document, and implement
+AI coding tools can help inspect, test, document, and implement
 changes, but human review remains responsible for financial logic, privacy, and
 publishing.
 

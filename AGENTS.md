@@ -1,6 +1,6 @@
-# Ledger Agent Guide
+# Ledger Maintainer Guide
 
-Use this when an AI coding agent or maintainer works in this repository.
+Use this when a maintainer or automation helper works in this repository.
 
 ## First Principles
 
