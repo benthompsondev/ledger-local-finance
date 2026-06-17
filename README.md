@@ -19,7 +19,7 @@ The goal is to answer the weekly money questions that actually matter:
 - What should I cut first?
 - Am I building savings, reducing waste, and improving net worth?
 
-It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI-assisted features can explain the numbers, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
+It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional explanation helpers can summarize the numbers, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
@@ -33,7 +33,7 @@ Ledger is MIT licensed. I am building it to be customizable, understandable, and
 - Check the GitHub Actions badge above to see the validation run.
 - Run `python -m scripts.doctor` after setup if something feels off locally.
 
-The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries. Longer term, I want it to fit into local homelab and agent-assisted workflows while keeping finance data local.
+The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries. Longer term, I want it to fit into local homelab and automation workflows while keeping finance data local.
 
 ## Try It First
 
