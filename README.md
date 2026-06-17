@@ -19,7 +19,7 @@ The goal is to answer the weekly money questions that actually matter:
 - What should I cut first?
 - Am I building savings, reducing waste, and improving net worth?
 
-It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional explanation helpers can summarize the numbers, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
+It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI-assisted features can summarize and explain the numbers through a configured API key, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
