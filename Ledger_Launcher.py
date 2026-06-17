@@ -11,6 +11,7 @@ environment and starts Streamlit.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -291,10 +292,28 @@ def ensure_streamlit_importable() -> None:
 
 # ── Launch ──────────────────────────────────────────────────────────────
 
-def launch_streamlit() -> None:
+def prepare_demo_data() -> None:
+    """Create or refresh the fake demo database for first-time review."""
+    _log_section("preparing demo data")
+    rc, _, err = _run(
+        [str(VENV_PYTHON), "-m", "scripts.create_demo_data", "--force"],
+        label="create demo data",
+    )
+    if rc != 0:
+        raise RuntimeError(
+            f"demo data creation failed (rc={rc}). "
+            f"stderr: {err.strip()[:400]}"
+        )
+
+
+def launch_streamlit(*, demo: bool = False) -> None:
     if not APP_FILE.exists():
         raise RuntimeError(f"app.py not found at {APP_FILE}")
     _log_section("launching Streamlit")
+    env = os.environ.copy()
+    if demo:
+        env["LEDGER_DEMO_DB"] = "1"
+        _log("demo mode enabled: LEDGER_DEMO_DB=1")
     # Bind to localhost only. Streamlit defaults can expose the app on
     # every network interface; Ledger should stay local unless the user
     # deliberately changes this.
@@ -304,7 +323,7 @@ def launch_streamlit() -> None:
         "--server.port", str(PORT),
     ]
     _log(f"$ {' '.join(_q(c) for c in cmd)}")
-    subprocess.Popen(cmd, cwd=str(BASE_DIR))
+    subprocess.Popen(cmd, cwd=str(BASE_DIR), env=env)
     time.sleep(3)
     try:
         webbrowser.open(f"http://localhost:{PORT}")
@@ -354,7 +373,24 @@ def _popup(title: str, message: str, *, error: bool = False) -> None:
 
 # ── Main ────────────────────────────────────────────────────────────────
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Prepare Ledger's local Python environment and start the app."
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help=(
+            "Create fake demo data and launch Ledger against the demo database. "
+            "Use this for first-time review or screenshots."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> int:
+    args = parse_args(sys.argv[1:])
+
     # Truncate the log on each run so launcher.log captures the current
     # session in isolation. Prior sessions live in `launcher.log.prev` if
     # the user wants them.
@@ -397,7 +433,7 @@ def main() -> int:
             _popup(
                 "Ledger launcher",
                 "Ledger could not find a working Python.\n\n"
-                "Install Python 3.11 or newer from "
+                "Install Python 3.12 or newer from "
                 "https://www.python.org/downloads/ and tick "
                 "'Add Python to PATH' during install.\n\n"
                 f"Diagnostics: {LOG_FILE}",
@@ -445,8 +481,12 @@ def main() -> int:
         _log_section("verifying streamlit")
         ensure_streamlit_importable()
 
-        # Step 7: launch.
-        launch_streamlit()
+        # Step 7: optional fake demo data.
+        if args.demo:
+            prepare_demo_data()
+
+        # Step 8: launch.
+        launch_streamlit(demo=args.demo)
         _log("launcher: complete")
         return 0
 

@@ -25,19 +25,62 @@ It runs on your own computer, stores data in a local SQLite database, and treats
 
 Ledger is MIT licensed. I am building it to be customizable, understandable, and easy to run locally. It also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, GitHub Actions, and maintenance guardrails.
 
+## Easiest Way To Try It
+
+Start with demo mode. It creates a fake local database, opens the app on your computer, and keeps real financial data out of the first run.
+
+### Windows
+
+Install [Python 3.12+](https://www.python.org/downloads/) first. During install, tick **Add Python to PATH** if Windows offers it.
+
+Then download the repo with Git, or use **Code > Download ZIP** on GitHub and extract it. From the Ledger folder, run one of these:
+
+```powershell
+py Ledger_Launcher.py --demo
+```
+
+If `py` is not available, try:
+
+```powershell
+python Ledger_Launcher.py --demo
+```
+
+The launcher creates the local Python environment, installs dependencies, builds fake demo data, and opens Ledger at:
+
+```text
+http://127.0.0.1:8501
+```
+
+You can also use the PowerShell helper:
+
+```powershell
+.\run_windows.ps1 -Demo
+```
+
+### Linux or macOS
+
+```bash
+git clone https://github.com/benthompsondev/ledger-local-finance.git
+cd ledger-local-finance
+make setup
+make demo
+```
+
+For more detail, use [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
+
 ## If You Are Reviewing This Quickly
 
-- Start with demo mode so you can see the app without using real financial data.
-- Open [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the short setup path.
+- Use demo mode first so you can see the app without using real financial data.
 - Skim the screenshots below for the main workflow.
+- Open [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) if you want the step-by-step version.
 - Check the GitHub Actions badge above to see the validation run.
 - Run `python -m scripts.doctor` after setup if something feels off locally.
 
 The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries. Longer term, I want it to fit into local homelab and automation workflows while keeping finance data local.
 
-## Try It First
+## Manual Demo Setup
 
-If you are just checking out the project, start with demo mode. It creates a fake local database, opens the app on your computer, and avoids mixing your own financial data into screenshots or tests.
+If you prefer to run each setup command yourself, this does the same thing as demo mode.
 
 ```powershell
 git clone https://github.com/benthompsondev/ledger-local-finance.git
@@ -57,8 +100,6 @@ After that, turn demo mode off in a new terminal and use the Import page with yo
 Remove-Item Env:\LEDGER_DEMO_DB -ErrorAction SilentlyContinue
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
-
-There is also a shorter first-time user guide in [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
 
 On Linux or macOS, the repo also includes a small Makefile:
 
@@ -219,6 +260,18 @@ Or run the PowerShell helper:
 ```
 
 The launcher creates a local virtual environment, installs dependencies, and starts Streamlit on `127.0.0.1`.
+
+To start with fake demo data instead of your own files:
+
+```powershell
+python Ledger_Launcher.py --demo
+```
+
+or:
+
+```powershell
+.\run_windows.ps1 -Demo
+```
 
 ### Manual Run
 

@@ -2,6 +2,8 @@
 #  Ledger — Windows PowerShell launcher
 #
 #  Right-click → "Run with PowerShell", or run from a PS terminal.
+#  Add -Demo to create fake demo data and launch against the demo DB:
+#    .\run_windows.ps1 -Demo
 #
 #  First-time PowerShell users: if you see an execution-policy error, run:
 #    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
@@ -16,6 +18,10 @@
 #    • log every decision to launcher.log
 #    • on failure show a clear error + manual repair commands
 # ─────────────────────────────────────────────────────────────────────────────
+
+param(
+    [switch]$Demo
+)
 
 $ErrorActionPreference = "Continue"  # we handle errors ourselves
 Set-Location -Path $PSScriptRoot
@@ -249,9 +255,24 @@ try {
         }
     }
 
+    if ($Demo) {
+        Write-Section "preparing demo data"
+        $rc = Invoke-Logged -Label "create demo data" `
+            -Cmd @($VPy, "-m", "scripts.create_demo_data", "--force")
+        if ($rc -ne 0) {
+            throw "demo data creation failed (rc=$rc)"
+        }
+        $env:LEDGER_DEMO_DB = "1"
+        Write-Log "demo mode enabled: LEDGER_DEMO_DB=1"
+    }
+
     Write-Section "launching Streamlit"
     Write-Host ""
-    Write-Host "Starting Ledger at http://localhost:8501" -ForegroundColor Green
+    if ($Demo) {
+        Write-Host "Starting Ledger demo mode at http://localhost:8501" -ForegroundColor Green
+    } else {
+        Write-Host "Starting Ledger at http://localhost:8501" -ForegroundColor Green
+    }
     Write-Host "Press Ctrl+C in this window to stop."
     Write-Host ""
     # Bind to localhost only by default.

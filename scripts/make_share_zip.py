@@ -287,8 +287,9 @@ def main(argv: list[str] | None = None) -> int:
         print("                     Re-run with --include-dev-notes for a "
               "developer share.")
     print()
-    print("Recipient should run Ledger_Launcher.py - first launch")
-    print("rebuilds .venv and prompts for any AI keys via Settings.")
+    print("Recipient should run Ledger_Launcher.py --demo first.")
+    print("That builds fake demo data, rebuilds .venv if needed, and starts")
+    print("Ledger locally. For real imports later, run Ledger_Launcher.py.")
     print()
     # ASCII-only warning so this print cannot crash a cp1252 console even
     # if the reconfigure() at the top failed.
