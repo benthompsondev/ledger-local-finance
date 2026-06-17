@@ -19,7 +19,7 @@ The goal is to answer the weekly money questions that actually matter:
 - What should I cut first?
 - Am I building savings, reducing waste, and improving net worth?
 
-It runs on your own computer, stores data in a local SQLite database, and treats deterministic calculations as the source of truth. Optional AI-assisted features can summarize and explain the numbers through a configured API key, but they are read-only, guardrailed, and not allowed to edit financial data or invent figures.
+It runs on your own computer, stores data in a local SQLite database, and does the actual finance math with normal Python/SQLite logic. Optional AI-assisted features can summarize and explain the numbers through a configured API key, but they are read-only and cannot edit financial data or invent figures.
 
 > Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
 
@@ -33,7 +33,7 @@ Start with demo mode. It creates a fake local database, opens the app on your co
 
 Install [Python 3.12+](https://www.python.org/downloads/) first. During install, tick **Add Python to PATH** if Windows offers it.
 
-Then download the repo with Git, or use **Code > Download ZIP** on GitHub and extract it. From the Ledger folder, run one of these:
+Then download the whole project folder with Git, or use **Code > Download ZIP** on GitHub and extract it. After extracting, open PowerShell in the Ledger folder, the one that contains `Ledger_Launcher.py`, `app.py`, `requirements.txt`, and `pages/`.
 
 ```powershell
 py Ledger_Launcher.py --demo
@@ -350,12 +350,12 @@ $env:PYTHONIOENCODING="utf-8"
 .\.venv\Scripts\python.exe -m scripts.make_share_zip
 ```
 
-The smoke test covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, OpenClaw context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
+That fuller app check covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, OpenClaw context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
 
 ## Contributing And Maintainer Workflow
 
 Ledger is open source under the MIT license. Contributions should preserve the
-local-first privacy model and the deterministic finance truth layer.
+local-first privacy model and the normal Python/SQLite calculations that produce the numbers.
 
 Start with:
 
@@ -403,7 +403,7 @@ utils/analytics.py         cashflow, spending, Money Pulse score
 utils/planner.py           plan, forecast, safe-to-spend, goals, bills
 utils/insights.py          recommendations, subscriptions, monthly review
 utils/agent_context.py     read-only OpenClaw context builder
-scripts/smoke_test.py      regression/safety smoke suite
+scripts/smoke_test.py      fuller app check suite
 scripts/doctor.py          quick local readiness check
 scripts/make_share_zip.py  privacy-safe share artifact builder
 scripts/export_openclaw_context.py
@@ -412,7 +412,7 @@ openclaw/                  read-only OpenClaw prompt/contracts
 
 ## Technical Notes
 
-- Local SQLite is the truth layer.
+- Local SQLite is where the app stores its numbers.
 - Statement summaries are preferred over transaction guesses for Mastercard interest and fees.
 - Partial months remain visible but are excluded from monthly truth comparisons until complete.
 - Internal transfers and credit-card payments are excluded from spending totals.
