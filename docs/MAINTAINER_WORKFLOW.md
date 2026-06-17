@@ -1,7 +1,7 @@
 # Maintainer Workflow
 
 Ledger is maintained as a practical local-first finance app. The workflow is
-designed to be friendly to human maintainers and automation helpers while keeping
+designed to be friendly to maintainers and automation helpers while keeping
 private data out of the repository.
 
 ## Weekly Maintenance Loop
@@ -32,7 +32,7 @@ Coding tools should not:
 - commit real financial data;
 - invent finance numbers;
 - bypass deterministic helper functions;
-- convert read-only AI context into write access;
+- convert read-only context exports into write access;
 - publish a release without human review.
 
 ## Validation Commands
@@ -43,7 +43,7 @@ Run these from the repository root:
 $env:PYTHONIOENCODING="utf-8"
 .\.venv\Scripts\python.exe -m compileall -q app.py pages utils parsers scripts components
 .\.venv\Scripts\python.exe -m scripts.smoke_test
-.\.venv\Scripts\python.exe -m scripts.export_agent_context
+.\.venv\Scripts\python.exe -m scripts.export_openclaw_context
 .\.venv\Scripts\python.exe -m scripts.make_share_zip
 ```
 

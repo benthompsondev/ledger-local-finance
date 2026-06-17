@@ -293,11 +293,11 @@ Run these from the project virtual environment:
 $env:PYTHONIOENCODING="utf-8"
 .\.venv\Scripts\python.exe -m compileall -q app.py pages utils parsers scripts components
 .\.venv\Scripts\python.exe -m scripts.smoke_test
-.\.venv\Scripts\python.exe -m scripts.export_agent_context
+.\.venv\Scripts\python.exe -m scripts.export_openclaw_context
 .\.venv\Scripts\python.exe -m scripts.make_share_zip
 ```
 
-The smoke test covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, agent-context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
+The smoke test covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, OpenClaw context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
 
 ## Contributing And Maintainer Workflow
 
@@ -308,13 +308,11 @@ Start with:
 
 - `CONTRIBUTING.md` for setup, validation, and pull-request expectations
 - `SECURITY.md` for privacy and secret-handling rules
-- `AGENTS.md` for AI-agent coding rules
-- `docs/MAINTAINER_WORKFLOW.md` for the maintenance workflow
+- `docs/MAINTAINER_WORKFLOW.md` for maintainer notes
 - `docs/MAINTENANCE_GUARDRAILS.md` for the maintenance and privacy story behind this repo
 
-AI coding tools can help inspect, test, document, and implement
-changes, but human review remains responsible for financial logic, privacy, and
-publishing.
+Automation and tooling can help inspect, test, document, and implement changes,
+but human review remains responsible for financial logic, privacy, and publishing.
 
 ## Privacy And Share Safety
 
@@ -351,12 +349,12 @@ utils/database.py          SQLite schema and persistence helpers
 utils/analytics.py         cashflow, spending, Money Pulse score
 utils/planner.py           plan, forecast, safe-to-spend, goals, bills
 utils/insights.py          recommendations, subscriptions, monthly review
-utils/agent_context.py     read-only OpenClaw export context
+utils/agent_context.py     read-only OpenClaw context builder
 scripts/smoke_test.py      regression/safety smoke suite
 scripts/doctor.py          quick local readiness check
 scripts/make_share_zip.py  privacy-safe share artifact builder
-scripts/export_agent_context.py
-openclaw/                  read-only finance-agent prompt/contracts
+scripts/export_openclaw_context.py
+openclaw/                  read-only OpenClaw prompt/contracts
 ```
 
 ## Technical Notes
@@ -382,7 +380,7 @@ Longer-term ideas:
 
 - mobile-friendly layout
 - encrypted backup
-- explicit proposal-review workflow for external agents
+- explicit proposal-review workflow for external tools
 - multi-bank parser packs
 - cloud/web version with auth, encryption, export/delete-account flows, and privacy policy
 

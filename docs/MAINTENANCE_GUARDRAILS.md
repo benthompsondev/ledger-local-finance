@@ -2,7 +2,7 @@
 
 Ledger is a small open-source finance app, but it is maintained with habits that matter on larger projects: tests, reviewable changes, privacy boundaries, and clear contributor rules.
 
-This document explains how I use coding tools without weakening the local-first safety model.
+This document explains the maintenance rules that keep the local-first safety model intact.
 
 ## Why The Guardrails Matter
 
@@ -13,16 +13,16 @@ Ledger has several areas where careful tooling helps:
 - expanding smoke tests around imports, statement summaries, exports, and privacy;
 - checking share zips and git state before public release;
 - improving documentation, issue templates, release notes, and contributor guides;
-- keeping OpenClaw/AI context read-only and grounded in deterministic packets.
+- keeping OpenClaw context read-only and grounded in deterministic packets.
 
 The project is intentionally structured so maintenance can move faster while the app remains safe for personal financial data.
 
 ## Guardrails
 
-Any coding assistant or automation must follow these rules:
+Any maintainer or automation workflow must follow these rules:
 
 - no real financial data in prompts, commits, issues, screenshots, or exports;
-- no AI mutation of transactions, plans, goals, imports, or account data;
+- no generated mutation of transactions, plans, goals, imports, or account data;
 - deterministic helpers remain the source of truth;
 - generated advice must cite local evidence packets;
 - OpenClaw context remains read-only unless explicit proposal files are reviewed;
@@ -37,7 +37,7 @@ Any coding assistant or automation must follow these rules:
    ```powershell
    .\.venv\Scripts\python.exe -m compileall -q app.py pages utils parsers scripts components
    .\.venv\Scripts\python.exe -m scripts.smoke_test
-   .\.venv\Scripts\python.exe -m scripts.export_agent_context
+   .\.venv\Scripts\python.exe -m scripts.export_openclaw_context
    .\.venv\Scripts\python.exe -m scripts.make_share_zip
    ```
 
@@ -56,9 +56,9 @@ Any coding assistant or automation must follow these rules:
 
 ## What This Shows As A Project
 
-Ledger shows a practical pattern for tool-assisted maintenance:
+Ledger shows a practical pattern for safer maintenance:
 
-- coding tools help with navigation, tests, docs, and review;
+- tooling helps with navigation, tests, docs, and review;
 - the application keeps data ownership local;
 - sensitive exports are explicitly guarded;
 - human review stays in charge of financial behavior.

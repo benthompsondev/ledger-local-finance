@@ -44,8 +44,8 @@ jobs:
       - name: Run smoke suite
         run: python -m scripts.smoke_test
 
-      - name: Export read-only agent context
-        run: python -m scripts.export_agent_context
+      - name: Export read-only OpenClaw context
+        run: python -m scripts.export_openclaw_context
 
       - name: Build privacy-safe share zip
         run: python -m scripts.make_share_zip

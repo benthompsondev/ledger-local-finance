@@ -10,7 +10,7 @@
 
 - [ ] `python -m compileall`
 - [ ] `python -m scripts.smoke_test`
-- [ ] `python -m scripts.export_agent_context`
+- [ ] `python -m scripts.export_openclaw_context`
 - [ ] `python -m scripts.make_share_zip`
 - [ ] Privacy scan checked for secrets/private data
 
