@@ -10,6 +10,7 @@ import pathlib
 REPO = pathlib.Path(__file__).resolve().parents[1]
 CHARTS = REPO / "desktop" / "src" / "charts.tsx"
 AI_VIEW = REPO / "desktop" / "src" / "AiView.tsx"
+PLAN_VIEW = REPO / "desktop" / "src" / "PlanView.tsx"
 TAURI_CONF = REPO / "src-tauri" / "tauri.conf.json"
 
 
@@ -57,6 +58,67 @@ def test_the_beta_notice_sits_above_the_findings() -> None:
     findings = source.index("<AnalysisContextNote")
 
     assert notice < findings
+
+
+def test_every_explicit_plan_action_invalidates_older_previews() -> None:
+    """Preset, save and refresh are all newer decisions than a queued preview."""
+    source = PLAN_VIEW.read_text(encoding="utf-8")
+
+    boundaries = {
+        "refresh": ("const refresh =", "useEffect(() => { void refresh()"),
+        "choosePreset": ("const choosePreset =", "const save ="),
+        "save": ("const save =", "const confirmIncome ="),
+    }
+    for handler, (opening, closing) in boundaries.items():
+        start = source.index(opening)
+        end = source.index(closing, start)
+        body = source[start:end]
+        assert "cancelPendingPreview()" in body, handler
+        assert "gate.current.begin()" in body, handler
+
+
+def test_preset_and_save_ignore_stale_results() -> None:
+    source = PLAN_VIEW.read_text(encoding="utf-8")
+
+    boundaries = {
+        "choosePreset": ("const choosePreset =", "const save ="),
+        "save": ("const save =", "const confirmIncome ="),
+    }
+    for handler, (opening, closing) in boundaries.items():
+        start = source.index(opening)
+        end = source.index(closing, start)
+        body = source[start:end]
+        assert "if (!gate.current.isLatest(token)) return" in body, handler
+
+        # A background refresh can supersede the response, but it must not
+        # leave the explicit action's busy indicator stuck on forever.
+        assert "if (gate.current.isLatest(token)) setBusy(false)" not in body
+        assert "setBusy(false);" in body
+
+    assert "disabled={busy}" in source[source.index('aria-label="Monthly plan presets"'):]
+
+
+def test_save_repreviews_the_current_form_before_persisting() -> None:
+    """Clicking Save inside the debounce window must not send stale flexible room."""
+    source = PLAN_VIEW.read_text(encoding="utf-8")
+    start = source.index("const save =")
+    end = source.index("const confirmIncome =", start)
+    body = source[start:end]
+
+    preview = body.index("await previewPlan(")
+    save = body.index("await savePlan(")
+    assert preview < save
+    assert "flexibleAllowance: currentPreview.equation.flexible" in body
+    assert "if (!currentPreview.equation.coherent)" in body
+
+
+def test_live_preview_pauses_while_an_explicit_action_is_busy() -> None:
+    source = PLAN_VIEW.read_text(encoding="utf-8")
+    comment = source.index("// An explicit action")
+    start = source.rindex("useEffect(() => {", 0, comment)
+    effect = source[start:source.index("const choosePreset =")]
+    assert "if (!data || busy) return" in effect
+    assert "form.mode, busy]" in effect
 
 
 def test_the_tauri_config_has_no_blank_line_at_the_end() -> None:

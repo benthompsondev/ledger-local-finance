@@ -26,7 +26,7 @@ A stabilization release. No new features.
 
 ## 2.6.0 - 2026-08-04
 
-Northstar Ledger 2.6.0 is the current Windows public beta.
+Northstar Ledger 2.6.0 introduced the signed, user-triggered updater.
 
 **Install this one manually.** 2.5.5 has no updater, so it cannot fetch this
 release. Download the installer and run it over your existing copy; your data

@@ -24,8 +24,12 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import os
 import sqlite3
+import subprocess
+import sys
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -214,6 +218,77 @@ def test_many_starts_against_a_current_database_all_succeed(current):
 
     failures = [r for r in results if r != "ok"]
     assert not failures, failures
+
+
+_PROCESS_INIT_SCRIPT = r"""
+import os
+import time
+from pathlib import Path
+from utils import database
+
+start = Path(os.environ["NORTHSTAR_TEST_START"])
+deadline = time.monotonic() + 30
+while not start.exists():
+    if time.monotonic() >= deadline:
+        raise TimeoutError("test start signal never arrived")
+    time.sleep(0.005)
+
+database.init_db()
+with database.get_connection() as conn:
+    conn.execute("SELECT COUNT(*) FROM transactions").fetchone()
+"""
+
+
+def _run_independent_sidecars(root, count=8):
+    """Start real interpreters together, as the packaged one-shot engine does."""
+    start = root / "start-sidecars"
+    env = os.environ.copy()
+    env["LEDGER_DATA_DIR"] = str(root)
+    env["NORTHSTAR_TEST_START"] = str(start)
+    env.pop("LEDGER_DEMO_DB", None)
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", _PROCESS_INIT_SCRIPT],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(count)
+    ]
+    start.write_text("go", encoding="utf-8")
+    failures = []
+    for process in processes:
+        stdout, stderr = process.communicate(timeout=60)
+        if process.returncode != 0:
+            failures.append(
+                f"exit {process.returncode}: {(stderr or stdout).strip()}"
+            )
+    assert not failures, failures
+
+
+def test_independent_processes_create_one_fresh_database(fresh):
+    _run_independent_sidecars(fresh)
+    assert db._schema_is_current(db.DB_PATH) is True
+
+
+def test_independent_processes_share_one_current_database(current):
+    _run_independent_sidecars(current)
+    assert db._schema_is_current(db.DB_PATH) is True
+
+
+def test_independent_processes_upgrade_a_2_6_0_database(current):
+    # 2.6.0 had the current tables but no schema fingerprint.
+    conn = sqlite3.connect(current / "finance.db")
+    try:
+        conn.execute("PRAGMA user_version=0")
+        conn.commit()
+    finally:
+        conn.close()
+
+    _run_independent_sidecars(current)
+    assert db._schema_is_current(db.DB_PATH) is True
 
 
 def test_the_schema_lock_never_blocks_forever(current):

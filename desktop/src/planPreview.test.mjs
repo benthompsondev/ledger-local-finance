@@ -64,6 +64,33 @@ test("responses finishing out of order cannot walk the screen backwards", () => 
   assert.deepEqual(applied, ["123"]);
 });
 
+test("a second preset click beats the first preset response", () => {
+  const gate = createRequestGate();
+  const cautious = gate.begin();
+  const aggressive = gate.begin();
+
+  assert.equal(gate.isLatest(cautious), false);
+  assert.equal(gate.isLatest(aggressive), true);
+});
+
+test("saving invalidates an older debounced preview", () => {
+  const gate = createRequestGate();
+  const typingPreview = gate.begin();
+  const save = gate.begin();
+
+  assert.equal(gate.isLatest(typingPreview), false);
+  assert.equal(gate.isLatest(save), true);
+});
+
+test("a refresh invalidates an older preset response", () => {
+  const gate = createRequestGate();
+  const preset = gate.begin();
+  const refresh = gate.begin();
+
+  assert.equal(gate.isLatest(preset), false);
+  assert.equal(gate.isLatest(refresh), true);
+});
+
 test("a stale failure never replaces a newer success", () => {
   // The exact ordering that put an error banner over a correct equation.
   const gate = createRequestGate();

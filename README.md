@@ -36,30 +36,32 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.6.0_x64-setup.exe
+NorthstarLedger_2.6.1_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
 version keeps your data.
 
-**Windows will warn you the first time.** The installer is unsigned, so
-SmartScreen shows "Windows protected your PC". Click More info, then Run
-anyway. A code-signing certificate costs a few hundred dollars a year and I
-have not bought one for a beta. The SHA-256 checksum is on the release page if
-you want to verify the download.
+**Windows will warn you the first time.** The installer is not Authenticode
+signed, so SmartScreen may show "Windows protected your PC". Click More info,
+then Run anyway. The release page includes a SHA-256 checksum if you want to
+verify the download.
 
 ### Updating
 
 From 2.6.0 onward, **Settings → App updates** checks GitHub when you press the
-button, and installs the new version if the signature matches. Nothing is
-checked in the background and nothing about you is sent.
+button and installs a new version only if its updater signature matches.
+Nothing is checked in the background and nothing about you is sent.
 
-If you are on 2.5.5 or older there is no updater in that build, so install
-2.6.0 by hand this once.
+If you are on 2.5.5 or older there is no updater in that build, so install the
+latest release by hand this once.
 
 ## Status
 
-**Windows public beta.** It works, it is tested, and it is still a beta.
+**Current release: 2.6.1. Windows public beta.** It works, it is tested, and it
+is still a beta. This release fixes the intermittent database-lock error that
+could appear when several screens loaded at once, along with a stale Plan
+preview race.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
@@ -93,8 +95,8 @@ There are six tabs:
 
 **Settings** is the gear in the header rather than a tab. It holds backup and
 restore, preferences, categorization controls, data-safety tools, planning
-balances, app updates and the optional AI configuration. Demo mode is not in there; it is the environment
-variable flow described below.
+balances, app updates and the optional AI configuration. Demo mode uses the
+environment-variable flow described below rather than an in-app switch.
 
 There is no Goals tab. It was replaced by the **Money Focus** card on Home,
 which tracks one thing you are saving for and reads progress from months that
@@ -126,11 +128,8 @@ look more cautious than other apps:
 to work on the code.
 
 You need [Rust](https://rustup.rs/), [Node 24+](https://nodejs.org/), and
-[Python 3.13+](https://www.python.org/downloads/). CI builds and tests on
-Node 24 and Python 3.14, which is the interpreter the installer bundles.
-Node 20 cannot run the frontend tests: they load TypeScript directly and
-only Node 23.6 and up strip types without a flag. Python 3.12 runs the app
-but has one failing month-end test that does not reproduce on 3.13 or 3.14.
+[Python 3.13+](https://www.python.org/downloads/). CI uses Node 24 and Python
+3.14, which is also the interpreter bundled with the installer.
 
 ```powershell
 git clone https://github.com/benthompsondev/ledger-local-finance.git
@@ -193,11 +192,11 @@ The app works completely without AI, and nothing in the finance math depends on
 it. Every figure on every screen is computed locally whether AI is on or off,
 and Coach still reports its deterministic findings with AI disabled.
 
-This part is marked **Beta** for a reason worth stating plainly: provider
-compatibility varies. Northstar speaks the OpenAI chat format and Anthropic's
-Messages API, and a provider that claims compatibility may still differ in
-ways that surface as an error rather than an answer. If you configure a provider key, AI can summarize and explain the numbers
-the deterministic engine already produced.
+This part is marked **Beta** because provider compatibility varies. Northstar
+speaks the OpenAI chat format and Anthropic's Messages API, but a provider that
+claims compatibility can still differ enough to return an error. If you
+configure a provider key, AI can summarize and explain numbers the local engine
+already calculated.
 
 **Be clear about what leaves your machine.** With an online provider enabled,
 the evidence packet for the question you asked is sent to that provider. That
@@ -206,18 +205,15 @@ names and dates, depending on the feature. Your database file never leaves the
 machine, but the contents of a request do. If that is not a trade you want,
 leave AI off and everything still works.
 
-The guardrails:
+The useful boundaries are simple:
 
 - AI cannot write to the database. It cannot create or edit transactions,
   budgets, goals or plans.
-- Every AI output has to be grounded in a deterministic local evidence packet.
-  Safe to Spend, the plan equation and the insight feed are computed first, in
-  Python, and then handed over for explanation.
+- Safe to Spend, the plan equation and the insight feed are calculated locally
+  before anything is handed over for explanation.
 - Only the packet for the feature you invoked is sent. There is no background
   syncing and no telemetry.
-- Your provider key is stored in the local database encrypted with Windows
-  DPAPI, which ties it to your Windows user account. It is not stored in plain
-  text and it is not committed anywhere.
+- Provider keys are encrypted with Windows DPAPI and tied to your Windows user.
 - Turning AI off, or never configuring it, changes none of the numbers.
 
 ## Privacy
@@ -232,15 +228,11 @@ request, and you have to start both:
   asks for the latest version number and sends nothing else: no identifier, no
   usage data, nothing from your ledger. It never runs on its own.
 
-For contributors, the repository has guardrails so private data cannot be
-committed by accident:
+For contributors, the repository includes a few practical guardrails:
 
 - `scripts/check_tracked_files.py` refuses any tracked path that looks like a
   database, statement, export, log, or secret, and runs in CI on every push.
 - `scripts/doctor.py` runs the same check locally.
-- `scripts/make_share_zip.py` builds a share bundle that excludes the database,
-  configuration and exports.
-
 Never commit real statements, exports, screenshots containing real data, or the
 database. Demo data exists so you never have to.
 
@@ -286,19 +278,8 @@ tests/                  Engine-level tests asserting real financial outcomes.
 scripts/                Build, demo data, diagnostics, privacy guards.
 ```
 
-## Retired legacy code
-
-The original version of this app was a Streamlit interface (`app.py`, `pages/`,
-`components/`, `Ledger_Launcher.py`), along with `Makefile` and
-`.streamlit/secrets.toml.template`. **All of it is retired and none of it is
-the product.** Do not follow the Makefile targets or configure Streamlit
-secrets: they describe a way of running Northstar that no longer exists.
-It is still in the tree only because it has not been deleted yet. Do not build
-features there, and do not treat the Streamlit entry points as a supported way
-to run the app.
-
-Anything in this README describing how to run Northstar Ledger refers to the
-native desktop application.
+The older Streamlit files still in the repository are retired. Everything in
+this README refers to the native desktop application.
 
 ## License
 

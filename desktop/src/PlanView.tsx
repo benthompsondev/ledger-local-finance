@@ -68,17 +68,27 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
   // The inputs the hydration preview already answered for. The debounced
   // effect below skips them, so opening an unsaved plan asks once, not twice.
   const previewed = useRef("");
+  const previewTimer = useRef<number | null>(null);
+
+  const cancelPendingPreview = () => {
+    if (previewTimer.current === null) return;
+    window.clearTimeout(previewTimer.current);
+    previewTimer.current = null;
+  };
 
   const refresh = useCallback(async () => {
+    cancelPendingPreview();
+    let token = gate.current.begin();
     setError("");
     try {
       const payload = await loadPlan();
+      if (!gate.current.isLatest(token)) return;
       let next = formFrom(payload);
       setData(payload); setForm(next); setEquation(payload.equation);
       previewed.current = previewSignature(next);
       if (!payload.saved) {
         const pref = readSavingsPreference();
-        const token = gate.current.begin();
+        token = gate.current.begin();
         const preview = await previewPlan({
           mode: next.mode, incomeTarget: Number(next.income),
           fixedObligations: Number(next.fixed), savingsTarget: Number(next.savings),
@@ -95,7 +105,11 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
         previewed.current = previewSignature(next);
         setForm(next); setEquation(preview.equation);
       }
-    } catch (c) { setError(c instanceof Error ? c.message : String(c)); }
+    } catch (c) {
+      if (gate.current.isLatest(token)) {
+        setError(c instanceof Error ? c.message : String(c));
+      }
+    }
   }, []);
   useEffect(() => { void refresh(); }, [refresh, refreshToken]);
 
@@ -118,12 +132,16 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
   }, [focusAnchor, focusToken, data]);
 
   useEffect(() => {
-    if (!data) return;
+    // An explicit action owns the form until it finishes. Starting a live
+    // preview behind a preset or save would invalidate that action's response
+    // and could leave the screen looking busy forever.
+    if (!data || busy) return;
     const signature = previewSignature(form);
     // Hydration already previewed exactly these inputs. Asking again would
     // be a second sidecar for an answer we are already showing.
     if (signature === previewed.current) return;
-    const timer = window.setTimeout(() => {
+    previewTimer.current = window.setTimeout(() => {
+      previewTimer.current = null;
       previewed.current = signature;
       const token = gate.current.begin();
       void previewPlan({
@@ -141,36 +159,64 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
         setError(c instanceof Error ? c.message : String(c));
       });
     }, 180);
-    return () => window.clearTimeout(timer);
-  }, [data, form.income, form.fixed, form.savings, form.buffer, form.mode]);
+    return cancelPendingPreview;
+  }, [data, form.income, form.fixed, form.savings, form.buffer, form.mode, busy]);
 
   const choosePreset = async (mode: string) => {
-    setBusy(true);
+    cancelPendingPreview();
+    const token = gate.current.begin();
+    setBusy(true); setError("");
     try {
       const p = await previewPlan({
         mode, incomeTarget: Number(form.income), fixedObligations: Number(form.fixed),
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
         applyPreset: true,
       });
+      if (!gate.current.isLatest(token)) return;
       const next = { ...form, mode, savings: shown(p.values.savings_target),
         buffer: shown(p.values.safety_buffer) };
       // This preview already answered for these values.
       previewed.current = previewSignature(next);
       setForm(next);
       setEquation(p.equation);
-    } finally { setBusy(false); }
+      setError("");
+    } catch (c) {
+      if (gate.current.isLatest(token)) {
+        setError(c instanceof Error ? c.message : String(c));
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const save = async () => {
     if (!data || !equation) return;
+    cancelPendingPreview();
+    const token = gate.current.begin();
     setBusy(true); setError(""); setSaved("");
     try {
+      // The equation shown on screen may be up to one debounce behind the
+      // form. Re-preview the exact values being saved so flexible spending is
+      // derived from the current inputs, not from the previous render.
+      const currentPreview = await previewPlan({
+        mode: form.mode, incomeTarget: Number(form.income),
+        fixedObligations: Number(form.fixed), savingsTarget: Number(form.savings),
+        safetyBuffer: Number(form.buffer), applyPreset: false,
+      });
+      if (!gate.current.isLatest(token)) return;
+      setEquation(currentPreview.equation);
+      if (!currentPreview.equation.coherent) {
+        setError(currentPreview.equation.explanation);
+        return;
+      }
       const payload = await savePlan({
         month: data.month, mode: form.mode, incomeTarget: Number(form.income),
-        fixedObligations: Number(form.fixed), flexibleAllowance: equation.flexible,
+        fixedObligations: Number(form.fixed),
+        flexibleAllowance: currentPreview.equation.flexible,
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
         notes: form.notes, fixedOverrideReason: form.overrideReason,
       });
+      if (!gate.current.isLatest(token)) return;
       const savedForm = formFrom(payload);
       // The saved payload carries its own equation; previewing it again
       // would be a sidecar asking a question that just came back answered.
@@ -180,11 +226,18 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
         ? "Fixed costs still differ from what was reviewed."
         : "Fixed costs now match what Northstar reviewed."}`);
       onDataChanged();
-    } catch (c) { setError(c instanceof Error ? c.message : String(c)); }
-    finally { setBusy(false); }
+    } catch (c) {
+      if (gate.current.isLatest(token)) {
+        setError(c instanceof Error ? c.message : String(c));
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmIncome = async (source: string) => {
+    cancelPendingPreview();
+    gate.current.begin();
     setBusy(true); setError("");
     try { await setIncomeSourcePreference(source, "confirmed"); await refresh(); onDataChanged(); }
     catch (c) { setError(c instanceof Error ? c.message : String(c)); }
@@ -307,15 +360,18 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
             </label>
             <label>Fixed monthly commitments
               <input type="number" min="0" step="0.01" value={form.fixed}
+                disabled={busy}
                 onChange={e => setForm({ ...form, fixed: e.target.value })} />
               <small>Bills and subscriptions you expect to pay.</small>
             </label>
             <label>Monthly savings target
               <input type="number" min="0" step="0.01" value={form.savings}
+                disabled={busy}
                 onChange={e => setForm({ ...form, savings: e.target.value })} />
             </label>
             <label>Safety buffer
               <input type="number" min="0" step="0.01" value={form.buffer}
+                disabled={busy}
                 onChange={e => setForm({ ...form, buffer: e.target.value })} />
             </label>
           </div>
@@ -383,7 +439,8 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
               figure are listed below.
             </p>
             <div className="button-row">
-              <button type="button" onClick={() => setForm({ ...form, fixed: shown(data.fixed_obligations_suggestion), overrideReason: "" })}>
+              <button type="button" disabled={busy}
+                onClick={() => setForm({ ...form, fixed: shown(data.fixed_obligations_suggestion), overrideReason: "" })}>
                 Use reviewed commitments
               </button>
             </div>
@@ -398,12 +455,14 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
           {overridden && (
             <label className="stacked-label">Why use a different fixed-cost amount?
               <input maxLength={160} value={form.overrideReason}
+                disabled={busy}
                 onChange={e => setForm({ ...form, overrideReason: e.target.value })}
                 placeholder="Short reason, for example: rent is changing next month" />
             </label>
           )}
           <label className="stacked-label">Note for {monthName} (optional)
-            <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+            <input value={form.notes} disabled={busy}
+              onChange={e => setForm({ ...form, notes: e.target.value })} />
           </label>
           <div className="button-row">
             <button type="button" disabled={busy || !equation?.coherent} onClick={() => void save()}>
@@ -425,6 +484,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
             {data.modes.map(m => (
               <button type="button" key={m.value}
                 className={form.mode === m.value ? "preset-button preset-active" : "preset-button"}
+                disabled={busy}
                 onClick={() => void choosePreset(m.value)}>
                 <strong>{m.label}</strong><small>{m.description}</small>
               </button>
