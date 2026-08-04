@@ -229,14 +229,20 @@ def test_release_versions_are_consistent():
     # keeps its own name. Both are asserted here so the version bump is the
     # one place any of it changes.
     from scripts.update_manifest_support import (
-        expected_installer_name, expected_updater_archive_name,
+        expected_installer_name, expected_signature_name,
+        expected_updater_artifact_name,
     )
 
     assert expected_installer_name(__version__) == (
         f"NorthstarLedger_{__version__}_x64-setup.exe"
     )
-    assert expected_updater_archive_name(__version__).endswith(".nsis.zip")
-    assert __version__ in expected_updater_archive_name(__version__)
+    # Tauri 2's NSIS bundler signs the installer itself, so the updater
+    # artifact and the installer are the same file.
+    assert expected_updater_artifact_name(__version__) == (
+        expected_installer_name(__version__)
+    )
+    assert expected_signature_name(__version__).endswith(".exe.sig")
+    assert __version__ in expected_signature_name(__version__)
 
 
 def test_pace_uses_latest_import_and_requires_two_covered_months(engine_env):

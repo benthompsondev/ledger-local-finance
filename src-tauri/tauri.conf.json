@@ -59,7 +59,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVGRTY4NDQyODNGQjkyNApSV1FrdVQ4b1JHaitCV0NSOGZpS2tEcUMwZ3VMelNPbG1jODRYQ051YjJVU01ZbnVWcU4wWE5ZTgo=",
       "endpoints": [
         "https://github.com/benthompsondev/ledger-local-finance/releases/latest/download/latest.json"
       ],
@@ -69,3 +69,4 @@
     }
   }
 }
+

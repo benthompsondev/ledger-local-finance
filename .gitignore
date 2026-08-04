@@ -90,3 +90,7 @@ CLAUDE_HANDOFF.md
 
 # local Claude pointer (committed guide is AGENTS.md)
 CLAUDE.md
+
+# Release artifact: built per release and uploaded to GitHub, never committed.
+# The signature inside it is only meaningful next to the build that produced it.
+latest.json

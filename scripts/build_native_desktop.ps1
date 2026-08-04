@@ -63,7 +63,15 @@ try {
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 1
     if ($BuiltInstaller) {
+        # Tauri 2's NSIS bundler signs the installer itself and writes
+        # "<installer>.exe.sig" beside it. Renaming the installer without the
+        # signature leaves the two with different names, which is confusing at
+        # release time and easy to pair up wrongly.
+        $BuiltSignature = "$($BuiltInstaller.FullName).sig"
         Move-Item -LiteralPath $BuiltInstaller.FullName -Destination $FinalInstaller -Force
+        if (Test-Path -LiteralPath $BuiltSignature -PathType Leaf) {
+            Move-Item -LiteralPath $BuiltSignature -Destination "$FinalInstaller.sig" -Force
+        }
     }
     if (-not (Test-Path -LiteralPath $FinalInstaller -PathType Leaf)) {
         throw "Expected installer was not produced: $FinalInstaller"
@@ -84,26 +92,18 @@ try {
     # and, when a signing key is present, its detached signature. The
     # signature is what makes an update installable at all, so a release build
     # without one is reported loudly rather than shipped quietly.
-    $UpdaterArchive = Join-Path $BundleDir "NorthstarLedger_${Version}_x64-setup.nsis.zip"
-    $UpdaterSignature = "$UpdaterArchive.sig"
-    if (Test-Path -LiteralPath $UpdaterArchive -PathType Leaf) {
-        Write-Host "Updater archive: $UpdaterArchive"
-        if (Test-Path -LiteralPath $UpdaterSignature -PathType Leaf) {
-            if ((Get-Item -LiteralPath $UpdaterSignature).Length -eq 0) {
-                throw "Updater signature is empty: $UpdaterSignature"
-            }
-            Write-Host "Updater signature: $UpdaterSignature"
-            Write-Host "Next: node scripts/update_manifest.mjs --version $Version ..."
+    $UpdaterSignature = "$FinalInstaller.sig"
+    if (Test-Path -LiteralPath $UpdaterSignature -PathType Leaf) {
+        if ((Get-Item -LiteralPath $UpdaterSignature).Length -eq 0) {
+            throw "Updater signature is empty: $UpdaterSignature"
         }
-        else {
-            Write-Warning ("No updater signature was produced. Set " +
-                "TAURI_SIGNING_PRIVATE_KEY (and its password) before building " +
-                "a release, or this version cannot be installed by the updater.")
-        }
+        Write-Host "Updater signature: $UpdaterSignature"
+        Write-Host "Next: node scripts/update_manifest.mjs --version $Version ..."
     }
     else {
-        Write-Warning ("No updater archive was produced. Check that " +
-            "bundle.createUpdaterArtifacts is true in tauri.conf.json.")
+        Write-Warning ("No updater signature was produced, so this build " +
+            "cannot be installed by the updater. Set TAURI_SIGNING_PRIVATE_KEY " +
+            "before building a release.")
     }
 
     Write-Host "Northstar Ledger installer: $FinalInstaller"

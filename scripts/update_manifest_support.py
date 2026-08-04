@@ -15,19 +15,19 @@ def expected_installer_name(version: str) -> str:
     return f"NorthstarLedger_{version}_x64-setup.exe"
 
 
-def expected_updater_archive_name(version: str) -> str:
-    """The archive Tauri's updater downloads and unpacks.
+def expected_updater_artifact_name(version: str) -> str:
+    """What the updater downloads.
 
-    Produced by `bundle.createUpdaterArtifacts`. It is *not* the installer:
-    the updater cannot run an interactive installer, so a manifest pointing at
-    the .exe produces an update that appears to work and changes nothing.
+    For Tauri 2's NSIS bundler this is the installer itself: the build signs
+    it in place and writes `<installer>.exe.sig` beside it, rather than
+    producing the separate archive Tauri 1 used. Verified by building 2.6.0.
     """
-    return f"{expected_installer_name(version)}.nsis.zip"
+    return expected_installer_name(version)
 
 
 def expected_signature_name(version: str) -> str:
-    """The detached signature beside the archive."""
-    return f"{expected_updater_archive_name(version)}.sig"
+    """The detached signature beside the artifact."""
+    return f"{expected_updater_artifact_name(version)}.sig"
 
 
 def bundle_dir(repo: pathlib.Path) -> pathlib.Path:
@@ -39,6 +39,6 @@ def release_artifacts(repo: pathlib.Path, version: str) -> dict[str, pathlib.Pat
     directory = bundle_dir(repo)
     return {
         "installer": directory / expected_installer_name(version),
-        "updater_archive": directory / expected_updater_archive_name(version),
+        "updater_artifact": directory / expected_updater_artifact_name(version),
         "signature": directory / expected_signature_name(version),
     }

@@ -41,22 +41,32 @@ function fail(message) {
 }
 
 /**
- * The updater installs an archive, not the interactive installer.
+ * The URL must be the artifact the build actually signed.
  *
- * Pointing latest.json at NorthstarLedger_x.y.z_x64-setup.exe is the classic
- * way to ship an updater that appears to work: the download succeeds, the
- * signature may even verify, and then nothing installs because Tauri expected
- * an archive it could unpack.
+ * Tauri 2's NSIS bundler signs the setup executable itself and writes
+ * `<installer>.exe.sig` beside it — there is no separate archive, which is a
+ * change from Tauri 1 where the updater consumed a .zip. Verified by building:
+ *
+ *     Finished 1 updater signature at:
+ *       ...\bundle\nsis\Northstar Ledger_2.6.0_x64-setup.exe.sig
+ *
+ * So the installer *is* the updater artifact here. What still has to be
+ * refused is a URL pointing at something that was never signed — release
+ * notes, a checksum file, a source archive — because the updater would
+ * download it, fail verification, and report a signature error for what is
+ * really a wrong link.
  */
+const SIGNED_ARTIFACT = /\.(exe|msi|nsis\.zip|app\.tar\.gz|zip|tar\.gz|AppImage)$/i;
+
 export function assertUpdaterArtifact(url) {
-  if (/_x64-setup\.exe$/i.test(url)) {
+  if (/\.(txt|md|json|sha256|sig|asc|pdf|png)$/i.test(url)) {
     fail(
-      `url points at the interactive installer, not the updater archive: ${url}\n` +
-        '  the updater needs the .nsis.zip produced by createUpdaterArtifacts',
+      `url points at a file the build never signed: ${url}\n` +
+        '  the updater needs the artifact itself, not a note or checksum beside it',
     );
   }
-  if (!/\.(nsis\.zip|zip|tar\.gz)$/i.test(url)) {
-    fail(`url does not look like an updater archive: ${url}`);
+  if (!SIGNED_ARTIFACT.test(url)) {
+    fail(`url does not look like a signed updater artifact: ${url}`);
   }
 }
 
