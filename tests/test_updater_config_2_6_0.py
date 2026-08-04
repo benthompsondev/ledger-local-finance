@@ -30,9 +30,12 @@ SETTINGS = REPO / "desktop" / "src" / "SettingsView.tsx"
 REPO_URL = "https://github.com/benthompsondev/ledger-local-finance"
 MANIFEST_URL = f"{REPO_URL}/releases/latest/download/latest.json"
 
-# CloakScan's key. Northstar must never ship it: one project's compromise
-# would otherwise be the other's.
-CLOAKSCAN_PUBKEY_FRAGMENT = "UnRkSkl"
+# Keys belonging to other projects of Ben's, as one-way fingerprints. Sharing
+# an updater key across projects means one compromise is both, so this refuses
+# the reuse without carrying the key itself into Northstar's public tree.
+_FOREIGN_KEY_FINGERPRINTS = {
+    "ffc7f7c8b7e9708e961b206140fd280917b5f90538cea432310a38e5de5ae117",
+}
 
 
 @pytest.fixture(scope="module")
@@ -71,11 +74,15 @@ def test_updater_artifacts_are_produced_by_the_build(conf) -> None:
 
 # ── what it will accept ──────────────────────────────────────────────────
 
-def test_the_signing_key_is_northstars_own(conf) -> None:
-    pubkey = conf["plugins"]["updater"]["pubkey"]
+def test_the_signing_key_belongs_to_northstar(conf) -> None:
+    """Another project's key must never be pasted in here."""
+    import hashlib
 
-    assert CLOAKSCAN_PUBKEY_FRAGMENT not in pubkey, (
-        "CloakScan's updater key is present in Northstar's config"
+    pubkey = conf["plugins"]["updater"]["pubkey"]
+    fingerprint = hashlib.sha256(pubkey.encode("utf-8")).hexdigest()
+
+    assert fingerprint not in _FOREIGN_KEY_FINGERPRINTS, (
+        "the updater is configured with another project's signing key"
     )
 
 
