@@ -69,7 +69,15 @@ def test_ai_coaching_summary_is_local_and_available_while_ai_is_off(engine_env) 
     assert settings["data"]["ai"]["api_key_set"] is False
 
 
-def test_net_worth_is_unconfigured_until_explicit_balance(engine_env) -> None:
+def test_balances_stay_unconfigured_until_one_is_entered(engine_env) -> None:
+    """A balance is only ever an explicit snapshot, never inferred.
+
+    In 2.6.0 `add_account_balance` answers with the planning payload the
+    Settings section reads — accounts and their latest snapshot — instead of
+    rebuilding the whole Insights view it no longer belongs to. The derived
+    net-worth figure it used to return is not shown anywhere now, so this
+    checks the same behaviour where that figure still lives.
+    """
     _, account = _request({
         "action": "create_account",
         "params": {"name": "Test Card", "type": "credit_card"},
@@ -87,8 +95,13 @@ def test_net_worth_is_unconfigured_until_explicit_balance(engine_env) -> None:
         },
     })
     assert code == 0
-    assert saved["data"]["net_worth"]["status"] == "configured"
-    assert saved["data"]["net_worth"]["net_worth"] == pytest.approx(-425.50)
+    # The planning payload: the snapshot, and nothing that totals it up.
+    assert saved["data"]["balances"][0]["balance"] == pytest.approx(425.50)
+    assert "net_worth" not in saved["data"]
+
+    _, after = _request({"action": "insights_summary"})
+    assert after["data"]["net_worth"]["status"] == "configured"
+    assert after["data"]["net_worth"]["net_worth"] == pytest.approx(-425.50)
 
 
 def test_plan_rejects_outflow_above_income(engine_env) -> None:

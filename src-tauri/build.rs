@@ -57,6 +57,7 @@ fn main() {
             "get_insights_summary",
             "save_quick_net_worth",
             "add_account_balance",
+            "get_planning_balances",
             "get_home_dashboard",
             "get_backup_status",
             "create_backup",

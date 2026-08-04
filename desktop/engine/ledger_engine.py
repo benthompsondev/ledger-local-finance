@@ -284,7 +284,7 @@ def home_summary(params: dict[str, Any]) -> dict[str, Any]:
             "import_data": "add-data",
             "update_plan": "plan",
             "save_plan": "plan",
-            "add_balances": "insights#account-balances",
+            "add_balances": "settings#planning-balances",
             "review_flagged": "transactions?quickReview=1",
             "slow_pace": "plan",
         }
@@ -295,10 +295,10 @@ def home_summary(params: dict[str, Any]) -> dict[str, Any]:
             )
         reason = str(packet.get("safe_to_spend", {}).get("reason") or "").lower()
         if "available for spending" in reason:
-            setup_screen = "insights#spending-accounts"
+            setup_screen = "settings#spendable-accounts"
             setup_label = "Review spendable accounts"
         elif "balance" in reason:
-            setup_screen = "insights#account-balances"
+            setup_screen = "settings#planning-balances"
             setup_label = "Add current balances"
         elif packet.get("freshness", {}).get("state") == "no_data":
             setup_screen = "add-data"
@@ -2102,7 +2102,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
                     "with real cash."
                 ),
                 "action": "Update balance" if stale else "Add balance",
-                "screen": "insights#account-balances",
+                "screen": "settings#planning-balances",
             })
     elif not has_spendable_balance:
         advisories.append({
@@ -2113,7 +2113,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
                 "you explicitly include an account."
             ),
             "action": "Review accounts",
-            "screen": "insights#spending-accounts",
+            "screen": "settings#spendable-accounts",
         })
     if not reliable_income.get("confirmed"):
         missing.append({
@@ -3287,7 +3287,33 @@ def add_account_balance_action(params: dict[str, Any]) -> dict[str, Any]:
         conn.commit()
     finally:
         conn.close()
-    return insights_summary_action({"period_days": params.get("period_days")})
+    return planning_balances_action({})
+
+
+def _planning_balances_payload(conn) -> dict[str, Any]:
+    """Accounts and their latest recorded balance, and nothing else.
+
+    Deliberately no totals. These are planning inputs for Safe to Spend and
+    Plan, not a second measurement of what someone is worth: summing them
+    into an "assets" or "net worth" figure is exactly the duplicate Northstar
+    just removed, and it would disagree with the monthly readings the moment
+    an account was missing.
+    """
+    from utils.database import get_account_balances
+
+    return {
+        "accounts": _accounts_payload(conn),
+        "balances": get_account_balances(conn=conn, latest_only=True),
+    }
+
+
+def planning_balances_action(_params: dict[str, Any]) -> dict[str, Any]:
+    """Read the planning balances shown in Settings."""
+    conn = _connection()
+    try:
+        return _planning_balances_payload(conn)
+    finally:
+        conn.close()
 
 
 def home_dashboard_action(params: dict[str, Any]) -> dict[str, Any]:
@@ -3592,6 +3618,7 @@ ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ai_ask": ai_ask_action,
     "test_ai_connection": test_ai_connection_action,
     "add_account_balance": add_account_balance_action,
+    "get_planning_balances": planning_balances_action,
     "home_dashboard": home_dashboard_action,
     "backup_status": backup_status_action,
     "create_backup": create_backup_action,

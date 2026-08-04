@@ -45,7 +45,7 @@ def test_setup_actions_resolve_to_native_destinations(engine_env):
     }
     assert any(
         key.startswith("balance:")
-        and screen == "insights#account-balances"
+        and screen == "settings#planning-balances"
         for key, screen in routes.items()
     )
     assert routes["history"] == "add-data"

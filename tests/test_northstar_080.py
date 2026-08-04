@@ -125,7 +125,7 @@ def test_review_editor_payload_and_actionable_forecast_links(engine_env):
     assert destinations["plan"] == "plan#commitment-review"
     assert any(
         key.startswith("balance:")
-        and screen == "insights#account-balances"
+        and screen == "settings#planning-balances"
         for key, screen in destinations.items()
     )
     assert destinations["income"] == "settings#income-sources"

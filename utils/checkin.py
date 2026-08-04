@@ -438,7 +438,7 @@ def safe_to_spend_summary(conn: Optional[sqlite3.Connection] = None,
             "setup_screen": (
                 "plan" if (formula.get("plan_agreement") or {}).get(
                     "needs_review"
-                ) else "insights#account-balances"
+                ) else "settings#planning-balances"
             ),
         }
 

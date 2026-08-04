@@ -185,6 +185,29 @@ export interface Account {
   available_for_spending: boolean;
 }
 
+/** One account's latest recorded balance. A snapshot the user typed, never
+ *  inferred from transactions. */
+export interface AccountBalance {
+  account_ref?: number | null;
+  account_name: string;
+  account_kind: string;
+  balance: number;
+  as_of_date: string;
+  currency?: string;
+  notes?: string;
+}
+
+/** What the Settings "Planning balances" section reads.
+ *
+ *  Deliberately carries no assets, liabilities or net-worth total. These are
+ *  planning inputs for Safe to Spend and Plan; the monthly readings on
+ *  Insights are the only net worth Northstar reports.
+ */
+export interface PlanningBalances {
+  accounts: Account[];
+  balances: AccountBalance[];
+}
+
 export interface AccountType {
   value: string;
   label: string;

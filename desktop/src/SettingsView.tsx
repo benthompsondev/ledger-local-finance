@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { money } from "./money";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const AI_CONSENT = `Turning this on sends your financial figures to an outside company.
@@ -9,8 +10,11 @@ You can switch this off or forget your key at any time. A model running on this 
 
 Turn on AI assistance?`;
 import {
+  addAccountBalance,
   createLocalBackup,
   deleteCategoryRule,
+  loadPlanningBalances,
+  setAccountSpendingAvailability,
   exportTransactions,
   forgetAiKey,
   loadAiSettings,
@@ -49,6 +53,7 @@ import type {
   CategorySettingsPayload,
   AiSettings,
   AiPayloadPreview,
+  PlanningBalances,
 } from "./types";
 
 interface Props {
@@ -184,8 +189,22 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
   const [exportError,setExportError]=useState("");
   const [recurringEdits,setRecurringEdits]=useState<Record<string,{name:string;category:string}>>({});
   const [saved,setSaved]=useState("");
+  // Planning balances: what each account currently holds. Inputs to Safe to
+  // Spend and Plan, never summed into a net-worth figure.
+  const [planning,setPlanning]=useState<PlanningBalances|null>(null);
+  const [planningBusy,setPlanningBusy]=useState(false);
+  const [planningNote,setPlanningNote]=useState("");
+  const [balanceForm,setBalanceForm]=useState({
+    accountRef:0, balance:"",
+    asOfDate:new Date().toISOString().slice(0,10), note:"",
+  });
 
-  useEffect(()=>{if(!focusAnchor)return;const timer=window.setTimeout(()=>document.getElementById(focusAnchor)?.scrollIntoView({behavior:"smooth",block:"start"}),250);return()=>window.clearTimeout(timer);},[focusAnchor,focusToken,categorySettings]);
+  useEffect(()=>{if(!focusAnchor)return;const timer=window.setTimeout(()=>{const target=document.getElementById(focusAnchor);if(!target)return;target.scrollIntoView({behavior:"smooth",block:"start"});
+    // Scrolling a section into view is not the same as landing on the thing
+    // the link was about. Home and Plan send people here to change one
+    // control, so move the keyboard there too.
+    const control=target.querySelector<HTMLElement>("select,input,button");
+    control?.focus({preventScroll:true});},250);return()=>window.clearTimeout(timer);},[focusAnchor,focusToken,categorySettings,planning]);
 
   const refresh = useCallback(async () => {
     try {
@@ -198,7 +217,12 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
       const status = await loadBackupStatus();
       const safetyStatus = await loadDataSafetyStatus();
       const categoryStatus = await loadCategorySettings();
+      const planningStatus = await loadPlanningBalances();
       applyAi(aiStatus.ai);
+      setPlanning(planningStatus);
+      setBalanceForm(current => current.accountRef || !planningStatus.accounts.length
+        ? current
+        : { ...current, accountRef: planningStatus.accounts[0].id });
       setData(status);
       setVersion(appVersion);
       setSafety(safetyStatus);
@@ -220,6 +244,28 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
   const changeNetWorth=(value:boolean)=>{setShowNetWorth(value);saveShowNetWorth(value);};
   const changeSavings=(style:SavingsStyle,value:number)=>{const next={style,value};setSavingsPreference(next);saveSavingsPreference(style,value);};
   const changeWeekStart=(value:WeekStart)=>{setWeekStart(value);saveWeekStart(value);};
+  const saveBalance=async()=>{
+    setPlanningBusy(true);setError("");setPlanningNote("");
+    try{
+      const next=await addAccountBalance({
+        accountRef:balanceForm.accountRef, balance:Number(balanceForm.balance),
+        asOfDate:balanceForm.asOfDate, note:balanceForm.note, periodDays:30,
+      });
+      setPlanning(next);
+      setBalanceForm(current=>({...current,balance:"",note:""}));
+      setPlanningNote("Balance recorded. Safe to Spend and Plan use it from now on.");
+    }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
+    finally{setPlanningBusy(false);}
+  };
+  const changeSpendable=async(accountId:number,available:boolean)=>{
+    setPlanningBusy(true);setError("");setPlanningNote("");
+    try{
+      const result=await setAccountSpendingAvailability(accountId,available);
+      setPlanning(current=>current?{...current,accounts:result.accounts}:current);
+      onDataChanged();
+    }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
+    finally{setPlanningBusy(false);}
+  };
   const runExport = async () => {
     setExportError(""); setExportNote("");
     const destination = await pickExportFile();
@@ -363,7 +409,8 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
             <div><dt>Product</dt><dd>Northstar Ledger {version || "…"}</dd></div>
             <div><dt>Storage</dt><dd>{data?.data_directory ?? "Loading…"}</dd></div>
             <div><dt>Database</dt><dd>{data?.database_name ?? "finance.db"}</dd></div>
-            <div><dt>Connection</dt><dd>None. Local sidecar only.</dd></div>
+            <div><dt>Finance data</dt><dd>Stays on this computer. Every calculation runs in the local sidecar.</dd></div>
+            <div><dt>Network</dt><dd>Nothing is sent unless you ask. AI assistance contacts the provider you configure; checking for updates contacts GitHub. Both are off until you act.</dd></div>
           </dl>
         </article>
         <article className="form-card">
@@ -387,6 +434,102 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           )}
         </article>
       </div>
+
+      <article className="form-card" id="planning-balances">
+        <h3>Planning balances</h3>
+        <p className="guidance">
+          What each account holds right now. Safe to Spend and Plan use these
+          figures. They are not your net worth: that is the monthly reading you
+          enter under Insights, and nothing here changes it or adds to it.
+        </p>
+        {planning?.balances.length ? (
+          <div className="settings-list">
+            {planning.balances.map((b) => (
+              <div className="rank-row" key={`${b.account_name}-${b.account_kind}`}>
+                <span>
+                  {b.account_name}
+                  <small>{b.account_kind} · as of {b.as_of_date}</small>
+                </span>
+                <strong>{money(b.balance)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="file-meta">
+            No balances recorded yet. Northstar never infers one from your
+            transactions, so Safe to Spend stays unavailable until you add one.
+          </p>
+        )}
+        <h4>Add or update a balance</h4>
+        <div className="form-grid">
+          <label>Northstar account
+            <select value={balanceForm.accountRef || ""}
+              onChange={(e)=>setBalanceForm({...balanceForm,accountRef:Number(e.target.value)})}>
+              <option value="">Choose an account…</option>
+              {(planning?.accounts ?? []).map((account)=>(
+                <option key={account.id} value={account.id}>
+                  {account.name} · {account.type_label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>Current balance
+            <input type="number" min="0" step="0.01" value={balanceForm.balance}
+              onChange={(e)=>setBalanceForm({...balanceForm,balance:e.target.value})} />
+          </label>
+          <label>As of
+            <input type="date" value={balanceForm.asOfDate}
+              onChange={(e)=>setBalanceForm({...balanceForm,asOfDate:e.target.value})} />
+          </label>
+          <label>Note (optional)
+            <input value={balanceForm.note}
+              onChange={(e)=>setBalanceForm({...balanceForm,note:e.target.value})} />
+          </label>
+        </div>
+        {!planning?.accounts.length && (
+          <p className="warning-text">
+            Create or import into an account before adding a balance.
+          </p>
+        )}
+        <button type="button"
+          disabled={planningBusy || !balanceForm.accountRef || !balanceForm.balance}
+          onClick={()=>void saveBalance()}>
+          {planningBusy ? "Saving…" : "Save balance snapshot"}
+        </button>
+        {planningNote && <p className="success-text">{planningNote}</p>}
+      </article>
+
+      <article className="form-card" id="spendable-accounts">
+        <h3>Accounts available for spending</h3>
+        <p className="guidance">
+          Chequing and cash start included. Savings and investments stay
+          protected unless you choose otherwise. This only decides what Safe to
+          Spend may draw on.
+        </p>
+        <div className="settings-list">
+          {(planning?.accounts ?? [])
+            .filter(account=>!["credit_card","loan","mortgage","other_liability"].includes(account.type))
+            .map(account=>(
+              <label className="setting-row" key={account.id}>
+                <span>
+                  <strong>{account.name}</strong>
+                  <small>
+                    {account.type_label}
+                    {account.available_for_spending
+                      ? " · included in Safe to Spend"
+                      : " · protected from Safe to Spend"}
+                  </small>
+                </span>
+                <input type="checkbox" checked={account.available_for_spending}
+                  disabled={planningBusy}
+                  onChange={event=>void changeSpendable(account.id,event.target.checked)} />
+              </label>
+            ))}
+        </div>
+        {!planning?.accounts.length && (
+          <p className="file-meta">No accounts yet.</p>
+        )}
+      </article>
 
       <h3 className="insight-section" id="ai-assist">
         AI assistance <em className="beta-tag">Beta</em>

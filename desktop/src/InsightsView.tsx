@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnalysisContextNote } from "./AnalysisContextNote";
 import {
-  addAccountBalance, loadInsights, loadNetWorthTrend, loadSpendingPatterns,
-  deleteNetWorthEntry, saveQuickNetWorth,
-  setAccountSpendingAvailability, setIncomeSourcePreference,
+  loadInsights, loadNetWorthTrend, loadSpendingPatterns,
+  deleteNetWorthEntry, setIncomeSourcePreference,
   setRecurringPreference,
 } from "./api";
 import {
@@ -36,7 +35,10 @@ interface Props {
 function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusAnchor, focusToken }: Props) {
   const [data, setData] = useState<InsightsPayload | null>(null);
   const [error, setError] = useState("");
-  const [balanceBusy, setBalanceBusy] = useState(false);
+  // Deleting a hand-typed reading is the only write this screen still makes.
+  // Current balances moved to Settings, where they are described as planning
+  // inputs rather than a second net worth.
+  const [entryBusy, setEntryBusy] = useState(false);
   const [reviewBusy, setReviewBusy] = useState("");
   const [paceView,setPaceView]=useState<"flexible"|"total">("flexible");
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(readChartPeriod);
@@ -44,11 +46,6 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
   const [showAllCategories,setShowAllCategories]=useState(readCategoryExpanded);
   const [baseline,setBaseline]=useState<CompareBaseline>(readCompareBaseline);
   const [showNetWorth,setShowNetWorth]=useState(readShowNetWorth);
-  const [quickForm,setQuickForm]=useState({assets:"",liabilities:"",asOfDate:new Date().toISOString().slice(0,10)});
-  const [balanceForm, setBalanceForm] = useState({
-    accountRef: 0, balance: "",
-    asOfDate: new Date().toISOString().slice(0, 10), note: "",
-  });
   const [patterns, setPatterns] = useState<SpendingPatterns | null>(null);
   const [trend, setTrend] = useState<NetWorthOverview | null>(null);
   const [editingMonth, setEditingMonth] = useState("");
@@ -70,12 +67,6 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
   useEffect(() => {
     void refresh();
   }, [refresh, refreshToken]);
-  useEffect(()=>{if(!["account-balances","spending-accounts"].includes(focusAnchor||""))return;setShowNetWorth(true);const timer=window.setTimeout(()=>document.getElementById(focusAnchor||"")?.scrollIntoView({behavior:"smooth",block:"start"}),300);return()=>window.clearTimeout(timer);},[focusAnchor,focusToken,data]);
-  useEffect(() => {
-    if (data?.accounts.length && !balanceForm.accountRef) {
-      setBalanceForm((current) => ({ ...current, accountRef: data.accounts[0].id }));
-    }
-  }, [data, balanceForm.accountRef]);
 
   if (!data && !error)
     return (
@@ -108,27 +99,9 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
   // Home disagree about which months counted.
   const cashflow = data?.monthly ?? [];
   const savings = cashflow.filter((m) => m.complete).slice(-6);
-  const saveBalance = async () => {
-    setBalanceBusy(true); setError("");
-    try {
-      const payload = await addAccountBalance({
-        accountRef: balanceForm.accountRef,
-        balance: Number(balanceForm.balance),
-        asOfDate: balanceForm.asOfDate,
-        note: balanceForm.note,
-        periodDays: analysisPeriod,
-      });
-      setData(payload);
-      setBalanceForm((current) => ({ ...current, balance: "", note: "" }));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally { setBalanceBusy(false); }
-  };
   const reviewRecurring=async(merchant:string,status:string)=>{setReviewBusy(`recurring:${merchant}`);setError("");try{await setRecurringPreference(merchant,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
   const reviewIncome=async(source:string,status:"confirmed"|"excluded")=>{setReviewBusy(`income:${source}`);setError("");try{await setIncomeSourcePreference(source,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
-  const saveEstimate=async()=>{setBalanceBusy(true);setError("");try{setData(await saveQuickNetWorth({totalAssets:Number(quickForm.assets),totalLiabilities:Number(quickForm.liabilities),asOfDate:quickForm.asOfDate,periodDays:analysisPeriod}));}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
-  const removeEntry=async(month:string)=>{setBalanceBusy(true);setError("");try{setTrend(await deleteNetWorthEntry(month));if(editingMonth===month)setEditingMonth("");setConfirmDelete("");}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
-  const setSpendable=async(accountId:number,available:boolean)=>{setBalanceBusy(true);setError("");try{const result=await setAccountSpendingAvailability(accountId,available);setData(current=>current?{...current,accounts:result.accounts}:current);}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
+  const removeEntry=async(month:string)=>{setEntryBusy(true);setError("");try{setTrend(await deleteNetWorthEntry(month));if(editingMonth===month)setEditingMonth("");setConfirmDelete("");}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setEntryBusy(false);}};
 
   return (
     <section className="workflow-panel">
@@ -466,7 +439,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
                             <>
                               <span className="nw-confirm">Remove {e.month}?</span>
                               <button type="button" className="danger-button"
-                                disabled={balanceBusy}
+                                disabled={entryBusy}
                                 onClick={() => void removeEntry(e.month)}>Remove</button>
                               <button type="button" className="ghost-button"
                                 onClick={() => setConfirmDelete("")}>Keep</button>
@@ -498,75 +471,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
               )}
             </>}
           </article>
-          <details
-            className="net-worth-section"
-            open={data.net_worth.calculated || ["account-balances","spending-accounts"].includes(focusAnchor||"")}
-          >
-            <summary>{data.net_worth.calculated?`Net worth ${money(data.net_worth.net_worth)}`:data.quick_net_worth?`Quick estimate ${money(data.quick_net_worth.net_worth)}`:"Set up net worth"}</summary>
-          {!data.net_worth.calculated&&<article className="compact-setup-card"><div><strong>Get a useful net worth number</strong><p>Add current balances for detailed tracking, or enter one quick assets-and-debts estimate below.</p></div><div className="form-grid"><label>Total assets<input type="number" min="0" value={quickForm.assets} onChange={(e)=>setQuickForm({...quickForm,assets:e.target.value})}/></label><label>Total debts<input type="number" min="0" value={quickForm.liabilities} onChange={(e)=>setQuickForm({...quickForm,liabilities:e.target.value})}/></label><label>As of<input type="date" value={quickForm.asOfDate} onChange={(e)=>setQuickForm({...quickForm,asOfDate:e.target.value})}/></label></div><button disabled={balanceBusy||(!quickForm.assets&&!quickForm.liabilities)} onClick={()=>void saveEstimate()}>{balanceBusy?"Saving…":"Save quick estimate"}</button>{data.quick_net_worth&&<p className="success-text">Current quick estimate: {money(data.quick_net_worth.net_worth)} as of {data.quick_net_worth.as_of_date}.</p>}</article>}
-          {data.net_worth.calculated&&<><section className="summary-grid summary-grid-three">
-            <article className="metric-card metric-primary">
-              <span className="eyebrow">Net worth</span>
-              <strong>{data.net_worth.calculated ? money(data.net_worth.net_worth) : "Not calculated"}</strong>
-              <p>
-                {data.net_worth.status === "mixed_currency"
-                  ? "Currency conversion is required before these balances can be combined."
-                  : data.net_worth.status === "partial"
-                  ? `Partial net worth — ${data.net_worth.missing_account_count} account${data.net_worth.missing_account_count === 1 ? "" : "s"} missing balances.`
-                  : data.net_worth.as_of_date
-                  ? `As of ${data.net_worth.as_of_date}`
-                  : "Balances not configured. Add current balances to calculate it."}
-              </p>
-            </article>
-            <article className="metric-card">
-              <span className="eyebrow">Assets</span>
-              <strong>{money(data.net_worth.total_assets)}</strong>
-              <p>Latest local balance snapshots.</p>
-            </article>
-            <article className="metric-card">
-              <span className="eyebrow">Liabilities</span>
-              <strong>{money(data.net_worth.total_liabilities)}</strong>
-              <p>Subtracted from assets.</p>
-            </article>
-          </section>
-          {data.balances.length > 0 && (
-            <article className="chart-card">
-              <h3>Account balances</h3>
-              {data.balances.map((b) => (
-                <div
-                  className="rank-row"
-                  key={`${b.account_name}-${b.account_kind}`}
-                >
-                  <span>
-                    {b.account_name}
-                    <small>
-                      {b.account_kind} · as of {b.as_of_date}
-                    </small>
-                  </span>
-                  <strong>{money(b.balance)}</strong>
-                </div>
-              ))}
-            </article>
-          )}
           </>}
-          <article className="form-card" id="spending-accounts">
-            <h3>Accounts available for spending</h3>
-            <p className="guidance">Chequing and cash start included. Savings and investments stay protected unless you choose otherwise.</p>
-            <div className="settings-list">{data.accounts.filter(account=>!["credit_card","loan","mortgage","other_liability"].includes(account.type)).map(account=><label className="setting-row" key={account.id}><span><strong>{account.name}</strong><small>{account.type_label}{account.available_for_spending?" · included in Safe to Spend":" · protected from Safe to Spend"}</small></span><input type="checkbox" checked={account.available_for_spending} disabled={balanceBusy} onChange={event=>void setSpendable(account.id,event.target.checked)}/></label>)}</div>
-          </article>
-          <article className="form-card" id="account-balances">
-            <h3>Add a current balance</h3>
-            <p className="guidance">Balances are explicit snapshots. Transactions are never used to invent a current balance.</p>
-            <div className="form-grid">
-              <label>Northstar account<select value={balanceForm.accountRef || ""} onChange={(e) => setBalanceForm({...balanceForm, accountRef:Number(e.target.value)})}><option value="">Choose an account…</option>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.type_label}</option>)}</select></label>
-              <label>Current balance<input type="number" min="0" step="0.01" value={balanceForm.balance} onChange={(e) => setBalanceForm({...balanceForm, balance:e.target.value})} /></label>
-              <label>As of<input type="date" value={balanceForm.asOfDate} onChange={(e) => setBalanceForm({...balanceForm, asOfDate:e.target.value})} /></label>
-              <label>Note (optional)<input value={balanceForm.note} onChange={(e) => setBalanceForm({...balanceForm, note:e.target.value})} /></label>
-            </div>
-            {!data.accounts.length && <p className="warning-text">Create or import into an account before adding a balance.</p>}
-            <button type="button" disabled={balanceBusy || !balanceForm.accountRef || !balanceForm.balance} onClick={() => void saveBalance()}>{balanceBusy ? "Saving…" : "Save balance snapshot"}</button>
-          </article>
-          </details></>}
         </>
       )}
     </section>

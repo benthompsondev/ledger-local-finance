@@ -1056,6 +1056,14 @@ async fn add_account_balance(app: AppHandle, spec: BalanceSpec) -> Result<Value,
     ).await
 }
 
+/// Accounts and their latest recorded balance, for the Settings planning
+/// section. Returns no totals: these are inputs to Safe to Spend and Plan,
+/// never a second net-worth figure.
+#[tauri::command]
+async fn get_planning_balances(app: AppHandle) -> Result<Value, String> {
+    run_engine(&app, "get_planning_balances", json!({}), ENGINE_TIMEOUT_SECS).await
+}
+
 #[tauri::command]
 async fn get_home_dashboard(app: AppHandle, period_days: Option<i64>) -> Result<Value, String> {
     run_engine(
@@ -1220,6 +1228,7 @@ fn main() {
             get_insights_summary,
             save_quick_net_worth,
             add_account_balance,
+            get_planning_balances,
             get_home_dashboard,
             get_backup_status,
             create_backup,

@@ -13,6 +13,7 @@ import type {
   PlanPreview,
   GoalsPayload,
   InsightsPayload,
+  PlanningBalances,
   BackupPayload,
   DataSafetyPayload,
   LegacyRepairPreview,
@@ -171,13 +172,19 @@ export const contributeGoal = (spec: {
 
 export const loadInsights = (periodDays: 30 | 90) =>
   invoke<InsightsPayload>("get_insights_summary", { periodDays });
+// Planning balances live in Settings. They feed Safe to Spend and Plan and
+// are never summed into a net-worth figure, so both calls return only the
+// accounts and their latest snapshot.
+export const loadPlanningBalances = () =>
+  invoke<PlanningBalances>("get_planning_balances");
+
 export const addAccountBalance = (spec: {
   accountRef: number;
   balance: number;
   asOfDate: string;
   note: string;
   periodDays: 30 | 90;
-}) => invoke<InsightsPayload>("add_account_balance", { spec });
+}) => invoke<PlanningBalances>("add_account_balance", { spec });
 export const saveQuickNetWorth = (spec:{
   totalAssets:number; totalLiabilities:number; asOfDate:string; periodDays:30|90;
 }) => invoke<InsightsPayload>("save_quick_net_worth", {spec});
