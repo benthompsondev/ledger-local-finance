@@ -1,6 +1,6 @@
 [package]
 name = "ledger-native"
-version = "2.5.5"
+version = "2.6.0"
 description = "Northstar Ledger native desktop"
 authors = ["Ben Thompson"]
 homepage = "https://github.com/benthompsondev/ledger-local-finance"
@@ -19,6 +19,8 @@ serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["sync", "time"] }
 
 [profile.release]

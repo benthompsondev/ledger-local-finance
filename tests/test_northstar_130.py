@@ -203,7 +203,7 @@ def test_release_versions_are_consistent():
         package_version, package_lock_version, tauri_version,
         cargo["package"]["version"], cargo_lock_version, __version__,
     }
-    assert versions == {"2.5.5"}
+    assert versions == {"2.6.0"}
     assert 'AppVersion "1.6.0"' in (
         root / "packaging" / "windows" / "Ledger.iss"
     ).read_text(encoding="utf-8")
@@ -213,6 +213,30 @@ def test_release_versions_are_consistent():
     assert "filevers=(1, 6, 0, 0)" in version_info
     assert "prodvers=(1, 6, 0, 0)" in version_info
     assert "StringStruct('ProductVersion', '1.6.0')" in version_info
+
+    # The release surfaces a person actually sees. A version bump that leaves
+    # the changelog or the README pointing at the previous release ships a
+    # build that disagrees with its own documentation.
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    newest = next(
+        line for line in changelog.splitlines() if line.startswith("## ")
+    )
+    assert newest.startswith(f"## {__version__} "), (
+        f"the newest changelog entry is {newest!r}, not {__version__}"
+    )
+
+    # The updater manifest is built for this exact version, and the installer
+    # keeps its own name. Both are asserted here so the version bump is the
+    # one place any of it changes.
+    from scripts.update_manifest_support import (
+        expected_installer_name, expected_updater_archive_name,
+    )
+
+    assert expected_installer_name(__version__) == (
+        f"NorthstarLedger_{__version__}_x64-setup.exe"
+    )
+    assert expected_updater_archive_name(__version__).endswith(".nsis.zip")
+    assert __version__ in expected_updater_archive_name(__version__)
 
 
 def test_pace_uses_latest_import_and_requires_two_covered_months(engine_env):

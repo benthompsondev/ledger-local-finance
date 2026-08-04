@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { money } from "./money";
+import { UpdatePanel } from "./UpdatePanel";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const AI_CONSENT = `Turning this on sends your financial figures to an outside company.
@@ -413,6 +414,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
             <div><dt>Network</dt><dd>Nothing is sent unless you ask. AI assistance contacts the provider you configure; checking for updates contacts GitHub. Both are off until you act.</dd></div>
           </dl>
         </article>
+        <UpdatePanel version={version} />
         <article className="form-card">
           <h3>Backups</h3>
           <p className="guidance">

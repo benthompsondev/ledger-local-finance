@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.6.0 - 2026-08-04
+
+Northstar Ledger 2.6.0 is the current Windows public beta.
+
+**Install this one manually.** 2.5.5 has no updater, so it cannot fetch this
+release. Download the installer and run it over your existing copy; your data
+stays where it is. From 2.6.0 onward, Settings can check for and install
+updates itself.
+
+### What changed
+
+- Net worth means one thing again. The monthly reading you type is the only
+  net-worth figure Northstar shows. The second one derived from account
+  balances, along with its Assets and Liabilities cards and the quick-estimate
+  form, is gone. It only ever saw the accounts you had recorded a balance for,
+  so it left out the pension, the car and the mortgage and then printed the
+  result as a fact.
+- Current account balances moved to Settings under "Planning balances", where
+  they are described as what they are: inputs to Safe to Spend and Plan. The
+  choice of which accounts Safe to Spend may draw on moved with them. Nothing
+  about the calculation changed.
+- Settings can check for updates. It contacts GitHub only when you press the
+  button, sends nothing but a request for the latest version number, and
+  installs an update only if its signature matches Northstar's key. There is
+  no background checking and no telemetry.
+- The About section no longer claims "Connection: None". Finance processing is
+  still entirely local; optional AI contacts the provider you configure, and an
+  update check contacts GitHub. Both need you to act first.
+
 ## 2.5.5 - 2026-08-03
 
 Northstar Ledger 2.5.5 is the current Windows public beta.

@@ -80,6 +80,32 @@ try {
         throw "Installer verification failed for $FinalInstaller"
     }
 
+    # Updater artifacts. `bundle.createUpdaterArtifacts` produces the archive
+    # and, when a signing key is present, its detached signature. The
+    # signature is what makes an update installable at all, so a release build
+    # without one is reported loudly rather than shipped quietly.
+    $UpdaterArchive = Join-Path $BundleDir "NorthstarLedger_${Version}_x64-setup.nsis.zip"
+    $UpdaterSignature = "$UpdaterArchive.sig"
+    if (Test-Path -LiteralPath $UpdaterArchive -PathType Leaf) {
+        Write-Host "Updater archive: $UpdaterArchive"
+        if (Test-Path -LiteralPath $UpdaterSignature -PathType Leaf) {
+            if ((Get-Item -LiteralPath $UpdaterSignature).Length -eq 0) {
+                throw "Updater signature is empty: $UpdaterSignature"
+            }
+            Write-Host "Updater signature: $UpdaterSignature"
+            Write-Host "Next: node scripts/update_manifest.mjs --version $Version ..."
+        }
+        else {
+            Write-Warning ("No updater signature was produced. Set " +
+                "TAURI_SIGNING_PRIVATE_KEY (and its password) before building " +
+                "a release, or this version cannot be installed by the updater.")
+        }
+    }
+    else {
+        Write-Warning ("No updater archive was produced. Check that " +
+            "bundle.createUpdaterArtifacts is true in tauri.conf.json.")
+    }
+
     Write-Host "Northstar Ledger installer: $FinalInstaller"
 }
 finally {

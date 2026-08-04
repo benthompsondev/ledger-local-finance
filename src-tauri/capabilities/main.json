@@ -1,8 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Ledger's window can invoke only the narrow typed app commands below. The frontend receives no general shell, HTTP, filesystem, dialog, clipboard, process, URL opener, or window permissions — the native file picker runs entirely in Rust and returns only the user's explicit selection.",
-  "windows": ["main"],
+  "description": "Ledger's window can invoke only the narrow typed app commands below, plus the user-triggered signed updater and a restart after an installed update. The frontend receives no general shell, HTTP, filesystem, dialog, clipboard, arbitrary-URL or window permissions \u2014 the native file picker runs entirely in Rust and returns only the user's explicit selection.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:app:allow-version",
     "allow-get-home-summary",
@@ -65,6 +67,8 @@
     "allow-export-transactions",
     "allow-delete-transaction",
     "allow-ai-ask",
-    "allow-test-ai-connection"
+    "allow-test-ai-connection",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

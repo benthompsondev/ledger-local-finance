@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-planning-balances"
+description = "Enables the get_planning_balances command without any pre-configured scope."
+commands.allow = ["get_planning_balances"]
+
+[[permission]]
+identifier = "deny-get-planning-balances"
+description = "Denies the get_planning_balances command without any pre-configured scope."
+commands.deny = ["get_planning_balances"]

@@ -15,7 +15,7 @@ cloud-dependent, or too busy drawing charts to answer the question I actually
 had, which was some version of "am I okay, and what changed."
 
 **[Take the product tour](https://benthompsondev.github.io/ledger-local-finance/)** - current native screens with synthetic data ·
-**[Download the Windows beta](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - installer and SHA-256 checksum ·
+**[Download the installer](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - one .exe, no Python needed ·
 **[Read the setup guide](docs/GETTING_STARTED.md)**
 
 ![Northstar Ledger Home screen using synthetic demo data](docs/screenshots/native-home-2.5.5.png)
@@ -28,25 +28,48 @@ The questions it is built to answer:
 - What is coming that I have not set money aside for?
 - Am I actually making progress?
 
+## Install it
+
+Download the installer from the
+[latest release](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
+and run it. That is the whole thing. You do not need Python, Node or Rust to
+use Northstar; the installer bundles everything, including the Python engine.
+
+```
+NorthstarLedger_2.6.0_x64-setup.exe
+```
+
+It installs for your user only, so no admin prompt. Installing over an older
+version keeps your data.
+
+**Windows will warn you the first time.** The installer is unsigned, so
+SmartScreen shows "Windows protected your PC". Click More info, then Run
+anyway. A code-signing certificate costs a few hundred dollars a year and I
+have not bought one for a beta. The SHA-256 checksum is on the release page if
+you want to verify the download.
+
+### Updating
+
+From 2.6.0 onward, **Settings → App updates** checks GitHub when you press the
+button, and installs the new version if the signature matches. Nothing is
+checked in the background and nothing about you is sent.
+
+If you are on 2.5.5 or older there is no updater in that build, so install
+2.6.0 by hand this once.
+
 ## Status
 
-**Windows public beta.** It works, it is tested, and it is still a beta. A few
-things are worth knowing before you install it:
+**Windows public beta.** It works, it is tested, and it is still a beta.
 
-- The installer is **unsigned**, so Windows SmartScreen will warn you the first
-  time. That is expected for an independent build.
-- There is **no automatic updater**. A new version means downloading the
-  installer again and installing over the previous one, which keeps your data.
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
-- Everything stays on your machine. The one exception is the optional AI
-  feature, which is off until you turn it on. See [Optional AI](#optional-ai).
+- Everything stays on your machine. The two exceptions both need you to act
+  first: the optional AI feature (see [Optional AI](#optional-ai-beta)) and an
+  update check you clicked.
 
-Latest installer: [Northstar Ledger 2.5.5](https://github.com/benthompsondev/ledger-local-finance/releases/latest).
 The [browser product tour](https://benthompsondev.github.io/ledger-local-finance/)
-shows the current interface with generated data. It is deliberately a tour,
-not a browser copy of the finance engine. You can also build the desktop app
-yourself from source, described below.
+shows the interface with generated data. It is deliberately a tour, not a
+browser copy of the finance engine.
 
 ## What it is
 
@@ -64,13 +87,13 @@ There are six tabs:
 | **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan. Income, fixed costs, reserves for non-monthly bills, savings, buffer, and the flexible amount left over. |
-| **Insights** | Spending pace, category movement, income steadiness, net worth trend, cashflow. |
+| **Insights** | Spending pace, category movement, income steadiness, cashflow, and your monthly net worth: four figures you enter once a month, so every point on the chart is a real reading. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
 **Settings** is the gear in the header rather than a tab. It holds backup and
-restore, preferences, categorization controls, data-safety tools and the
-optional AI configuration. Demo mode is not in there; it is the environment
+restore, preferences, categorization controls, data-safety tools, planning
+balances, app updates and the optional AI configuration. Demo mode is not in there; it is the environment
 variable flow described below.
 
 There is no Goals tab. It was replaced by the **Money Focus** card on Home,
@@ -96,9 +119,11 @@ look more cautious than other apps:
   a full one, and when the previous month ended earlier than today the app says
   so instead of pretending the comparison is same-day.
 
-## Running it
+## Building it from source
 
-### Build the desktop app
+**You do not need any of this to use Northstar.** Skip to
+[Importing your own statements](#importing-your-own-statements) unless you want
+to work on the code.
 
 You need [Rust](https://rustup.rs/), [Node 24+](https://nodejs.org/), and
 [Python 3.13+](https://www.python.org/downloads/). CI builds and tests on
@@ -197,10 +222,15 @@ The guardrails:
 
 ## Privacy
 
-The finance math is entirely local and deterministic. There is no telemetry, no
-analytics and no account. The only outbound traffic the app ever makes is an
-optional AI request you triggered, to a provider you configured, and that
-carries the evidence packet described above.
+The finance math is entirely local and deterministic. There is no telemetry,
+no analytics and no account. Northstar makes exactly two kinds of outbound
+request, and you have to start both:
+
+- An **AI request** you triggered, to a provider you configured, carrying the
+  evidence packet described above.
+- An **update check** you clicked, to this repository's releases on GitHub. It
+  asks for the latest version number and sends nothing else: no identifier, no
+  usage data, nothing from your ledger. It never runs on its own.
 
 For contributors, the repository has guardrails so private data cannot be
 committed by accident:
