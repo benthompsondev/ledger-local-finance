@@ -14,6 +14,9 @@ import os
 import sqlite3
 import hashlib
 import json
+import threading
+import time
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -71,18 +74,9 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def init_db():
-    """Create all tables if they don't exist."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if _schema_requires_migration(DB_PATH):
-        # Import lazily to keep the database layer usable by the backup module.
-        # The backup happens before CREATE/ALTER statements touch the file.
-        from utils.backups import create_backup
-        create_backup(
-            reason="pre-migration", db_path=DB_PATH, allow_legacy=True
-        )
-    with get_connection() as conn:
-        conn.executescript("""
+# The complete current schema, as one statement script. Lifted out of
+# init_db() so it can be fingerprinted: see _SCHEMA_FINGERPRINT below.
+_SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS transactions (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             account_type        TEXT NOT NULL,
@@ -581,7 +575,177 @@ def init_db():
             rows_changed        INTEGER DEFAULT 0,
             details_json        TEXT
         );
-        """)
+"""
+
+
+# Every schema step that runs after _SCHEMA_SQL, in order. Listed here so
+# adding, removing or reordering one changes the fingerprint automatically and
+# existing databases get the new step.
+#
+# Changing what an *existing* step does, without renaming it, is the one case
+# the fingerprint cannot see. Bump _SCHEMA_REVISION when you do that.
+_SCHEMA_STEPS = (
+    "seed_score_weights",
+    "migrate_categorization_schema",
+    "columns:transactions:transaction_type,shared_expense_override,shared_user_share_pct",
+    "columns:import_log:semantics_version",
+    "columns:account_balances:account_ref",
+    "columns:recurring_preferences:display_name,category",
+    "migrate_etransfer_cashflow_semantics",
+    "migrate_investment_semantics_070",
+    "migrate_builtin_categorization",
+    "columns:import_profiles:account_type,amount_convention,profile_version",
+    "migrate_accounts_schema",
+    "migrate_goals_schema",
+    "migrate_retire_legacy_goal_reservations",
+    "migrate_monthly_plan_schema",
+    "migrate_rec_log_unique",
+)
+_SCHEMA_REVISION = 1
+
+
+def _schema_fingerprint() -> int:
+    """A non-zero 32-bit stamp for the schema this build would create.
+
+    Stored in the database's own ``user_version`` header field once the schema
+    has been brought up to date. It changes whenever the schema script or the
+    list of steps changes, so a stale database never takes the fast path.
+    """
+    import zlib
+
+    payload = _SCHEMA_SQL + "\n".join(_SCHEMA_STEPS) + str(_SCHEMA_REVISION)
+    # Fold to 31 bits and force non-zero: 0 is what a brand-new database
+    # reports, and that must always mean "not initialised".
+    return (zlib.crc32(payload.encode("utf-8")) & 0x7FFFFFFF) or 1
+
+
+def _schema_is_current(path) -> bool:
+    """True when this database already has exactly this build's schema.
+
+    Deliberately read-only, and cheap: one header read on a read-only
+    connection. Any doubt at all returns False, which routes the caller into
+    the full write path.
+    """
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return False
+        uri = f"file:{path.resolve().as_posix()}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+        try:
+            stamped = conn.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            conn.close()
+        return int(stamped or 0) == _schema_fingerprint()
+    except (sqlite3.Error, OSError):
+        return False
+
+
+# Threads inside one process coordinate here; the file lock below is only
+# needed between processes. An RLock so a nested acquisition on one thread is
+# free rather than a deadlock against its own held file handle.
+_SCHEMA_THREAD_LOCK = threading.RLock()
+_SCHEMA_DEPTH = threading.local()
+# How long to wait for another process to finish building the schema. The
+# work itself is well under a second; this is only a ceiling so a crashed
+# process holding the file can never wedge a launch permanently.
+_SCHEMA_LOCK_TIMEOUT_SECONDS = 20.0
+
+
+@contextmanager
+def _schema_write_lock(path):
+    """Let one process at a time build or migrate the schema.
+
+    Several one-shot sidecars start together whenever a screen mounts. Without
+    this they would all run the same CREATE/ALTER work at once and pile up on
+    SQLite's write lock; with it, the first does the work and the rest wait,
+    re-check, and find nothing left to do.
+
+    Advisory and best-effort by design. If the lock cannot be taken the caller
+    still proceeds: every statement under it is idempotent, so the worst case
+    is the old behaviour, never a refusal to start.
+    """
+    with _SCHEMA_THREAD_LOCK:
+        depth = getattr(_SCHEMA_DEPTH, "value", 0)
+        _SCHEMA_DEPTH.value = depth + 1
+        handle = None
+        locked = False
+        try:
+            if depth == 0:
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    handle = open(path.with_name(path.name + ".init-lock"), "a+b")
+                    deadline = time.monotonic() + _SCHEMA_LOCK_TIMEOUT_SECONDS
+                    while True:
+                        try:
+                            if os.name == "nt":
+                                import msvcrt
+                                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                            else:
+                                import fcntl
+                                fcntl.flock(
+                                    handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB,
+                                )
+                            locked = True
+                            break
+                        except OSError:
+                            if time.monotonic() >= deadline:
+                                break
+                            time.sleep(0.02)
+                except OSError:
+                    handle = None
+            yield
+        finally:
+            _SCHEMA_DEPTH.value = depth
+            if handle is not None:
+                if locked:
+                    try:
+                        if os.name == "nt":
+                            import msvcrt
+                            handle.seek(0)
+                            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                        else:
+                            import fcntl
+                            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+                handle.close()
+
+
+def init_db():
+    """Bring the database up to the current schema, writing only if needed.
+
+    Every screen action runs in its own short-lived sidecar process, and each
+    one used to open a write transaction here even when there was nothing to
+    do. Reads never block reads in WAL mode, so those unnecessary writes were
+    the only reason a read-only action such as Insights or Coach could ever
+    report `database is locked`: the requests queued behind each other's
+    pointless write lock rather than behind any real work.
+
+    A database already carrying this build's schema now takes a read-only
+    path and opens no write transaction at all.
+    """
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if _schema_is_current(DB_PATH):
+        return
+
+    with _schema_write_lock(DB_PATH):
+        # Another process may have finished the work while we waited.
+        if _schema_is_current(DB_PATH):
+            return
+        _initialize_schema()
+
+
+def _initialize_schema():
+    """Create or migrate the schema. Only ever called under the schema lock."""
+    if _schema_requires_migration(DB_PATH):
+        # Import lazily to keep the database layer usable by the backup module.
+        # The backup happens before CREATE/ALTER statements touch the file.
+        from utils.backups import create_backup
+        create_backup(
+            reason="pre-migration", db_path=DB_PATH, allow_legacy=True
+        )
+    with get_connection() as conn:
+        conn.executescript(_SCHEMA_SQL)
 
         # Seed default score weights row if empty.
         # Pass 36: defaults are 40/30/15/15. Existing rows are migrated
@@ -675,6 +839,11 @@ def init_db():
         # recently-updated row wins and the rest are deleted before the index
         # is created so the migration cannot fail.
         _migrate_rec_log_unique(conn)
+        conn.commit()
+        # Stamp last, and only after everything above committed. A database
+        # that failed part way through keeps its old stamp and is brought up
+        # to date again on the next launch rather than being skipped.
+        conn.execute(f"PRAGMA user_version = {_schema_fingerprint()}")
         conn.commit()
 
 

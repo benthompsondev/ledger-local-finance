@@ -114,6 +114,11 @@ function AiView({ onOpenSettings, onDrill }: Props) {
       <div>
         <span className="eyebrow">Coach <em className="beta-tag">Beta</em></span>
         <h2>What Northstar noticed</h2>
+        <p className="warning-text">
+          Beta: provider compatibility and AI answers may be incomplete or
+          occasionally fail. Northstar's financial figures are still
+          calculated locally.
+        </p>
         <p>
           Every figure below was worked out on this computer. AI is optional:
           it only explains a finding you pick, and never calculates anything.

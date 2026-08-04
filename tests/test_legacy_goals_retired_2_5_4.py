@@ -72,11 +72,16 @@ def _open_as_2_5_3() -> None:
     upgrade path is an existing 2.5.3 database that already holds goals
     being opened by 2.5.4, so the marker is removed to reproduce it.
     """
+    from tests.conftest import reopen_as_older_build
+
     conn = db.get_connection()
     try:
         conn.execute("DELETE FROM app_migrations WHERE migration_key=?",
                      (MIGRATION_KEY,))
         conn.commit()
+        # An older build's database also carries an older schema stamp, and
+        # that stamp is what decides whether migrations run at all.
+        reopen_as_older_build(conn)
     finally:
         conn.close()
 

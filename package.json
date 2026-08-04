@@ -1,12 +1,12 @@
 {
   "name": "ledger-native-desktop",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Northstar Ledger native desktop",
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
-    "test:charts": "node --test desktop/src/chartScale.test.mjs desktop/src/preferences.test.mjs desktop/src/categoryComparison.test.mjs desktop/src/netWorthFormat.test.mjs desktop/src/netWorthForm.test.mjs desktop/src/updateVersion.test.mjs scripts/update_manifest.test.mjs",
+    "test:charts": "node --test desktop/src/chartScale.test.mjs desktop/src/preferences.test.mjs desktop/src/categoryComparison.test.mjs desktop/src/netWorthFormat.test.mjs desktop/src/netWorthForm.test.mjs desktop/src/updateVersion.test.mjs desktop/src/planPreview.test.mjs scripts/update_manifest.test.mjs",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",

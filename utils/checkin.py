@@ -248,6 +248,28 @@ def _month_name(month: str) -> str:
         return ""
 
 
+def signed_money(value: float, decimals: int = 0) -> str:
+    """Money for a sentence, with the minus sign where people put it.
+
+    `f"${net:,.0f}"` produces "$-68" for a negative net, which reads as a
+    typo rather than as a loss. The sign belongs in front of the currency
+    symbol, not between it and the digits.
+
+        68   -> "$68"
+       -68   -> "-$68"
+         0   -> "$0"
+
+    Negative zero is treated as zero: a month that landed exactly even should
+    not be reported as "-$0" because of floating-point drift.
+    """
+    number = float(value or 0.0)
+    rounded = round(number, decimals)
+    if rounded == 0:
+        return f"${0:,.{decimals}f}"
+    sign = "-" if rounded < 0 else ""
+    return f"{sign}${abs(rounded):,.{decimals}f}"
+
+
 def weekly_allowance(amount: float, days_left: int) -> dict:
     """The next seven days' share of what is left, and the daily rate.
 
@@ -885,8 +907,8 @@ def meaningful_changes(conn: Optional[sqlite3.Connection] = None,
                 "period": period,
                 "confidence": "high",
                 "why_it_matters": (
-                    f"You kept ${mr.get('net') or 0:,.0f} in {month} vs "
-                    f"${mr.get('prev_net') or 0:,.0f} in {prev}."
+                    f"You kept {signed_money(mr.get('net'))} in {month} "
+                    f"vs {signed_money(mr.get('prev_net'))} in {prev}."
                 ),
                 "drill": {"cashflow_role": "net",
                           "start_date": drill_start, "end_date": drill_end},
@@ -1143,7 +1165,7 @@ def _verdict(freshness: dict, sts: dict, progress: dict,
         closed = ""
         if review and review.get("available"):
             closed = (f" {_month_name(review['month'])} closed with "
-                      f"${review.get('net') or 0:,.0f} kept.")
+                      f"{signed_money(review.get('net'))} kept.")
         current_label = _month_name(calendar_month) or "This month"
         if not (calendar_month and data_month and data_month < calendar_month):
             # The data is for the month we are in, and that month has simply

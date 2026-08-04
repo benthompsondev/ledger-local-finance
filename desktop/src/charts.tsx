@@ -533,7 +533,7 @@ export function CategoryBars({
         );
       })}
       <p className="file-meta">
-        Total {moneyCents(total)}{periodLabel ? ` · ${periodLabel.toLowerCase()}` : " · selected period"}.{comparable ? ` Marker shows ${markerLabel} at this day.` : ""}
+        Total {moneyCents(total)}{periodLabel ? ` · ${periodLabel}` : " · selected period"}.{comparable ? ` Marker shows ${markerLabel} at this day.` : ""}
       </p>
     </div>
   );

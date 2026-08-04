@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.6.1 - 2026-08-04
+
+A stabilization release. No new features.
+
+### What changed
+
+- **Fixed the `database is locked` errors.** Every screen action runs in its
+  own short-lived process, and each one opened a write transaction on startup
+  even when the database already had the right schema and there was nothing to
+  write. Reads never block reads, so those unnecessary writes were the only
+  reason opening Plan or Insights could ever report a lock. A database already
+  matching this build now takes a read-only path and opens no transaction at
+  all.
+- **Plan asks once instead of twice.** Opening an unsaved plan previewed the
+  equation, then immediately previewed the same values again. It also applied
+  whichever response arrived last rather than whichever was newest, so a slow
+  failure from an old keystroke could replace a correct equation with an error.
+  Newest wins now, and a working preview clears a stale error.
+- **A negative month reads correctly.** "June closed with $-68 kept" is now
+  "June closed with -$68 kept".
+- **Month names keep their capital letter** in the Insights period label.
+- **Coach states its Beta limits at the top**, where they are read before the
+  answers rather than after them.
+
 ## 2.6.0 - 2026-08-04
 
 Northstar Ledger 2.6.0 is the current Windows public beta.

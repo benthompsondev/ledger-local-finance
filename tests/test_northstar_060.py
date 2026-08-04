@@ -59,6 +59,10 @@ def test_upgrade_refreshes_safe_categories_and_preserves_user_edits(
         (db._BUILTIN_CATEGORIZATION_MIGRATION,),
     )
     ledger_db.commit()
+    # An older build's database carries an older schema stamp; without that
+    # this describes a state no real install reaches.
+    from tests.conftest import reopen_as_older_build
+    reopen_as_older_build(ledger_db)
     ledger_db.close()
 
     db.init_db()

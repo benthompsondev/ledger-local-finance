@@ -16,6 +16,7 @@ import { loadPlan, previewPlan, savePlan, setIncomeSourcePreference } from "./ap
 import MoneyFocusCard from "./MoneyFocusCard";
 import { moneyCents } from "./money";
 import { readSavingsPreference } from "./preferences";
+import { createRequestGate, previewSignature } from "./planPreview";
 import type { PlanEquation, PlanPayload } from "./types";
 
 interface Props {
@@ -61,6 +62,12 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
   const [saved, setSaved] = useState("");
   const reviewRef = useRef<HTMLElement | null>(null);
   const [highlight, setHighlight] = useState(false);
+  // Only the newest preview may apply its result. Each request is its own
+  // sidecar process, so out-of-order responses are ordinary, not exotic.
+  const gate = useRef(createRequestGate());
+  // The inputs the hydration preview already answered for. The debounced
+  // effect below skips them, so opening an unsaved plan asks once, not twice.
+  const previewed = useRef("");
 
   const refresh = useCallback(async () => {
     setError("");
@@ -68,8 +75,10 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
       const payload = await loadPlan();
       let next = formFrom(payload);
       setData(payload); setForm(next); setEquation(payload.equation);
+      previewed.current = previewSignature(next);
       if (!payload.saved) {
         const pref = readSavingsPreference();
+        const token = gate.current.begin();
         const preview = await previewPlan({
           mode: next.mode, incomeTarget: Number(next.income),
           fixedObligations: Number(next.fixed), savingsTarget: Number(next.savings),
@@ -77,8 +86,13 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
           applyPreference: true, savingsPreferenceStyle: pref.style,
           savingsPreferenceValue: pref.value,
         });
+        if (!gate.current.isLatest(token)) return;
         next = { ...next, savings: shown(preview.values.savings_target),
           buffer: shown(preview.values.safety_buffer) };
+        // Record the hydrated values, not the pre-hydration ones: the
+        // preference just changed savings and buffer, and re-previewing the
+        // result of a preview answers nothing new.
+        previewed.current = previewSignature(next);
         setForm(next); setEquation(preview.equation);
       }
     } catch (c) { setError(c instanceof Error ? c.message : String(c)); }
@@ -105,13 +119,27 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
 
   useEffect(() => {
     if (!data) return;
+    const signature = previewSignature(form);
+    // Hydration already previewed exactly these inputs. Asking again would
+    // be a second sidecar for an answer we are already showing.
+    if (signature === previewed.current) return;
     const timer = window.setTimeout(() => {
+      previewed.current = signature;
+      const token = gate.current.begin();
       void previewPlan({
         mode: form.mode, incomeTarget: Number(form.income),
         fixedObligations: Number(form.fixed), savingsTarget: Number(form.savings),
         safetyBuffer: Number(form.buffer), applyPreset: false,
-      }).then(p => setEquation(p.equation))
-        .catch(c => setError(c instanceof Error ? c.message : String(c)));
+      }).then(p => {
+        if (!gate.current.isLatest(token)) return;
+        setEquation(p.equation);
+        // A working preview means whatever went wrong before is over.
+        setError("");
+      }).catch(c => {
+        // A stale failure must never replace a newer correct equation.
+        if (!gate.current.isLatest(token)) return;
+        setError(c instanceof Error ? c.message : String(c));
+      });
     }, 180);
     return () => window.clearTimeout(timer);
   }, [data, form.income, form.fixed, form.savings, form.buffer, form.mode]);
@@ -124,8 +152,11 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
         applyPreset: true,
       });
-      setForm({ ...form, mode, savings: shown(p.values.savings_target),
-        buffer: shown(p.values.safety_buffer) });
+      const next = { ...form, mode, savings: shown(p.values.savings_target),
+        buffer: shown(p.values.safety_buffer) };
+      // This preview already answered for these values.
+      previewed.current = previewSignature(next);
+      setForm(next);
       setEquation(p.equation);
     } finally { setBusy(false); }
   };
@@ -140,7 +171,11 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
         notes: form.notes, fixedOverrideReason: form.overrideReason,
       });
-      setData(payload); setForm(formFrom(payload)); setEquation(payload.equation);
+      const savedForm = formFrom(payload);
+      // The saved payload carries its own equation; previewing it again
+      // would be a sidecar asking a question that just came back answered.
+      previewed.current = previewSignature(savedForm);
+      setData(payload); setForm(savedForm); setEquation(payload.equation);
       setSaved(`Saved. ${payload.readiness.plan_agreement.needs_review
         ? "Fixed costs still differ from what was reviewed."
         : "Fixed costs now match what Northstar reviewed."}`);

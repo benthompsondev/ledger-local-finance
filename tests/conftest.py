@@ -170,3 +170,28 @@ def ended_db(ledger_db):
     seed_balances(conn, "2026-06-30")
     conn.commit()
     return conn
+
+
+def reopen_as_older_build(conn=None) -> None:
+    """Make the current database look like one an earlier build wrote.
+
+    Since 2.6.1 the schema is stamped into ``PRAGMA user_version`` so a
+    database already carrying this build's schema can skip the write path
+    entirely — that skip is what stopped read-only screens reporting
+    `database is locked`.
+
+    A database from an older build carries an older stamp, or none, so it
+    still takes the full path and still gets its migrations. Tests that
+    simulate an upgrade by rolling back a migration marker have to roll the
+    stamp back too, or they are describing a state no real install can be in:
+    current schema, missing migration.
+    """
+    close = conn is None
+    if close:
+        conn = db.get_connection()
+    try:
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+    finally:
+        if close:
+            conn.close()
