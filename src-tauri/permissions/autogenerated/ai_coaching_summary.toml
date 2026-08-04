@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ai-coaching-summary"
+description = "Enables the ai_coaching_summary command without any pre-configured scope."
+commands.allow = ["ai_coaching_summary"]
+
+[[permission]]
+identifier = "deny-ai-coaching-summary"
+description = "Denies the ai_coaching_summary command without any pre-configured scope."
+commands.deny = ["ai_coaching_summary"]

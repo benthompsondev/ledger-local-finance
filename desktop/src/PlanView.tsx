@@ -1,0 +1,467 @@
+/**
+ * Plan: one monthly equation, and one thing to do about it.
+ *
+ * The screen used to present eleven jobs at once — outlook, readiness,
+ * income confirmation, commitment review, savings presets, five inputs,
+ * an equation, non-monthly bills, price changes, Money Focus, and three
+ * forecast cards — with no order of importance. It is now four sections:
+ * where you stand, the plan itself, review and save, and everything else
+ * folded away.
+ *
+ * Every figure still comes from the engine. React arranges, focuses and
+ * formats; it does no arithmetic.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { loadPlan, previewPlan, savePlan, setIncomeSourcePreference } from "./api";
+import MoneyFocusCard from "./MoneyFocusCard";
+import { moneyCents } from "./money";
+import { readSavingsPreference } from "./preferences";
+import type { PlanEquation, PlanPayload } from "./types";
+
+interface Props {
+  refreshToken: number;
+  onDataChanged: () => void;
+  onNavigate: (screen: string) => void;
+  focusAnchor?: string;
+  focusToken?: number;
+}
+type PlanForm = {
+  mode: string; income: string; fixed: string; savings: string;
+  buffer: string; notes: string; overrideReason: string;
+};
+const emptyForm: PlanForm = {
+  mode: "normal", income: "", fixed: "", savings: "", buffer: "",
+  notes: "", overrideReason: "",
+};
+const shown = (value: unknown) => Number(value ?? 0).toFixed(2);
+
+const MONTH_NAME = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m) return month;
+  return new Date(y, m - 1, 1).toLocaleString("en-CA", { month: "long" });
+};
+
+function formFrom(payload: PlanPayload): PlanForm {
+  const p = payload.working_plan;
+  return {
+    mode: p.mode || "normal",
+    income: shown(p.income_target),
+    fixed: shown(p.fixed_obligations ?? payload.fixed_obligations_suggestion),
+    savings: shown(p.savings_target), buffer: shown(p.safety_buffer),
+    notes: p.notes ?? "", overrideReason: p.fixed_override_reason ?? "",
+  };
+}
+
+function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusToken }: Props) {
+  const [data, setData] = useState<PlanPayload | null>(null);
+  const [form, setForm] = useState<PlanForm>(emptyForm);
+  const [equation, setEquation] = useState<PlanEquation | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const reviewRef = useRef<HTMLElement | null>(null);
+  const [highlight, setHighlight] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setError("");
+    try {
+      const payload = await loadPlan();
+      let next = formFrom(payload);
+      setData(payload); setForm(next); setEquation(payload.equation);
+      if (!payload.saved) {
+        const pref = readSavingsPreference();
+        const preview = await previewPlan({
+          mode: next.mode, incomeTarget: Number(next.income),
+          fixedObligations: Number(next.fixed), savingsTarget: Number(next.savings),
+          safetyBuffer: Number(next.buffer), applyPreset: false,
+          applyPreference: true, savingsPreferenceStyle: pref.style,
+          savingsPreferenceValue: pref.value,
+        });
+        next = { ...next, savings: shown(preview.values.savings_target),
+          buffer: shown(preview.values.safety_buffer) };
+        setForm(next); setEquation(preview.equation);
+      }
+    } catch (c) { setError(c instanceof Error ? c.message : String(c)); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh, refreshToken]);
+
+  // "Review changes" used to navigate to Plan while Plan was already open,
+  // which did nothing at all. It now targets an anchor, and the section is
+  // scrolled to, focused and briefly marked once the data has loaded.
+  // Arriving here changes nothing about the plan; it only shows the user
+  // the decision.
+  useEffect(() => {
+    if (focusAnchor !== "commitment-review" || !data) return;
+    const timer = window.setTimeout(() => {
+      const node = reviewRef.current;
+      if (!node) return;
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      node.focus({ preventScroll: true });
+      setHighlight(true);
+      window.setTimeout(() => setHighlight(false), 2200);
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [focusAnchor, focusToken, data]);
+
+  useEffect(() => {
+    if (!data) return;
+    const timer = window.setTimeout(() => {
+      void previewPlan({
+        mode: form.mode, incomeTarget: Number(form.income),
+        fixedObligations: Number(form.fixed), savingsTarget: Number(form.savings),
+        safetyBuffer: Number(form.buffer), applyPreset: false,
+      }).then(p => setEquation(p.equation))
+        .catch(c => setError(c instanceof Error ? c.message : String(c)));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [data, form.income, form.fixed, form.savings, form.buffer, form.mode]);
+
+  const choosePreset = async (mode: string) => {
+    setBusy(true);
+    try {
+      const p = await previewPlan({
+        mode, incomeTarget: Number(form.income), fixedObligations: Number(form.fixed),
+        savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
+        applyPreset: true,
+      });
+      setForm({ ...form, mode, savings: shown(p.values.savings_target),
+        buffer: shown(p.values.safety_buffer) });
+      setEquation(p.equation);
+    } finally { setBusy(false); }
+  };
+
+  const save = async () => {
+    if (!data || !equation) return;
+    setBusy(true); setError(""); setSaved("");
+    try {
+      const payload = await savePlan({
+        month: data.month, mode: form.mode, incomeTarget: Number(form.income),
+        fixedObligations: Number(form.fixed), flexibleAllowance: equation.flexible,
+        savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
+        notes: form.notes, fixedOverrideReason: form.overrideReason,
+      });
+      setData(payload); setForm(formFrom(payload)); setEquation(payload.equation);
+      setSaved(`Saved. ${payload.readiness.plan_agreement.needs_review
+        ? "Fixed costs still differ from what was reviewed."
+        : "Fixed costs now match what Northstar reviewed."}`);
+      onDataChanged();
+    } catch (c) { setError(c instanceof Error ? c.message : String(c)); }
+    finally { setBusy(false); }
+  };
+
+  const confirmIncome = async (source: string) => {
+    setBusy(true); setError("");
+    try { await setIncomeSourcePreference(source, "confirmed"); await refresh(); onDataChanged(); }
+    catch (c) { setError(c instanceof Error ? c.message : String(c)); }
+    finally { setBusy(false); }
+  };
+
+  if (!data && !error) return (
+    <section className="loading-panel"><span className="loading-dot" />Loading your plan…</section>
+  );
+
+  const drift = data?.readiness.plan_agreement;
+  const overridden = !!data && Math.abs(Number(form.fixed) - data.fixed_obligations_suggestion) >= 0.01;
+  const monthName = data ? MONTH_NAME(data.month) : "";
+  const incomeConfirmed = !!data?.reliable_income.confirmed;
+
+  return (
+    <section className="workflow-panel">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">Plan</span>
+          <h2>Your monthly money plan</h2>
+          <p>What comes in, what is already committed, and what is left to spend.</p>
+        </div>
+      </div>
+      {error && <div className="inline-error" role="alert">{error}</div>}
+      {data && <>
+
+        {/* ── A. Where you stand ─────────────────────────────────── */}
+        <section className={`verdict-card verdict-${data.outcome.state}`}>
+          <span className="eyebrow">Current outlook</span>
+          <h3>{data.outcome.headline}</h3>
+          <p>{data.outcome.sentence}</p>
+          {data.analysis?.has_data && (
+            <p className="plan-data-through">{data.analysis.label}</p>
+          )}
+        </section>
+
+        {data.readiness.missing.length > 0 && (
+          <section className="plan-readiness">
+            <div>
+              <span className="eyebrow">Plan decisions to review</span>
+              <strong>{data.readiness.missing.length} item{data.readiness.missing.length === 1 ? "" : "s"} left</strong>
+            </div>
+            <div className="readiness-list">
+              {data.readiness.missing.map(item => (
+                <div className="readiness-item" key={item.id}>
+                  <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                  <button className="ghost-button" onClick={() => onNavigate(item.screen)}>{item.action}</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {data.readiness.missing.length === 0 && (
+          <section className="plan-readiness plan-readiness-ready">
+            <div>
+              <span className="eyebrow">Plan status</span>
+              <strong>Monthly plan reviewed</strong>
+              <p>{data.readiness.cash_checked
+                ? "The plan is also checked against current account balances."
+                : "The monthly flow plan is ready. Current balances have not been checked yet."}</p>
+            </div>
+          </section>
+        )}
+
+        {!!data.readiness.advisories?.length && (
+          <details className="chart-card settings-collapse plan-advisories">
+            <summary>Optional cash accuracy checks: {data.readiness.advisories.length}</summary>
+            <p className="guidance">These improve the cash-backed Safe to Spend check. They do not invalidate the monthly plan built from imported transactions.</p>
+            <div className="readiness-list">
+              {data.readiness.advisories.map(item => (
+                <div className="readiness-item" key={item.id}>
+                  <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                  <button className="ghost-button" onClick={() => onNavigate(item.screen)}>{item.action}</button>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {!!data.income_confirmation_candidates.length && (
+          <section className="income-confirmation-card">
+            <div><span className="eyebrow">Likely payroll found</span>
+              <h3>Confirm before Northstar plans with it</h3></div>
+            {data.income_confirmation_candidates.map(candidate => (
+              <div className="readiness-item" key={candidate.source_normalized}>
+                <span><strong>{candidate.source}</strong>
+                  <small>{moneyCents(candidate.monthly_amount)}/month · {candidate.cadence}. {candidate.reason}</small></span>
+                <button type="button" disabled={busy}
+                  onClick={() => void confirmIncome(candidate.source_normalized)}>Confirm payroll</button>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* ── B. The plan itself ─────────────────────────────────── */}
+        <h3 className="insight-section">Your monthly plan</h3>
+        <div className="form-card">
+          <div className="plan-source-row">
+            <div>
+              <span className="eyebrow">{incomeConfirmed ? "Confirmed recurring income" : "Typical monthly income"}</span>
+              <strong>{data.income_basis.months_used ? moneyCents(data.income_basis.amount) : "Not enough history yet"}</strong>
+              <p>{data.income_basis.months_used
+                ? `Estimated from ${data.income_basis.months_used} completed month${data.income_basis.months_used === 1 ? "" : "s"}.`
+                : "Import a full month to estimate this."}
+                {!incomeConfirmed && data.income_basis.months_used ? " Not yet confirmed as recurring." : ""}</p>
+            </div>
+            <div>
+              <span className="eyebrow">Reviewed fixed commitments</span>
+              <strong>{moneyCents(data.fixed_obligations_suggestion)}</strong>
+              <p>{data.fixed_commitments.length} recognized bill{data.fixed_commitments.length === 1 ? "" : "s"} and subscription{data.fixed_commitments.length === 1 ? "" : "s"}.</p>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>Current income baseline
+              <input type="number" min="0" step="0.01" value={form.income} readOnly />
+              <small>{data.income_basis.basis_label}. The same figure Home uses.</small>
+            </label>
+            <label>Fixed monthly commitments
+              <input type="number" min="0" step="0.01" value={form.fixed}
+                onChange={e => setForm({ ...form, fixed: e.target.value })} />
+              <small>Bills and subscriptions you expect to pay.</small>
+            </label>
+            <label>Monthly savings target
+              <input type="number" min="0" step="0.01" value={form.savings}
+                onChange={e => setForm({ ...form, savings: e.target.value })} />
+            </label>
+            <label>Safety buffer
+              <input type="number" min="0" step="0.01" value={form.buffer}
+                onChange={e => setForm({ ...form, buffer: e.target.value })} />
+            </label>
+          </div>
+
+          {equation && (
+            <div className={`plan-equation-card ${equation.coherent ? "" : "equation-error"}`}>
+              <span>{moneyCents(equation.income)} typical income</span><b>−</b>
+              <span>{moneyCents(equation.fixed)} fixed</span><b>−</b>
+              <span>{moneyCents(equation.nonmonthly_reserves)} nonmonthly reserves</span><b>−</b>
+              <span>{moneyCents(equation.savings)} savings</span><b>−</b>
+              <span>{moneyCents(equation.buffer)} buffer</span><b>=</b>
+              <strong>{equation.coherent ? moneyCents(equation.flexible) : "Over plan"} flexible</strong>
+              <p>{equation.explanation}</p>
+            </div>
+          )}
+
+          <section className="summary-grid summary-grid-three">
+            <article className="metric-card metric-primary">
+              <span className="eyebrow">Flexible spending plan</span>
+              <strong>{equation?.coherent ? moneyCents(equation.flexible) : "Not available"}</strong>
+              <p>One monthly number for everyday spending after fixed, reserves, savings, and buffer.</p>
+            </article>
+            <article className="metric-card">
+              <span className="eyebrow">{data.safe_to_spend.available && data.safe_to_spend.reserved.basis === "flow" ? "Estimated left for everyday spending" : "Safe to spend now"}</span>
+              <strong>{data.safe_to_spend.available ? moneyCents(data.safe_to_spend.amount) : "Not ready"}</strong>
+              <p>{data.safe_to_spend.available
+                ? (data.safe_to_spend.reserved.basis === "flow"
+                  ? `Monthly plan ${moneyCents(data.safe_to_spend.reserved.monthly_plan || 0)} minus ${moneyCents(data.safe_to_spend.reserved.flexible_spent || 0)} spent so far. Not balance-checked.`
+                  : `Lower of ${moneyCents(data.safe_to_spend.reserved.flexible_remaining || 0)} flexible room and ${moneyCents(data.safe_to_spend.reserved.cash_cushion_after_bills || 0)} cash cushion after bills.`)
+                : data.safe_to_spend.reason}</p>
+            </article>
+            <article className="metric-card">
+              <span className="eyebrow">Cash cushion after bills</span>
+              <strong>{data.safe_to_spend.available ? moneyCents(data.safe_to_spend.reserved.cash_cushion_after_bills || 0) : "Not ready"}</strong>
+              <p>Cash-backed room after card balances and reservations. Context, not extra spending permission.</p>
+            </article>
+          </section>
+        </div>
+
+        {/* ── C. Review and save ─────────────────────────────────── */}
+        <h3 className="insight-section">Review and save</h3>
+        <article
+          className={`chart-card commitment-review${highlight ? " review-flash" : ""}`}
+          id="commitment-review"
+          ref={reviewRef}
+          tabIndex={-1}
+          aria-label="Commitment review"
+        >
+          <h3>Fixed commitments</h3>
+          {data.saved && drift?.needs_review ? <>
+            <p className="chart-explainer">{drift.reason}</p>
+            <div className="drift-compare">
+              <div><span>Saved in your plan</span><strong>{moneyCents(drift.saved)}</strong></div>
+              <div><span>Reviewed now</span><strong>{moneyCents(drift.detected)}</strong></div>
+              <div><span>Difference</span>
+                <strong className={drift.detected > drift.saved ? "pace-up" : "pace-down"}>
+                  {drift.detected > drift.saved ? "▲" : "▼"} {moneyCents(Math.abs(drift.detected - drift.saved))}
+                </strong></div>
+            </div>
+            {/* A total-level comparison, because the database does not store
+                enough prior state to prove which merchant moved. Claiming an
+                item-level diff would be inventing it. */}
+            <p className="guidance">
+              This compares totals. The recognized bills behind the reviewed
+              figure are listed below.
+            </p>
+            <div className="button-row">
+              <button type="button" onClick={() => setForm({ ...form, fixed: shown(data.fixed_obligations_suggestion), overrideReason: "" })}>
+                Use reviewed commitments
+              </button>
+            </div>
+          </> : (
+            <p className="guidance">
+              {data.saved
+                ? "Your saved plan matches the commitments Northstar has reviewed."
+                : "Nothing saved yet. Confirm the plan below to start tracking against it."}
+            </p>
+          )}
+
+          {overridden && (
+            <label className="stacked-label">Why use a different fixed-cost amount?
+              <input maxLength={160} value={form.overrideReason}
+                onChange={e => setForm({ ...form, overrideReason: e.target.value })}
+                placeholder="Short reason, for example: rent is changing next month" />
+            </label>
+          )}
+          <label className="stacked-label">Note for {monthName} (optional)
+            <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+          </label>
+          <div className="button-row">
+            <button type="button" disabled={busy || !equation?.coherent} onClick={() => void save()}>
+              {busy ? "Saving…" : `Use this plan for ${monthName}`}
+            </button>
+          </div>
+          {saved && <p className="success-text">{saved}</p>}
+        </article>
+
+        <h3 className="insight-section">What you are keeping it for</h3>
+        <MoneyFocusCard refreshToken={refreshToken} />
+
+        {/* ── D. Everything else ─────────────────────────────────── */}
+        <h3 className="insight-section">More detail</h3>
+        <details className="chart-card settings-collapse">
+          <summary>Starting points — {data.modes.find(m => m.value === form.mode)?.label ?? "Everyday"}</summary>
+          <p className="guidance">A quick way to set savings and buffer. Both stay editable above.</p>
+          <div className="preset-row" aria-label="Monthly plan presets">
+            {data.modes.map(m => (
+              <button type="button" key={m.value}
+                className={form.mode === m.value ? "preset-button preset-active" : "preset-button"}
+                onClick={() => void choosePreset(m.value)}>
+                <strong>{m.label}</strong><small>{m.description}</small>
+              </button>
+            ))}
+          </div>
+        </details>
+
+        <details className="chart-card settings-collapse">
+          <summary>Where these numbers come from</summary>
+          {data.income_basis.months?.length ? <>
+            <strong className="detail-heading">Income by month</strong>
+            {data.income_basis.months.map(m => (
+              <div className="source-row" key={m.month}><span>{m.month}</span><strong>{moneyCents(m.income)}</strong></div>
+            ))}
+          </> : null}
+          <strong className="detail-heading">Recognized fixed commitments</strong>
+          {data.fixed_commitments.length ? data.fixed_commitments.map(item => (
+            <div className="source-row" key={`${item.merchant}-${item.category}`}>
+              <span>{item.merchant}<small>{item.kind} · {item.category}{item.is_shared ? ` · ${item.user_share_pct}% share of ${moneyCents(item.household_amount)}` : ""}</small></span>
+              <strong>{moneyCents(item.amount)}/mo</strong>
+            </div>
+          )) : <p className="guidance">No fixed recurring costs are confirmed yet.</p>}
+          {data.readiness.review?.complete && (
+            <p className="guidance">Income and recurring commitments reviewed{data.readiness.review.last_reviewed ? ` on ${data.readiness.review.last_reviewed.slice(0, 10)}` : ""}. <button className="link-button" onClick={() => onNavigate("settings#income-sources")}>Manage</button></p>
+          )}
+        </details>
+
+        {data.nonmonthly_commitments.length > 0 && (
+          <details className="chart-card settings-collapse">
+            <summary>Bills that do not arrive every month — {moneyCents(data.nonmonthly_monthly_reserve)}/mo set aside</summary>
+            <p className="guidance">{moneyCents(data.nonmonthly_annual_total)} a year. Setting aside {moneyCents(data.nonmonthly_monthly_reserve)} each month covers them, so the bill is already paid for when it lands.</p>
+            {data.nonmonthly_commitments.map(item => (
+              <div className="source-row" key={`${item.merchant}-${item.cadence}`}>
+                <span>{item.merchant}<small>{item.note}{item.confidence === "low" ? " · based on only two payments so far" : ""}</small></span>
+                <strong>{moneyCents(item.monthly_setaside)}/mo</strong>
+              </div>
+            ))}
+          </details>
+        )}
+
+        {data.price_changes.length > 0 && (
+          <details className="chart-card settings-collapse">
+            <summary>Prices that changed — {data.price_changes.length}</summary>
+            {data.price_changes.map(change => (
+              <div className="source-row" key={change.merchant}>
+                <span>{change.merchant}<small>{moneyCents(change.previous_amount)} to {moneyCents(change.current_amount)} in {change.changed_on.slice(0, 7)}</small></span>
+                <strong>{change.annual_impact > 0 ? "+" : ""}{moneyCents(change.annual_impact)}/yr</strong>
+              </div>
+            ))}
+          </details>
+        )}
+
+        <details className="chart-card settings-collapse">
+          <summary>Planned next 90 days</summary>
+          <p className="guidance">Planning targets from the values above, not predicted account balances.</p>
+          <div className="outlook-grid">
+            {data.outlook.map(row => (
+              <article className="outlook-card" key={row.month}>
+                <h3>{row.label}</h3>
+                <dl>
+                  <div><dt>Typical income</dt><dd>{moneyCents(row.stable_income)}</dd></div>
+                  <div><dt>Fixed commitments</dt><dd>{moneyCents(row.fixed)}</dd></div>
+                  <div><dt>Planned savings</dt><dd>{moneyCents(row.savings)}</dd></div>
+                  <div><dt>Safety buffer</dt><dd>{moneyCents(row.buffer)}</dd></div>
+                  <div className="outlook-flex"><dt>Flexible room</dt><dd>{moneyCents(row.flexible)}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        </details>
+      </>}
+    </section>
+  );
+}
+export default PlanView;

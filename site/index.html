@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar Ledger - private, local financial clarity</title>
+    <meta
+      name="description"
+      content="A local-first Windows finance app for importing statements, checking spending, planning the month, and tracking net worth without an account or cloud sync."
+    />
+    <link rel="canonical" href="https://benthompsondev.github.io/ledger-local-finance/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Northstar Ledger" />
+    <meta property="og:title" content="Northstar Ledger - your statements, your computer, useful answers" />
+    <meta
+      property="og:description"
+      content="Import bank statements, understand where the money went, and plan the month. Finance calculations stay on your Windows PC."
+    />
+    <meta property="og:url" content="https://benthompsondev.github.io/ledger-local-finance/" />
+    <meta property="og:image" content="https://benthompsondev.github.io/ledger-local-finance/assets/northstar-hero.png" />
+    <meta property="og:image:alt" content="Northstar Ledger logo and the words Private, local financial clarity" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#07120f" />
+    <link rel="icon" href="assets/icon.png" type="image/png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Northstar Ledger home">
+        <img src="assets/icon.png" alt="" width="42" height="42" />
+        <span>Northstar <strong>Ledger</strong></span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="#tour">Product tour</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#build">How it works</a>
+        <a href="https://github.com/benthompsondev/ledger-local-finance">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Windows public beta</p>
+          <h1>Your statements. Your computer. Useful answers.</h1>
+          <p class="lede">
+            Northstar Ledger imports bank and credit-card statements, checks the
+            numbers locally, and turns them into a practical monthly check-in.
+            No account, no subscription, and no finance-data server.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/benthompsondev/ledger-local-finance/releases/latest">
+              Download for Windows
+            </a>
+            <a class="button secondary" href="#tour">Take the product tour</a>
+          </div>
+          <p class="fine-print">
+            The installer is currently unsigned, so Windows SmartScreen may warn you.
+            The download page includes its SHA-256 checksum.
+          </p>
+        </div>
+        <div class="hero-visual">
+          <img src="assets/home.png" alt="Northstar Ledger Home screen using fully synthetic demo data" />
+          <span class="demo-label">Synthetic demo data</span>
+        </div>
+      </section>
+
+      <section class="proof-strip" aria-label="Project facts">
+        <div><strong>Local SQLite</strong><span>Your database stays on your PC</span></div>
+        <div><strong>1,000+ tests</strong><span>Finance, import, UI-contract, and safety checks</span></div>
+        <div><strong>Fail-closed imports</strong><span>Ambiguous dates or amounts are refused</span></div>
+        <div><strong>Optional AI</strong><span>Beta, read-only, and off by default</span></div>
+      </section>
+
+      <section class="section" id="tour">
+        <div class="section-heading">
+          <p class="eyebrow">Product tour</p>
+          <h2>See what the desktop app actually does</h2>
+          <p>
+            This page is a tour, not a browser copy of the finance engine. The real
+            application is the Windows download and every screenshot below uses
+            generated demo transactions.
+          </p>
+        </div>
+
+        <div class="tour-tabs" role="tablist" aria-label="Northstar screens">
+          <button id="tour-home" role="tab" aria-selected="true" aria-controls="tour-panel" tabindex="0" data-tour="home">Home</button>
+          <button id="tour-plan" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-tour="plan">Plan</button>
+          <button id="tour-insights" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-tour="insights">Insights</button>
+        </div>
+
+        <article class="tour-panel" id="tour-panel" role="tabpanel" aria-labelledby="tour-home">
+          <div>
+            <p class="eyebrow" id="tour-kicker">A useful weekly check-in</p>
+            <h3 id="tour-title">Start with what changed, not a wall of charts</h3>
+            <p id="tour-copy">
+              Home shows money in, spending, what you kept, same-day comparisons,
+              and the next decisions that can improve the numbers.
+            </p>
+            <ul id="tour-points">
+              <li>Equal-period spending comparisons</li>
+              <li>One balance-checked Safe to Spend number</li>
+              <li>Plain-language findings from local calculations</li>
+            </ul>
+          </div>
+          <img id="tour-image" src="assets/home.png" alt="Northstar Ledger Home screen using synthetic data" />
+        </article>
+      </section>
+
+      <section class="section feature-grid">
+        <article>
+          <span class="number">01</span>
+          <h3>Import without hiding the risky part</h3>
+          <p>
+            Northstar detects a statement's columns, date format, and amount
+            convention once. If the evidence conflicts, the import stops instead
+            of guessing and quietly corrupting the ledger.
+          </p>
+        </article>
+        <article>
+          <span class="number">02</span>
+          <h3>Separate cash flow from transaction signs</h3>
+          <p>
+            Positive means money entered that account. Negative means money left.
+            Transfers and card payments keep their signs without becoming fake
+            income or spending.
+          </p>
+        </article>
+        <article>
+          <span class="number">03</span>
+          <h3>Plan with bills that land at different times</h3>
+          <p>
+            Monthly bills, quarterly costs, annual renewals, savings, and a safety
+            buffer share one equation. Forecasts qualify missing or stale data
+            instead of pretending every month is complete.
+          </p>
+        </article>
+        <article>
+          <span class="number">04</span>
+          <h3>Track net worth from readings you entered</h3>
+          <p>
+            Cash, investments, other assets, and debt are recorded month by month.
+            The chart never fills gaps or invents a balance from spending activity.
+          </p>
+        </article>
+      </section>
+
+      <section class="section split" id="privacy">
+        <div>
+          <p class="eyebrow">Privacy boundary</p>
+          <h2>Local-first is a design rule, not a badge</h2>
+          <p>
+            Statement parsing, categorization, planning, charts, backups, and the
+            SQLite database all run on your computer. There is no Northstar account,
+            telemetry service, or background financial-data sync.
+          </p>
+          <p>
+            Optional AI is different and the app says so plainly. If you enable an
+            online provider, only the evidence packet for the question you asked is
+            sent to that provider. AI is read-only and cannot change the ledger.
+          </p>
+          <a class="text-link" href="https://github.com/benthompsondev/ledger-local-finance/blob/main/SECURITY.md">
+            Read the full security and privacy notes
+          </a>
+        </div>
+        <div class="boundary-card">
+          <h3>Stays local</h3>
+          <ul>
+            <li>Statement files and SQLite database</li>
+            <li>All finance calculations and charts</li>
+            <li>Backups, rules, plans, and preferences</li>
+          </ul>
+          <h3>Leaves only when you ask</h3>
+          <ul>
+            <li>An optional AI evidence packet</li>
+            <li>Only to the provider you configured</li>
+            <li>Never with write access to your data</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="build">
+        <div class="section-heading">
+          <p class="eyebrow">How it works</p>
+          <h2>Three layers, one source of financial truth</h2>
+        </div>
+        <div class="architecture">
+          <div><strong>React + TypeScript</strong><span>Native desktop interface and charts</span></div>
+          <span class="arrow" aria-hidden="true">→</span>
+          <div><strong>Python engine</strong><span>Imports, semantics, planning, and insights</span></div>
+          <span class="arrow" aria-hidden="true">→</span>
+          <div><strong>SQLite</strong><span>Local transactions, settings, and backups</span></div>
+        </div>
+        <p class="architecture-note">
+          A small Rust/Tauri shell packages the app for Windows and talks to the
+          Python engine over stdin and stdout. There is no browser tab or localhost server.
+        </p>
+      </section>
+
+      <section class="section honest">
+        <div>
+          <p class="eyebrow">Public beta</p>
+          <h2>What is still rough</h2>
+        </div>
+        <ul>
+          <li>The Windows installer is unsigned.</li>
+          <li>Updates are manual downloads for now.</li>
+          <li>Bank exports vary, so an unfamiliar CSV may need mapping or may be refused.</li>
+          <li>AI provider support is Beta and is not required for any finance feature.</li>
+          <li>Your bank statement remains the final source of truth.</li>
+        </ul>
+      </section>
+
+      <section class="cta">
+        <img src="assets/icon.png" alt="" width="72" height="72" />
+        <div>
+          <h2>Try it with demo data before importing anything real.</h2>
+          <p>The source, installer, checksum, setup guide, and known limits are all public.</p>
+        </div>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/benthompsondev/ledger-local-finance/releases/latest">Download Northstar</a>
+          <a class="button secondary" href="https://github.com/benthompsondev/ledger-local-finance">Read the source</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Built by <a href="https://github.com/benthompsondev">Ben Thompson</a>.</span>
+      <span>MIT licensed. No analytics or tracking on this page.</span>
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>

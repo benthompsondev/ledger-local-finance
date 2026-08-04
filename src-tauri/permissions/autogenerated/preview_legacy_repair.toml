@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-legacy-repair"
+description = "Enables the preview_legacy_repair command without any pre-configured scope."
+commands.allow = ["preview_legacy_repair"]
+
+[[permission]]
+identifier = "deny-preview-legacy-repair"
+description = "Denies the preview_legacy_repair command without any pre-configured scope."
+commands.deny = ["preview_legacy_repair"]

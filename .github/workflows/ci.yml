@@ -1,51 +1,120 @@
-name: Ledger validation
+name: Northstar Ledger validation
+
+# The shipping product is the native Tauri desktop app: a Rust shell around a
+# React frontend talking to a packaged Python engine. This workflow validates
+# all three, plus the privacy guard on tracked files. It previously compiled
+# the retired Streamlit app and ran a smoke script, which left the real test
+# suite, the frontend build and the native shell unverified.
 
 on:
   push:
   pull_request:
 
 jobs:
-  validate:
+  python:
+    name: Python engine
     runs-on: windows-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          # scripts/build_native_desktop.ps1 bundles the engine from the local
+          # .venv, so this is the interpreter that actually ships inside the
+          # installer. Testing a version the product never runs on only
+          # invents failures nobody can act on.
+          python-version: "3.14"
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
 
-      - name: Compile Python files
-        shell: pwsh
-        run: |
-          $env:PYTHONIOENCODING = "utf-8"
-          python -m compileall -q app.py pages utils parsers scripts components
+      - name: Refuse private artifacts in the tree
+        run: python -m scripts.check_tracked_files
 
-      - name: Run local readiness check
+      - name: Run the full test suite
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m pytest -q
+
+      - name: Local readiness check
         run: python -m scripts.doctor
 
-      - name: Check tracked files for private artifacts
+  frontend:
+    name: React frontend
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          # The chart and preference tests import their TypeScript modules
+          # directly, so the runtime has to strip types on its own. Node 20
+          # cannot, and refuses the .ts extension. Node 22.6 added stripping
+          # behind a flag and 23.6 turned it on, so 24 is the first version
+          # that runs these tests the same way local development does.
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Chart and preference tests
+        run: npm run test:charts
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+  native:
+    name: Tauri shell
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # generate_context! reads tauri.conf.json at compile time and resolves
+      # frontendDist, so the Rust will not compile until the frontend has been
+      # built. This is the same order a real build runs in.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Build the frontend the shell embeds
+        run: |
+          npm ci
+          npm run build
+
+      # tauri-build resolves the bundle resources before the crate compiles,
+      # and one of them is the packaged Python engine that
+      # scripts/build_native_desktop.ps1 produces with PyInstaller. Building
+      # it here would cost several minutes to prove nothing about the Rust,
+      # so this stands in a placeholder with the same path. These two steps
+      # check that the shell compiles and its tests pass, not that a real
+      # bundle is correct; the installer build is what validates that.
+      - name: Stand in for the packaged engine
         shell: pwsh
         run: |
-          $tracked = git ls-files
-          $forbidden = $tracked | Select-String -Pattern '(^|/)config\.json$|(^|/)finance.*\.db($|-)|launcher\.log|CLAUDE_HANDOFF|\.zip$|\.pdf$|\.env$'
-          if ($forbidden) {
-            $forbidden
-            throw "Private artifact path tracked in git."
-          }
+          $dir = "build/native-sidecar-dir/ledger-engine"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Set-Content -Path "$dir/PLACEHOLDER.txt" `
+            -Value "Placeholder for CI. The real engine is built by scripts/build_native_desktop.ps1."
 
-      - name: Run smoke suite
-        run: python -m scripts.smoke_test
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check
 
-      - name: Export read-only OpenClaw context
-        run: python -m scripts.export_openclaw_context
-
-      - name: Build privacy-safe share zip
-        run: python -m scripts.make_share_zip
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test

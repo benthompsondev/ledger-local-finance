@@ -5,7 +5,7 @@ Pass 30 copy: "Drilldown" renamed to "Merchant history" everywhere user-facing.
 """
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from utils.database import (
     init_db, get_connection, update_transaction, get_watch_list, add_to_watch_list,
@@ -118,7 +118,18 @@ with st.expander("Filters", expanded=False):
     all_cats   = ["All"] + sorted(CATEGORIES)
     cat_default_idx = all_cats.index(default_cat) if default_cat in all_cats else 0
     cat_filter = f3.selectbox("Category", all_cats, index=cat_default_idx)
-    acc_filter = f4.selectbox("Account",  ["All", "chequing", "mastercard", "csv"])
+    # Real accounts, not raw type strings. Falls back gracefully when
+    # a database has no accounts yet.
+    from utils.database import list_accounts as _list_accts
+    _accts = _list_accts(conn=conn, include_archived=True)
+    _acct_by_id = {a["id"]: a for a in _accts}
+    acc_filter = f4.selectbox(
+        "Account", ["All"] + [a["id"] for a in _accts],
+        format_func=lambda v: ("All" if v == "All" else
+                               _acct_by_id[v]["name"]
+                               + (" (archived)"
+                                  if _acct_by_id[v].get("is_archived")
+                                  else "")))
     dir_filter = f5.selectbox("Direction", ["All", "debit", "credit", "transfer", "payment", "cancelled"])
 
     show_transfers = st.checkbox(
@@ -147,8 +158,8 @@ if cat_filter != "All":
     params.append(cat_filter)
 
 if acc_filter != "All":
-    conditions.append("account_type = ?")
-    params.append(acc_filter)
+    conditions.append("account_ref = ?")
+    params.append(int(acc_filter))
 
 if dir_filter != "All":
     conditions.append("direction = ?")
@@ -178,7 +189,11 @@ elif quick_choice == "cash_advance":
 
 where = "WHERE " + " AND ".join(conditions)
 rows = conn.execute(
-    f"SELECT * FROM transactions {where} ORDER BY transaction_date DESC",
+    f"SELECT transactions.*, "
+    f"COALESCE(accounts.name, transactions.account_type) AS account_name "
+    f"FROM transactions "
+    f"LEFT JOIN accounts ON accounts.id = transactions.account_ref "
+    f"{where} ORDER BY transaction_date DESC",
     params,
 ).fetchall()
 df = pd.DataFrame([dict(r) for r in rows])
@@ -284,8 +299,10 @@ if not df.empty:
 
     # Display table
     display_cols = [
-        "id", "transaction_date", "merchant", "category", "direction",
-        "amount", "currency", "is_flagged", "flag_reason", "parse_confidence", "raw_description"
+        "id", "transaction_date", "account_name", "merchant", "category",
+        "direction", "amount", "currency", "category_source",
+        "category_explanation", "is_flagged", "flag_reason",
+        "parse_confidence", "raw_description"
     ]
     display_cols = [c for c in display_cols if c in df.columns]
     disp = df[display_cols].copy()
@@ -369,7 +386,16 @@ if not df.empty:
         new_note = st.text_input("Notes")
         clear_flag = st.checkbox("Clear flag")
         if st.form_submit_button("Save"):
-            upd = {"category": new_cat, "notes": new_note}
+            _now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            upd = {
+                "category": new_cat,
+                "notes": new_note,
+                "category_source": "user_edit",
+                "category_rule_id": None,
+                "category_explanation": "Category chosen manually by the user.",
+                "category_updated_at": _now,
+                "manually_edited_at": _now,
+            }
             if clear_flag:
                 upd["is_flagged"]  = 0
                 upd["flag_reason"] = ""

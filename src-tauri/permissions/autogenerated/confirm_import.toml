@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-confirm-import"
+description = "Enables the confirm_import command without any pre-configured scope."
+commands.allow = ["confirm_import"]
+
+[[permission]]
+identifier = "deny-confirm-import"
+description = "Denies the confirm_import command without any pre-configured scope."
+commands.deny = ["confirm_import"]

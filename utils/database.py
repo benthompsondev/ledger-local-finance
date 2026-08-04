@@ -14,11 +14,24 @@ import os
 import sqlite3
 import hashlib
 import json
-from pathlib import Path
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
+from utils.platform_utils import get_data_dir
 
-_DATA_DIR    = Path(__file__).parent.parent / "data"
+
+# One-time, data-safe refresh for imports created with the signed financial
+# semantics contract but before the current high-confidence merchant rules.
+# Deliberate user edits and saved-rule results are never rewritten.
+_BUILTIN_CATEGORIZATION_MIGRATION = "builtin-categorization-0.9.0"
+_INVESTMENT_SEMANTICS_MIGRATION = "investment-semantics-0.7.0"
+# Goals was retired from native navigation and Money Focus replaced it,
+# but active legacy goal rows kept reserving money out of Safe to Spend
+# with no screen left to see or stop them. Their influence is switched
+# off once; the rows themselves are preserved.
+_LEGACY_GOALS_MIGRATION = "legacy_goals_excluded_from_plan_v1"
+
+_DATA_DIR    = get_data_dir()
 _REAL_DB     = _DATA_DIR / "finance.db"
 _DEMO_DB     = _DATA_DIR / "finance.demo.db"
 
@@ -47,8 +60,12 @@ DB_PATH = _DEMO_DB if is_demo_mode() else _REAL_DB
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    # Native screens use short-lived sidecar processes. A second request can
+    # arrive while the first is finishing schema setup, so wait for brief
+    # SQLite locks before negotiating WAL instead of failing immediately.
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -57,6 +74,13 @@ def get_connection() -> sqlite3.Connection:
 def init_db():
     """Create all tables if they don't exist."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if _schema_requires_migration(DB_PATH):
+        # Import lazily to keep the database layer usable by the backup module.
+        # The backup happens before CREATE/ALTER statements touch the file.
+        from utils.backups import create_backup
+        create_backup(
+            reason="pre-migration", db_path=DB_PATH, allow_legacy=True
+        )
     with get_connection() as conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS transactions (
@@ -67,6 +91,7 @@ def init_db():
             posted_date         TEXT,
             raw_description     TEXT NOT NULL,
             merchant            TEXT,
+            merchant_normalized TEXT,
             amount              REAL NOT NULL,
             currency            TEXT DEFAULT 'CAD',
             foreign_amount      REAL,
@@ -74,16 +99,27 @@ def init_db():
             fx_rate             REAL,
             category            TEXT,
             subcategory         TEXT,
+            category_source     TEXT DEFAULT 'unknown',
+            category_rule_id    INTEGER,
+            category_explanation TEXT,
+            category_updated_at TEXT,
+            manually_edited_at  TEXT,
             direction           TEXT NOT NULL,
+            transaction_type    TEXT,
             is_transfer         INTEGER DEFAULT 0,
             is_flagged          INTEGER DEFAULT 0,
             flag_reason         TEXT,
             parse_confidence    TEXT DEFAULT 'high',
             reward_points       REAL,
             statement_period    TEXT,
+            statement_memo      TEXT,
+            statement_category  TEXT,
+            statement_subcategory TEXT,
             import_batch_id     INTEGER,
             dedup_hash          TEXT UNIQUE,
             notes               TEXT,
+            shared_expense_override INTEGER,
+            shared_user_share_pct REAL,
             created_at          TEXT DEFAULT (datetime('now'))
         );
 
@@ -136,7 +172,21 @@ def init_db():
             rows_skipped    INTEGER DEFAULT 0,
             rows_flagged    INTEGER DEFAULT 0,
             errors          TEXT,
+            semantics_version INTEGER DEFAULT 2,
             imported_at     TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS data_repair_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            repair_kind         TEXT NOT NULL,
+            backup_path         TEXT NOT NULL,
+            batches_affected    INTEGER DEFAULT 0,
+            rows_affected       INTEGER DEFAULT 0,
+            manual_rows_kept    INTEGER DEFAULT 0,
+            review_before       INTEGER DEFAULT 0,
+            review_after        INTEGER DEFAULT 0,
+            details_json        TEXT DEFAULT '{}',
+            completed_at        TEXT DEFAULT (datetime('now','localtime'))
         );
 
         -- v2.0 new tables --------------------------------------------------
@@ -197,11 +247,70 @@ def init_db():
             category            TEXT NOT NULL,
             subcategory         TEXT,
             source              TEXT DEFAULT 'user',
+            enabled             INTEGER DEFAULT 1,
+            example_description TEXT,
+            source_transaction_id INTEGER,
+            source_import_batch_id INTEGER,
             hit_count           INTEGER DEFAULT 0,
             last_used_at        TEXT,
-            created_at          TEXT DEFAULT (datetime('now'))
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_learned_merchant ON learned_rules(merchant_normalized);
+
+        CREATE TABLE IF NOT EXISTS recurring_preferences (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            merchant_normalized TEXT NOT NULL UNIQUE,
+            status              TEXT NOT NULL CHECK(status IN ('recurring','not_recurring')),
+            display_name        TEXT,
+            category            TEXT,
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS income_source_preferences (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_normalized   TEXT NOT NULL UNIQUE,
+            status              TEXT NOT NULL CHECK(status IN ('confirmed','excluded')),
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS shared_expense_settings (
+            id                      INTEGER PRIMARY KEY CHECK(id=1),
+            shared_with_name        TEXT DEFAULT '',
+            default_user_share_pct  REAL NOT NULL DEFAULT 50,
+            partner_matcher         TEXT DEFAULT '',
+            updated_at              TEXT DEFAULT (datetime('now','localtime'))
+        );
+        INSERT OR IGNORE INTO shared_expense_settings
+            (id,shared_with_name,default_user_share_pct,partner_matcher)
+        VALUES (1,'',50,'');
+
+        CREATE TABLE IF NOT EXISTS shared_expense_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope_type      TEXT NOT NULL CHECK(scope_type IN ('merchant','recurring','category')),
+            scope_value     TEXT NOT NULL,
+            user_share_pct  REAL NOT NULL,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(scope_type,scope_value)
+        );
+
+        CREATE TABLE IF NOT EXISTS net_worth_estimates (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            total_assets        REAL NOT NULL DEFAULT 0,
+            total_liabilities   REAL NOT NULL DEFAULT 0,
+            as_of_date          TEXT NOT NULL,
+            created_at          TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS category_change_undo (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            payload_json TEXT NOT NULL,
+            changed_at  TEXT DEFAULT (datetime('now'))
+        );
 
         -- ── Pass 19: investment snapshots + net worth tracking ──────────
         --
@@ -263,6 +372,7 @@ def init_db():
         -- can chart net worth without overwriting prior data.
         CREATE TABLE IF NOT EXISTS account_balances (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_ref INTEGER,
             account_name TEXT NOT NULL,
             account_kind TEXT NOT NULL,   -- cash|chequing|savings|credit_card|loan|mortgage|other_asset|other_liability
             balance     REAL NOT NULL,
@@ -273,6 +383,22 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_acct_bal_date
             ON account_balances(as_of_date);
+
+        -- The canonical net worth record: one reading per month, entered by
+        -- hand. Created here rather than lazily by utils/net_worth.py so it
+        -- is a first-class table, which is what lets reset_preview count it
+        -- and reset_all_financial_data clear it. See utils/net_worth.py for
+        -- why net worth is measured rather than projected.
+        CREATE TABLE IF NOT EXISTS net_worth_entries (
+            month        TEXT PRIMARY KEY,
+            cash         REAL NOT NULL DEFAULT 0,
+            investments  REAL NOT NULL DEFAULT 0,
+            other_assets REAL NOT NULL DEFAULT 0,
+            liabilities  REAL NOT NULL DEFAULT 0,
+            note         TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (datetime('now','localtime')),
+            updated_at   TEXT DEFAULT (datetime('now','localtime'))
+        );
 
         -- Computed/manual net worth snapshots. Each row represents one
         -- "as-of" net worth reading. Source breakdown is JSON for
@@ -348,6 +474,11 @@ def init_db():
             income_target       REAL,
             spending_target     REAL,
             savings_target      REAL,
+            fixed_obligations   REAL DEFAULT 0,
+            flexible_allowance  REAL DEFAULT 0,
+            safety_buffer       REAL DEFAULT 0,
+            detected_commitments_at_save REAL,
+            fixed_override_reason TEXT,
             net_worth_target    REAL,
             notes               TEXT,
             created_at          TEXT DEFAULT (datetime('now')),
@@ -381,10 +512,75 @@ def init_db():
             status              TEXT DEFAULT 'active',  -- active|paused|done|abandoned
             notes               TEXT,
             linked_metric       TEXT,    -- 'net_worth'|'investments'|'cash_balance'|null  (auto-update source)
+            progress_method     TEXT DEFAULT 'manual', -- manual|linked_account|legacy_metric
+            linked_account_ref  INTEGER,
+            planned_monthly_contribution REAL DEFAULT 0,
+            contribution_frequency TEXT DEFAULT 'monthly',
+            include_in_plan     INTEGER DEFAULT 1,
+            show_milestones     INTEGER DEFAULT 1,
+            currency            TEXT DEFAULT 'CAD',
+            completed_at        TEXT,
             created_at          TEXT DEFAULT (datetime('now')),
-            updated_at          TEXT DEFAULT (datetime('now'))
+            updated_at          TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (linked_account_ref) REFERENCES accounts(id)
         );
         CREATE INDEX IF NOT EXISTS idx_goal_status ON goal_targets(status);
+
+        -- Weekly check-in history (Home page). One row per completed
+        -- review. Local-only, like everything else in this database.
+        CREATE TABLE IF NOT EXISTS review_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            completed_at        TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            planning_period     TEXT,     -- 'YYYY-MM' the review covered
+            data_through        TEXT,     -- latest transaction date at completion
+            safe_to_spend       REAL,     -- canonical value at completion
+            primary_action      TEXT,     -- acknowledged primary action title
+            notes               TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_review_log_completed
+            ON review_log(completed_at);
+
+        -- First-class accounts. `type` reuses the account_kind
+        -- vocabulary already used by manual Net Worth balances.
+        -- is_migrated marks accounts created by the legacy backfill;
+        -- they participate in the legacy dedup-hash bridge.
+        CREATE TABLE IF NOT EXISTS accounts (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                 TEXT NOT NULL,
+            type                 TEXT NOT NULL,
+            institution          TEXT,
+            currency             TEXT DEFAULT 'CAD',
+            is_archived          INTEGER DEFAULT 0,
+            opening_balance      REAL DEFAULT 0,
+            opening_balance_date TEXT,
+            available_for_spending INTEGER,
+            is_migrated          INTEGER DEFAULT 0,
+            created_at           TEXT DEFAULT (datetime('now','localtime')),
+            updated_at           TEXT DEFAULT (datetime('now','localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_accounts_archived
+            ON accounts(is_archived);
+
+        -- Reusable CSV import profiles: a column mapping that worked
+        -- once, keyed by the file's header signature so future files
+        -- from the same bank map automatically. Additive; local-only.
+        CREATE TABLE IF NOT EXISTS import_profiles (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT NOT NULL,
+            header_signature    TEXT NOT NULL UNIQUE,
+            mapping_json        TEXT NOT NULL,
+            headers_json        TEXT,
+            created_at          TEXT DEFAULT (datetime('now','localtime')),
+            updated_at          TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS app_migrations (
+            migration_key       TEXT PRIMARY KEY,
+            applied_at          TEXT DEFAULT (datetime('now','localtime')),
+            rows_scanned        INTEGER DEFAULT 0,
+            rows_changed        INTEGER DEFAULT 0,
+            details_json        TEXT
+        );
         """)
 
         # Seed default score weights row if empty.
@@ -421,18 +617,51 @@ def init_db():
                     )
                     conn.commit()
 
-        # ── v7 migrations: AI categorization metadata on transactions ─────
+        # ── v7 migrations: AI + categorization metadata ────────────
+        # Keep this slice atomic. ALTER TABLE is transactional in SQLite when
+        # it runs inside an explicit savepoint, so a failed index or backfill
+        # cannot leave an existing finance database half-upgraded.
+        _migrate_categorization_schema(conn)
+
+        # Financial semantics are additive. Existing rows are not silently
+        # rewritten; analytics derives a safe legacy fallback when this is NULL.
         _ensure_columns(conn, "transactions", [
-            ("ai_suggested_category",    "TEXT"),
-            ("ai_suggested_subcategory", "TEXT"),
-            ("ai_confidence",            "REAL"),
-            ("ai_provider",              "TEXT"),
-            ("ai_model",                 "TEXT"),
-            ("ai_rationale",             "TEXT"),
-            ("ai_suggested_at",          "TEXT"),
-            # NULL = pending, 1 = accepted, 0 = rejected. User-driven only.
-            ("ai_accepted",              "INTEGER"),
+            ("transaction_type", "TEXT"),
+            ("shared_expense_override", "INTEGER"),
+            ("shared_user_share_pct", "REAL"),
         ])
+        _ensure_columns(conn, "import_log", [
+            # Existing rows predate the signed-amount contract. New imports
+            # explicitly write version 2 in persist_import_batch().
+            ("semantics_version", "INTEGER DEFAULT 1"),
+        ])
+        _ensure_columns(conn, "account_balances", [
+            ("account_ref", "INTEGER"),
+        ])
+        _ensure_columns(conn, "recurring_preferences", [
+            ("display_name", "TEXT"),
+            ("category", "TEXT"),
+        ])
+        _migrate_etransfer_cashflow_semantics(conn)
+        _migrate_investment_semantics_070(conn)
+        _migrate_builtin_categorization(conn)
+        _ensure_columns(conn, "import_profiles", [
+            ("account_type", "TEXT"),
+            ("amount_convention", "TEXT"),
+            ("profile_version", "INTEGER DEFAULT 2"),
+        ])
+
+        # ── v8 migration: first-class accounts ─────────────────────
+        _migrate_accounts_schema(conn)
+
+        # ── v9 migration: purposeful goals + contribution tracking ─
+        _migrate_goals_schema(conn)
+        # After the goal schema, because it reads include_in_plan and
+        # that column is added just above on an upgrading database.
+        _migrate_retire_legacy_goal_reservations(conn)
+
+        # ── v10 migration: native monthly-plan inputs ──────────────
+        _migrate_monthly_plan_schema(conn)
 
         # ── Pass 15 migration: ensure recommendations_log.rec_key is UNIQUE ──
         # `set_rec_state` uses `INSERT … ON CONFLICT(rec_key) DO UPDATE`, which
@@ -455,6 +684,317 @@ def _ensure_columns(conn, table: str, columns: list[tuple[str, str]]):
     for name, coltype in columns:
         if name not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}")
+
+
+def _migrate_etransfer_cashflow_semantics(conn) -> None:
+    """Repair rows imported under the old blanket e-transfer exclusion.
+
+    Only the legacy ``personal_transfer`` type is touched. A user who already
+    marked a row as ``Internal Transfer`` therefore keeps that explicit choice.
+    """
+    conn.execute("""
+        UPDATE transactions
+        SET transaction_type='other_income', category='Income', subcategory='',
+            category_source='semantics_migration', is_transfer=0,
+            parse_confidence='high', is_flagged=0, flag_reason=''
+        WHERE transaction_type='personal_transfer'
+          AND UPPER(COALESCE(raw_description,'')) LIKE '%INTERAC E-TRANSFER%'
+          AND direction='credit'
+          AND COALESCE(category,'') NOT IN ('Transfer','Internal Transfer','Savings')
+    """)
+    conn.execute("""
+        UPDATE transactions
+        SET transaction_type='spending',
+            category=CASE WHEN category='Transfer Out' THEN 'Uncategorized'
+                          ELSE category END,
+            subcategory=CASE WHEN category='Transfer Out' THEN ''
+                             ELSE subcategory END,
+            category_source='semantics_migration', is_transfer=0,
+            parse_confidence='medium', is_flagged=0, flag_reason=''
+        WHERE transaction_type='personal_transfer'
+          AND UPPER(COALESCE(raw_description,'')) LIKE '%INTERAC E-TRANSFER%'
+          AND direction='debit'
+          AND COALESCE(category,'') NOT IN ('Transfer','Internal Transfer','Savings')
+    """)
+
+
+def _migrate_investment_semantics_070(conn) -> None:
+    """Exclude recognized broker movements that older imports called income."""
+    applied = conn.execute(
+        "SELECT 1 FROM app_migrations WHERE migration_key=?",
+        (_INVESTMENT_SEMANTICS_MIGRATION,),
+    ).fetchone()
+    if applied:
+        return
+    before = conn.total_changes
+    conn.execute(
+        """
+        UPDATE transactions
+        SET transaction_type='investment_transfer', category='Investments',
+            subcategory='Investment transfer', category_source='protected',
+            category_explanation='Recognized broker movement; excluded from cash flow.',
+            is_transfer=1, is_flagged=0, flag_reason='',
+            category_updated_at=datetime('now','localtime')
+        WHERE transaction_type='employment_income'
+          AND manually_edited_at IS NULL
+          AND COALESCE(category_source,'') NOT IN ('user_edit','user_bulk','user_rule','user')
+          AND (
+            UPPER(COALESCE(raw_description,'')) LIKE '%QUESTRADE%'
+            OR UPPER(COALESCE(merchant,'')) LIKE '%QUESTRADE%'
+            OR UPPER(COALESCE(raw_description,'')) LIKE '%WEALTHSIMPLE%'
+            OR UPPER(COALESCE(merchant,'')) LIKE '%WEALTHSIMPLE%'
+          )
+        """
+    )
+    changed = conn.total_changes - before
+    conn.execute(
+        "INSERT INTO app_migrations "
+        "(migration_key,rows_scanned,rows_changed,details_json) VALUES (?,?,?,?)",
+        (_INVESTMENT_SEMANTICS_MIGRATION, changed, changed, json.dumps({
+            "scope": "unmodified imported broker deposits",
+            "preserves_source_sign": True,
+        })),
+    )
+def _migrate_retire_legacy_goal_reservations(conn) -> None:
+    """Stop retired Goals reserving money nobody can see.
+
+    Goals is gone from native navigation and Money Focus replaced it, but
+    `goal_plan_summary` still read every active goal whose include_in_plan
+    was 1 — the column default. A goal carried over from the Streamlit era
+    therefore kept taking money out of Safe to Spend and the cash cushion,
+    and there was no screen left on which to inspect, pause or remove it. A
+    visible $800 savings target with two forgotten $600 and $500
+    allocations behind it reserved $1,100.
+
+    The rows are kept. Deleting someone's saved goals to fix a reservation
+    bug is a worse trade than the bug, and the data is worth having if
+    Goals ever returns as a supported screen. Only the influence is
+    switched off.
+
+    One-time, so a goal created deliberately after this point is left
+    alone.
+    """
+    applied = conn.execute(
+        "SELECT 1 FROM app_migrations WHERE migration_key=?",
+        (_LEGACY_GOALS_MIGRATION,),
+    ).fetchone()
+    if applied:
+        return
+    before = conn.total_changes
+    conn.execute(
+        "UPDATE goal_targets SET include_in_plan=0 "
+        "WHERE COALESCE(include_in_plan, 1) != 0"
+    )
+    changed = conn.total_changes - before
+    conn.execute(
+        "INSERT INTO app_migrations "
+        "(migration_key,rows_scanned,rows_changed,details_json) VALUES (?,?,?,?)",
+        (_LEGACY_GOALS_MIGRATION, changed, changed, json.dumps({
+            "reason": "Goals is not reachable in the native app; Money Focus "
+                      "replaced it. Rows are preserved, influence removed.",
+            "rows_deleted": 0,
+        })),
+    )
+
+
+def _migrate_builtin_categorization(conn) -> None:
+    """Apply current safe rules once to signed-contract imported rows.
+
+    Earlier releases correctly repaired signs and cash-flow semantics but did
+    not revisit built-in merchant categories after those rules improved. That
+    left upgraded databases with rows such as a recognized mortgage still
+    stored as Uncategorized. Re-enrichment is limited to semantics v2 import
+    batches and skips every deliberate user provenance marker.
+    """
+    applied = conn.execute(
+        "SELECT 1 FROM app_migrations WHERE migration_key=?",
+        (_BUILTIN_CATEGORIZATION_MIGRATION,),
+    ).fetchone()
+    if applied:
+        return
+
+    from utils.categorizer import enrich_transaction
+    from utils.financial_semantics import consolidate_material_review
+
+    rows = conn.execute(
+        """
+        SELECT transactions.*
+        FROM transactions
+        JOIN import_log ON import_log.id=transactions.import_batch_id
+        WHERE COALESCE(import_log.semantics_version,1)>=2
+          AND transactions.manually_edited_at IS NULL
+          AND COALESCE(transactions.category_source,'') NOT IN
+              ('user_edit','user_bulk','user_rule')
+        ORDER BY transactions.id
+        """
+    ).fetchall()
+    refreshed_rows = []
+    for row in rows:
+        refreshed = dict(row)
+        enrich_transaction(refreshed, conn=conn)
+        refreshed_rows.append(refreshed)
+    # Rebuild the material review queue as one population. Re-enriching rows
+    # individually would flag every historical large occurrence instead of
+    # one useful merchant-level confirmation.
+    consolidate_material_review(refreshed_rows)
+
+    changed = category_changes = type_changes = review_changes = 0
+    conn.execute("SAVEPOINT builtin_categorization_refresh")
+    try:
+        for row, refreshed in zip(rows, refreshed_rows):
+            before = dict(row)
+            fields = (
+                "merchant_normalized", "category", "subcategory",
+                "category_source", "category_rule_id",
+                "category_explanation", "transaction_type", "is_transfer",
+                "is_flagged", "flag_reason", "parse_confidence",
+            )
+            if all(refreshed.get(key) == before.get(key) for key in fields):
+                continue
+            category_changes += int(
+                refreshed.get("category") != before.get("category")
+            )
+            type_changes += int(
+                refreshed.get("transaction_type") != before.get("transaction_type")
+            )
+            review_changes += int(
+                (refreshed.get("is_flagged"), refreshed.get("flag_reason"))
+                != (before.get("is_flagged"), before.get("flag_reason"))
+            )
+            conn.execute(
+                """
+                UPDATE transactions
+                SET merchant_normalized=?, category=?, subcategory=?,
+                    category_source=?, category_rule_id=?,
+                    category_explanation=?, transaction_type=?, is_transfer=?,
+                    is_flagged=?, flag_reason=?, parse_confidence=?,
+                    category_updated_at=datetime('now','localtime')
+                WHERE id=?
+                """,
+                tuple(refreshed.get(key) for key in fields) + (before["id"],),
+            )
+            changed += 1
+        conn.execute(
+            """
+            INSERT INTO app_migrations
+                (migration_key,rows_scanned,rows_changed,details_json)
+            VALUES (?,?,?,?)
+            """,
+            (
+                _BUILTIN_CATEGORIZATION_MIGRATION,
+                len(rows),
+                changed,
+                json.dumps({
+                    "scope": "signed imported rows without user provenance",
+                    "preserves_source_sign": True,
+                    "category_changes": category_changes,
+                    "transaction_type_changes": type_changes,
+                    "review_changes": review_changes,
+                }),
+            ),
+        )
+        conn.execute("RELEASE SAVEPOINT builtin_categorization_refresh")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT builtin_categorization_refresh")
+        conn.execute("RELEASE SAVEPOINT builtin_categorization_refresh")
+        raise
+def _migrate_categorization_schema(conn) -> None:
+    """Atomically add and backfill categorization audit metadata."""
+    conn.execute("SAVEPOINT categorization_schema")
+    try:
+        _ensure_columns(conn, "transactions", [
+            ("ai_suggested_category",    "TEXT"),
+            ("ai_suggested_subcategory", "TEXT"),
+            ("ai_confidence",            "REAL"),
+            ("ai_provider",              "TEXT"),
+            ("ai_model",                 "TEXT"),
+            ("ai_rationale",             "TEXT"),
+            ("ai_suggested_at",          "TEXT"),
+            # NULL = pending, 1 = accepted, 0 = rejected. User-driven only.
+            ("ai_accepted",              "INTEGER"),
+            # Additive and nullable so historical categories remain intact.
+            ("merchant_normalized",      "TEXT"),
+            ("category_source",          "TEXT DEFAULT 'unknown'"),
+            ("category_rule_id",         "INTEGER"),
+            ("category_explanation",     "TEXT"),
+            ("category_updated_at",      "TEXT"),
+            ("manually_edited_at",       "TEXT"),
+            ("statement_memo",           "TEXT"),
+            ("statement_category",       "TEXT"),
+            ("statement_subcategory",    "TEXT"),
+        ])
+        _ensure_columns(conn, "learned_rules", [
+            ("enabled",                  "INTEGER DEFAULT 1"),
+            ("example_description",      "TEXT"),
+            ("source_transaction_id",    "INTEGER"),
+            ("source_import_batch_id",   "INTEGER"),
+            ("updated_at",               "TEXT"),
+        ])
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tx_merchant_normalized "
+            "ON transactions(merchant_normalized)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_learned_enabled "
+            "ON learned_rules(enabled, merchant_normalized)"
+        )
+        _backfill_categorization_metadata(conn)
+        conn.execute("RELEASE SAVEPOINT categorization_schema")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT categorization_schema")
+        conn.execute("RELEASE SAVEPOINT categorization_schema")
+        raise
+
+
+def _backfill_categorization_metadata(conn) -> None:
+    """Populate only newly-added matcher metadata on historical rows.
+
+    Existing categories are intentionally untouched: an old manual correction
+    is financial history even when Ledger cannot prove where it came from.
+    """
+    from utils.categorizer import normalize_merchant
+
+    rows = conn.execute(
+        "SELECT id, raw_description, merchant FROM transactions "
+        "WHERE merchant_normalized IS NULL OR merchant_normalized=''"
+    ).fetchall()
+    for row in rows:
+        matcher = normalize_merchant(
+            row["raw_description"] or row["merchant"] or ""
+        )
+        conn.execute(
+            "UPDATE transactions SET merchant_normalized=? WHERE id=?",
+            (matcher, int(row["id"])),
+        )
+
+    # Older learned rules used the display merchant as their exact key. Move
+    # each rule to the new canonical key when that key is not already owned.
+    # A collision remains as a disabled legacy row, making resolution
+    # deterministic without silently deleting a conflicting user decision.
+    rules = conn.execute(
+        "SELECT * FROM learned_rules ORDER BY id"
+    ).fetchall()
+    for rule in rules:
+        old = (rule["merchant_normalized"] or "").strip()
+        canonical = normalize_merchant(old)
+        if not canonical or canonical == old:
+            continue
+        owner = conn.execute(
+            "SELECT id FROM learned_rules WHERE merchant_normalized=?",
+            (canonical,),
+        ).fetchone()
+        if owner is None:
+            conn.execute(
+                "UPDATE learned_rules SET merchant_normalized=?, "
+                "updated_at=COALESCE(updated_at, datetime('now')) WHERE id=?",
+                (canonical, int(rule["id"])),
+            )
+        else:
+            conn.execute(
+                "UPDATE learned_rules SET enabled=0, "
+                "updated_at=COALESCE(updated_at, datetime('now')) WHERE id=?",
+                (int(rule["id"]),),
+            )
 
 
 def _migrate_rec_log_unique(conn) -> None:
@@ -496,22 +1036,174 @@ def _migrate_rec_log_unique(conn) -> None:
 # Core transaction helpers (unchanged)
 # ─────────────────────────────────────────────
 
-def compute_dedup_hash(account_type: str, transaction_date: str, raw_description: str, amount: float) -> str:
-    key = f"{account_type}|{transaction_date}|{raw_description.strip().lower()}|{amount:.2f}"
+def _occurrence_suffix(occurrence: int) -> str:
+    """Distinguish the 2nd, 3rd... identical row within one statement.
+
+    Occurrence 0 deliberately adds nothing, so fingerprints already stored in
+    existing databases keep matching. Without that, everyone's next re-import
+    would look entirely new and double-count their history.
+    """
+    return f"|#{int(occurrence)}" if occurrence else ""
+
+
+def compute_dedup_hash(account_type: str, transaction_date: str,
+                       raw_description: str, amount: float,
+                       occurrence: int = 0) -> str:
+    key = (f"{account_type}|{transaction_date}|"
+           f"{raw_description.strip().lower()}|{amount:.2f}"
+           f"{_occurrence_suffix(occurrence)}")
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def insert_transaction(tx: dict, conn: sqlite3.Connection) -> tuple[bool, str]:
-    dedup = compute_dedup_hash(
+def compute_dedup_hash_v2(account_ref: int, transaction_date: str,
+                          raw_description: str, amount: float,
+                          occurrence: int = 0) -> str:
+    """Account-aware duplicate fingerprint (rows with an account_ref).
+
+    Keyed by the account's stable id instead of the loose account_type
+    string, so identical activity on two accounts of the same type can
+    coexist while true re-imports still collide."""
+    key = (f"acct{int(account_ref)}|{transaction_date}|"
+           f"{raw_description.strip().lower()}|{amount:.2f}"
+           f"{_occurrence_suffix(occurrence)}")
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def dedup_group_key(tx: dict) -> tuple:
+    """What makes two rows look identical, before occurrence is applied.
+
+    Callers importing a file group rows by this to number repeats in the
+    order they appear in the statement.
+    """
+    return (
+        str(tx.get("account_ref") or "") or str(tx.get("account_type") or ""),
+        str(tx.get("transaction_date") or ""),
+        str(tx.get("raw_description") or "").strip().lower(),
+        round(float(tx.get("amount") or 0.0), 2),
+    )
+
+
+def transaction_dedup_state(
+    tx: dict, conn: sqlite3.Connection, occurrence: Optional[int] = 0,
+) -> tuple[str, bool]:
+    """Return the persisted fingerprint and exact insert-time duplicate state.
+
+    ``occurrence`` is which copy of an identical-looking row this is within
+    the statement being imported: 0 for the first, 1 for the second, and so
+    on. Two genuine same-day transit fares therefore get different
+    fingerprints and both survive, while re-importing that same file produces
+    the same two fingerprints and inserts nothing.
+
+    Pass ``None`` for a standalone insert such as manual entry, where the
+    user typing the row again is a deliberate act rather than a duplicate
+    file: the first unused occurrence is claimed automatically.
+    """
+    if occurrence is None:
+        probe = 0
+        while True:
+            fingerprint, exists = transaction_dedup_state(
+                tx, conn, occurrence=probe,
+            )
+            if not exists:
+                return fingerprint, False
+            probe += 1
+            if probe > 500:  # pathological; fall back to reporting duplicate
+                return fingerprint, True
+
+    legacy_hash = compute_dedup_hash(
         tx.get("account_type", ""),
         tx.get("transaction_date", ""),
         tx.get("raw_description", ""),
         tx.get("amount", 0.0),
+        occurrence,
     )
-    existing = conn.execute(
-        "SELECT id FROM transactions WHERE dedup_hash = ?", (dedup,)
-    ).fetchone()
-    if existing:
+    account_ref = tx.get("account_ref")
+    if account_ref:
+        # Account-aware fingerprint: identical-looking charges on two
+        # different accounts (e.g. two credit cards) are NOT duplicates.
+        dedup = compute_dedup_hash_v2(
+            int(account_ref),
+            tx.get("transaction_date", ""),
+            tx.get("raw_description", ""),
+            tx.get("amount", 0.0),
+            occurrence,
+        )
+        # Compatibility bridge: rows imported before accounts existed
+        # carry the legacy hash. Re-importing that same file into the
+        # row's own (or a not-yet-assigned) account must still skip —
+        # but a legacy hash on a DIFFERENT account never blocks.
+        existing = conn.execute(
+            """
+            SELECT id FROM transactions
+            WHERE dedup_hash = ?
+               OR (dedup_hash = ?
+                   AND (account_ref IS NULL OR account_ref = ?))
+            """,
+            (dedup, legacy_hash, int(account_ref)),
+        ).fetchone()
+    else:
+        dedup = legacy_hash
+        existing = conn.execute(
+            "SELECT id FROM transactions WHERE dedup_hash = ?", (dedup,)
+        ).fetchone()
+    return dedup, existing is not None
+
+
+def delete_transaction(tx_id: int,
+                       conn: Optional[sqlite3.Connection] = None) -> bool:
+    """Remove one transaction outright.
+
+    For rows that should never have been in the ledger: a statement imported
+    against the wrong account, a duplicate the fingerprint could not catch, a
+    manual entry typed twice. Correcting a category is the usual answer and is
+    reversible; this is not, so the interface asks first.
+
+    The dedup fingerprint goes with it, which matters: without that, deleting
+    a row and re-importing the same statement would silently do nothing.
+    """
+    opened = conn is None
+    c = conn or get_connection()
+    try:
+        row = c.execute(
+            "SELECT id FROM transactions WHERE id = ?", (int(tx_id),)
+        ).fetchone()
+        if not row:
+            return False
+        # Anything hanging off the row goes too, so a later undo or review
+        # cannot resurrect half of it.
+        for table, column in (
+            ("category_change_undo", "transaction_id"),
+            ("transaction_notes", "transaction_id"),
+        ):
+            try:
+                c.execute(f"DELETE FROM {table} WHERE {column} = ?",
+                          (int(tx_id),))
+            except sqlite3.OperationalError:
+                pass  # That table is not in this schema version.
+        c.execute("DELETE FROM transactions WHERE id = ?", (int(tx_id),))
+        c.commit()
+        return True
+    finally:
+        if opened:
+            c.close()
+
+
+def insert_transaction(tx: dict, conn: sqlite3.Connection,
+                       occurrence: Optional[int] = 0) -> tuple[bool, str]:
+    """Insert one transaction unless it is a true duplicate.
+
+    ``occurrence`` numbers identical-looking rows within a single statement
+    so genuine repeat purchases survive; see ``transaction_dedup_state``.
+    """
+    from utils.categorizer import normalize_merchant
+
+    tx.setdefault(
+        "merchant_normalized",
+        normalize_merchant(tx.get("raw_description") or tx.get("merchant") or ""),
+    )
+    tx.setdefault("category_source", "unknown")
+    dedup, duplicate = transaction_dedup_state(tx, conn, occurrence)
+    if duplicate:
         return False, "duplicate"
     tx["dedup_hash"] = dedup
     columns = ", ".join(tx.keys())
@@ -520,12 +1212,26 @@ def insert_transaction(tx: dict, conn: sqlite3.Connection) -> tuple[bool, str]:
         f"INSERT INTO transactions ({columns}) VALUES ({placeholders})",
         list(tx.values()),
     )
+    # Count a learned-rule hit only after the transaction is actually inserted.
+    # Parsing previews and duplicate rows must not inflate rule usage.
+    if tx.get("category_source") == "user_rule" and tx.get("category_rule_id"):
+        conn.execute(
+            "UPDATE learned_rules SET hit_count=COALESCE(hit_count,0)+1, "
+            "last_used_at=datetime('now','localtime') WHERE id=?",
+            (int(tx["category_rule_id"]),),
+        )
     return True, "ok"
 
 
 def insert_import_log(log: dict, conn: sqlite3.Connection) -> int:
     if "errors" in log and isinstance(log["errors"], list):
         log["errors"] = json.dumps(log["errors"])
+    # Stamp localtime explicitly: the table default is UTC, but
+    # review_log (weekly check-ins) stores localtime, and the import-
+    # result panel compares the two to decide what's "unreviewed".
+    if "imported_at" not in log:
+        from datetime import datetime as _dt
+        log["imported_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
     columns = ", ".join(log.keys())
     placeholders = ", ".join(["?"] * len(log))
     cursor = conn.execute(
@@ -607,35 +1313,22 @@ def get_monthly_summary(year: int, conn: Optional[sqlite3.Connection] = None) ->
         conn = get_connection()
         close = True
 
-    rows = conn.execute("""
-        SELECT
-            strftime('%Y-%m', transaction_date) AS month,
-            SUM(CASE
-                WHEN direction = 'credit'
-                 AND amount > 0
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled')
-                THEN amount ELSE 0
-            END) AS income,
-            -- Gross spending (debits); Transfer excluded = only self-transfers remain there
-            SUM(CASE
-                WHEN direction = 'debit'
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled','Transfer')
-                THEN ABS(amount) ELSE 0
-            END)
-            -- minus refund offsets (MC credits with amount < 0)
-            - SUM(CASE
-                WHEN direction = 'credit' AND amount < 0
-                THEN ABS(amount) ELSE 0
-              END) AS spending,
-            COUNT(*) AS tx_count
-        FROM transactions
-        WHERE strftime('%Y', transaction_date) = ?
-        GROUP BY month
-        ORDER BY month
-    """, (str(year),)).fetchall()
-    result = [dict(r) for r in rows]
+    from collections import defaultdict
+    from utils.financial_semantics import cashflow_totals
+    from utils.shared_expenses import apply_shared_view
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in conn.execute(
+        "SELECT * FROM transactions WHERE strftime('%Y', transaction_date)=?",
+        (str(year),),
+    ).fetchall():
+        tx = dict(row)
+        grouped[str(tx.get("transaction_date") or "")[:7]].append(tx)
+    result = []
+    for month in sorted(grouped):
+        totals = cashflow_totals(
+            apply_shared_view(grouped[month], conn, "personal"), view="personal"
+        )
+        result.append({"month": month, **totals, "tx_count": len(grouped[month])})
     if close:
         conn.close()
     return result
@@ -645,12 +1338,13 @@ def get_category_totals(
     start_date: str,
     end_date: str,
     account_type: Optional[str] = None,
+    share_view: str = "personal",
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[dict]:
     """
     Category totals for spending charts (donut, bars).
-    v8: includes Transfer Out (INTERAC e-Transfers sent to people) as real spending.
-    Excludes only CC payments, cancelled, and savings pullbacks.
+    Includes only canonical spending types. Refunds, reimbursements, and
+    rewards credits are income and never alter category purchase amounts.
     account_type: optional filter ('chequing', 'savings', 'mastercard', or None/all).
     """
     close = False
@@ -664,18 +1358,43 @@ def get_category_totals(
         acct_clause = " AND account_type = ?"
         params.append(account_type)
 
-    rows = conn.execute(f"""
-        SELECT category, SUM(ABS(amount)) AS total, COUNT(*) AS tx_count
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'debit'
-          AND direction NOT IN ('cancelled', 'payment', 'transfer')
-          AND category NOT IN ('Credit Card Payment', 'Cancelled', 'Transfer')
-          {acct_clause}
-        GROUP BY category
-        ORDER BY total DESC
-    """, params).fetchall()
-    result = [dict(r) for r in rows]
+    from collections import defaultdict
+    from config.categories import SPENDING_CATEGORIES
+    from utils.financial_semantics import cashflow_role
+    from utils.shared_expenses import apply_shared_view
+    totals: dict[str, dict] = defaultdict(lambda: {"total": 0.0, "tx_count": 0})
+    gross_spending = 0.0
+    rows = conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + acct_clause, params,
+    ).fetchall()
+    for tx in apply_shared_view((dict(row) for row in rows), conn, share_view):
+        category = tx.get("category") or "Uncategorized"
+        role = cashflow_role(tx)
+        amount = abs(float(tx.get("_cashflow_amount") or 0))
+        if role == "spending":
+            if category not in SPENDING_CATEGORIES:
+                category = "Uncategorized"
+            totals[category]["total"] += amount
+            totals[category]["tx_count"] += 1
+            gross_spending += amount
+
+    target_total = round(gross_spending, 2)
+    rounded: dict[str, float] = {
+        category: round(data["total"], 2)
+        for category, data in totals.items()
+        if data["total"] > 0 and target_total > 0
+    }
+    if rounded:
+        residual = round(round(target_total, 2) - sum(rounded.values()), 2)
+        largest = max(rounded, key=rounded.get)
+        rounded[largest] = round(rounded[largest] + residual, 2)
+    result = [
+        {"category": category, "total": rounded[category],
+         "tx_count": data["tx_count"]}
+        for category, data in totals.items() if category in rounded
+    ]
+    result.sort(key=lambda r: r["total"], reverse=True)
     if close:
         conn.close()
     return result
@@ -720,28 +1439,11 @@ def get_import_log(conn: Optional[sqlite3.Connection] = None) -> list[dict]:
 
 
 def delete_import_batch(batch_id: int, conn: Optional[sqlite3.Connection] = None) -> int:
-    """Delete all transactions for a batch and its import_log entry. Returns number of transactions deleted."""
-    close = False
-    if conn is None:
-        conn = get_connection()
-        close = True
-    cursor = conn.execute("DELETE FROM transactions WHERE import_batch_id = ?", (batch_id,))
-    deleted = cursor.rowcount
-    conn.execute("DELETE FROM import_log WHERE id = ?", (batch_id,))
-    # Pass 35c: also cascade-clean the persisted statement summary for
-    # this batch, if any. Defensive: the table may not exist on very
-    # old databases, so wrap in try/except.
-    try:
-        conn.execute(
-            "DELETE FROM statement_summaries WHERE import_batch_id = ?",
-            (batch_id,),
-        )
-    except sqlite3.OperationalError:
-        pass
-    if close:
-        conn.commit()
-        conn.close()
-    return deleted
+    """Compatibility wrapper for the transaction-safe batch undo path."""
+    from utils.categorization_service import undo_import_batch
+
+    result = undo_import_batch(int(batch_id), conn=conn)
+    return int(result.get("transactions_deleted", 0))
 
 
 # ── Pass 35c: statement-summary persistence ─────────────────────────
@@ -960,61 +1662,54 @@ def delete_budget(category: str, conn=None):
         conn.close()
 
 
-def rerun_categorization(conn=None):
-    from utils.categorizer import categorize, normalize_merchant, should_flag
+def rerun_categorization(conn=None, *, preserve_manual: bool = True):
+    """Reprocess automatic categories without erasing reviewed decisions.
+
+    Manual, bulk, and accepted-AI categories are user history. The Settings
+    action preserves them by default; callers must opt in explicitly if they
+    ever need a destructive full rebuild.
+    """
+    from utils.categorizer import enrich_transaction
     close = False
     if conn is None:
         conn = get_connection()
         close = True
 
-    rows = conn.execute(
-        "SELECT id, raw_description, amount, direction, account_type FROM transactions"
-    ).fetchall()
-
-    # Non-cashflow categories — any debit/credit landing here should be is_transfer=1.
-    # Mirrors the consistency pass in enrich_transaction().
-    _NON_CASHFLOW = frozenset({"Transfer", "Credit Card Payment", "Payment", "Cancelled"})
+    if preserve_manual:
+        rows = conn.execute(
+            "SELECT * FROM transactions WHERE manually_edited_at IS NULL "
+            "AND category_source IN ('import_rule','user_rule','protected')"
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM transactions").fetchall()
 
     updated = 0
     for row in rows:
-        raw  = row["raw_description"]
-        amt  = row["amount"]
-        dir_ = row["direction"]
-
-        if dir_ in ("payment", "transfer", "cancelled"):
-            # These rows keep their direction/category. Still sync is_transfer.
-            conn.execute(
-                "UPDATE transactions SET is_transfer=1 WHERE id=? AND is_transfer!=1",
-                (row["id"],),
-            )
-            continue
-
-        merchant = normalize_merchant(raw)
-
-        # Learned rules win over static rules
-        learned = conn.execute(
-            "SELECT category, subcategory FROM learned_rules WHERE merchant_normalized=?",
-            (merchant,),
-        ).fetchone()
-        if learned:
-            cat = learned["category"]
-            sub = learned["subcategory"] or ""
-            conf = 1.0
-        else:
-            cat, sub, conf = categorize(raw, amt, dir_)
-        conf_str = "high" if conf >= 0.9 else ("medium" if conf >= 0.7 else "low")
-        conf_float = {"high": 1.0, "medium": 0.75, "low": 0.5}.get(conf_str, 0.5)
-        flagged, reason = should_flag(raw, dir_, abs(amt), conf_float)
-
-        # Derive is_transfer from final category (same logic as enrich_transaction)
-        is_tr = 1 if cat in _NON_CASHFLOW else 0
+        original = dict(row)
+        candidate = {
+            "raw_description": original.get("raw_description") or "",
+            "amount": original.get("amount") or 0,
+            "direction": original.get("direction") or "",
+            "account_type": original.get("account_type") or "",
+            "is_transfer": 0,
+        }
+        enriched = enrich_transaction(candidate, conn=conn)
 
         conn.execute("""
             UPDATE transactions
-            SET category=?, subcategory=?, merchant=?, parse_confidence=?,
-                is_flagged=?, flag_reason=?, is_transfer=?
+            SET category=?, subcategory=?, merchant=?, merchant_normalized=?,
+                parse_confidence=?, is_flagged=?, flag_reason=?, is_transfer=?,
+                category_source=?, category_rule_id=?, category_explanation=?,
+                category_updated_at=datetime('now','localtime')
             WHERE id=?
-        """, (cat, sub, merchant, conf_str, 1 if flagged else 0, reason, is_tr, row["id"]))
+        """, (
+            enriched.get("category"), enriched.get("subcategory"),
+            enriched.get("merchant"), enriched.get("merchant_normalized"),
+            enriched.get("parse_confidence"), enriched.get("is_flagged", 0),
+            enriched.get("flag_reason"), enriched.get("is_transfer", 0),
+            enriched.get("category_source"), enriched.get("category_rule_id"),
+            enriched.get("category_explanation"), int(row["id"]),
+        ))
         updated += 1
 
     if close:
@@ -1245,13 +1940,14 @@ def has_data(conn=None) -> bool:
 # ─────────────────────────────────────────────
 
 def get_learned_rule(merchant_normalized: str, conn=None) -> Optional[dict]:
+    from utils.categorizer import normalize_merchant
     close = False
     if conn is None:
         conn = get_connection()
         close = True
     row = conn.execute(
         "SELECT * FROM learned_rules WHERE merchant_normalized=?",
-        (merchant_normalized,),
+        (normalize_merchant(merchant_normalized),),
     ).fetchone()
     result = dict(row) if row else None
     if close:
@@ -1261,32 +1957,115 @@ def get_learned_rule(merchant_normalized: str, conn=None) -> Optional[dict]:
 
 def upsert_learned_rule(merchant_normalized: str, category: str,
                         subcategory: Optional[str] = None, source: str = "user",
-                        conn=None):
+                        *, enabled: bool = True,
+                        example_description: Optional[str] = None,
+                        source_transaction_id: Optional[int] = None,
+                        source_import_batch_id: Optional[int] = None,
+                        conn=None) -> int:
+    from utils.categorizer import normalize_merchant
+
+    matcher = normalize_merchant(merchant_normalized)
+    if not matcher:
+        raise ValueError("A saved merchant rule needs a non-empty matcher.")
     close = False
     if conn is None:
         conn = get_connection()
         close = True
     conn.execute(
-        "INSERT INTO learned_rules (merchant_normalized, category, subcategory, source) "
-        "VALUES (?,?,?,?) "
+        "INSERT INTO learned_rules "
+        "(merchant_normalized, category, subcategory, source, enabled, "
+        " example_description, source_transaction_id, source_import_batch_id, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,datetime('now','localtime')) "
         "ON CONFLICT(merchant_normalized) DO UPDATE SET "
-        "category=excluded.category, subcategory=excluded.subcategory, source=excluded.source",
-        (merchant_normalized, category, subcategory, source),
+        "category=excluded.category, subcategory=excluded.subcategory, "
+        "source=excluded.source, enabled=excluded.enabled, "
+        "example_description=COALESCE(excluded.example_description, learned_rules.example_description), "
+        "source_transaction_id=COALESCE(excluded.source_transaction_id, learned_rules.source_transaction_id), "
+        "source_import_batch_id=COALESCE(excluded.source_import_batch_id, learned_rules.source_import_batch_id), "
+        "updated_at=datetime('now','localtime')",
+        (matcher, category, subcategory, source, 1 if enabled else 0,
+         example_description, source_transaction_id, source_import_batch_id),
+    )
+    row = conn.execute(
+        "SELECT id FROM learned_rules WHERE merchant_normalized=?", (matcher,)
+    ).fetchone()
+    if close:
+        conn.commit()
+        conn.close()
+    return int(row["id"])
+
+
+def set_learned_rule_enabled(merchant_normalized: str, enabled: bool,
+                             conn=None) -> bool:
+    from utils.categorizer import normalize_merchant
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    cur = conn.execute(
+        "UPDATE learned_rules SET enabled=?, updated_at=datetime('now','localtime') "
+        "WHERE merchant_normalized=?",
+        (1 if enabled else 0, normalize_merchant(merchant_normalized)),
+    )
+    if close:
+        conn.commit()
+        conn.close()
+    return cur.rowcount > 0
+
+
+def delete_learned_rule(merchant_normalized: str, conn=None):
+    from utils.categorizer import normalize_merchant
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    conn.execute(
+        "DELETE FROM learned_rules WHERE merchant_normalized=?",
+        (normalize_merchant(merchant_normalized),),
     )
     if close:
         conn.commit()
         conn.close()
 
 
-def delete_learned_rule(merchant_normalized: str, conn=None):
+def update_learned_rule_by_id(rule_id: int, *, category: str,
+                              subcategory: Optional[str] = None,
+                              enabled: bool = True,
+                              example_description: Optional[str] = None,
+                              conn=None) -> bool:
+    """Edit one exact rule row without re-normalizing its matcher.
+
+    ID-based lifecycle operations keep migrated overlap rows inspectable and
+    prevent Settings from accidentally updating a different canonical rule.
+    """
     close = False
     if conn is None:
         conn = get_connection()
         close = True
-    conn.execute("DELETE FROM learned_rules WHERE merchant_normalized=?", (merchant_normalized,))
+    cur = conn.execute(
+        "UPDATE learned_rules SET category=?, subcategory=?, enabled=?, "
+        "example_description=?, updated_at=datetime('now','localtime') "
+        "WHERE id=?",
+        (category, subcategory, 1 if enabled else 0,
+         example_description, int(rule_id)),
+    )
     if close:
         conn.commit()
         conn.close()
+    return cur.rowcount == 1
+
+
+def delete_learned_rule_by_id(rule_id: int, conn=None) -> bool:
+    """Delete one exact learned-rule row; historical transactions stay put."""
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    cur = conn.execute("DELETE FROM learned_rules WHERE id=?", (int(rule_id),))
+    if close:
+        conn.commit()
+        conn.close()
+    return cur.rowcount == 1
 
 
 def list_learned_rules(conn=None) -> list[dict]:
@@ -1303,7 +2082,106 @@ def list_learned_rules(conn=None) -> list[dict]:
     return result
 
 
+def list_recurring_preferences(conn=None) -> list[dict]:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM recurring_preferences ORDER BY merchant_normalized"
+    ).fetchall()]
+    if close:
+        conn.close()
+    return rows
+
+
+def set_recurring_preference(merchant_normalized: str, status: str,
+                             display_name: str = "", category: str = "",
+                             conn=None) -> int:
+    matcher = str(merchant_normalized or "").strip()
+    if not matcher:
+        raise ValueError("Choose a merchant before changing recurring status.")
+    if status not in {"recurring", "not_recurring"}:
+        raise ValueError("Recurring status must be recurring or not recurring.")
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    conn.execute(
+        "INSERT INTO recurring_preferences "
+        "(merchant_normalized,status,display_name,category) VALUES (?,?,?,?) "
+        "ON CONFLICT(merchant_normalized) DO UPDATE SET status=excluded.status, "
+        "display_name=excluded.display_name, category=excluded.category, "
+        "updated_at=datetime('now')",
+        (matcher, status, str(display_name or "").strip() or None,
+         str(category or "").strip() or None),
+    )
+    row = conn.execute(
+        "SELECT id FROM recurring_preferences WHERE merchant_normalized=?", (matcher,)
+    ).fetchone()
+    if close:
+        conn.commit()
+        conn.close()
+    return int(row["id"])
+
+
+def list_income_source_preferences(conn=None) -> list[dict]:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM income_source_preferences ORDER BY source_normalized"
+    ).fetchall()]
+    if close:
+        conn.close()
+    return rows
+
+
+def set_income_source_preference(source_normalized: str, status: str,
+                                 conn=None) -> int:
+    source = str(source_normalized or "").strip()
+    if not source:
+        raise ValueError("Choose an income source first.")
+    if status not in {"confirmed", "excluded"}:
+        raise ValueError("Income source status must be confirmed or excluded.")
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    conn.execute(
+        "INSERT INTO income_source_preferences (source_normalized,status) "
+        "VALUES (?,?) ON CONFLICT(source_normalized) DO UPDATE SET "
+        "status=excluded.status, updated_at=datetime('now')",
+        (source, status),
+    )
+    row = conn.execute(
+        "SELECT id FROM income_source_preferences WHERE source_normalized=?",
+        (source,),
+    ).fetchone()
+    if close:
+        conn.commit()
+        conn.close()
+    return int(row["id"])
+
+
+def clear_recurring_preference(merchant_normalized: str, conn=None) -> bool:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    cur = conn.execute(
+        "DELETE FROM recurring_preferences WHERE merchant_normalized=?",
+        (str(merchant_normalized or "").strip(),),
+    )
+    if close:
+        conn.commit()
+        conn.close()
+    return bool(cur.rowcount)
+
+
 def bump_learned_rule_hit(merchant_normalized: str, conn=None):
+    from utils.categorizer import normalize_merchant
     close = False
     if conn is None:
         conn = get_connection()
@@ -1311,7 +2189,7 @@ def bump_learned_rule_hit(merchant_normalized: str, conn=None):
     conn.execute(
         "UPDATE learned_rules SET hit_count=COALESCE(hit_count,0)+1, "
         "last_used_at=datetime('now') WHERE merchant_normalized=?",
-        (merchant_normalized,),
+        (normalize_merchant(merchant_normalized),),
     )
     if close:
         conn.commit()
@@ -1360,7 +2238,12 @@ def accept_ai_suggestion(tx_id: int, conn=None):
         UPDATE transactions
         SET category = ai_suggested_category,
             subcategory = ai_suggested_subcategory,
-            ai_accepted = 1
+            ai_accepted = 1,
+            category_source = 'ai',
+            category_rule_id = NULL,
+            category_explanation = 'Accepted AI suggestion after user review.',
+            category_updated_at = datetime('now','localtime'),
+            manually_edited_at = datetime('now','localtime')
         WHERE id=? AND ai_suggested_category IS NOT NULL
     """, (tx_id,))
     if close:
@@ -1458,6 +2341,8 @@ def apply_category_to_merchant(merchant_normalized: str, category: str,
     UI appears to "not take" — the category column changes but downstream
     spending queries still skip the row because `is_transfer=1`.
     """
+    from utils.categorizer import normalize_merchant
+    matcher = normalize_merchant(merchant_normalized)
     close = False
     if conn is None:
         conn = get_connection()
@@ -1471,16 +2356,26 @@ def apply_category_to_merchant(merchant_normalized: str, category: str,
     if only_uncertain:
         cur = conn.execute("""
             UPDATE transactions
-            SET category=?, subcategory=?, is_transfer=?
-            WHERE merchant=?
+            SET category=?, subcategory=?, is_transfer=?,
+                category_source='user_bulk', category_rule_id=NULL,
+                category_explanation='Bulk category decision by user.',
+                category_updated_at=datetime('now','localtime'),
+                manually_edited_at=datetime('now','localtime')
+            WHERE merchant_normalized=?
               AND (category IS NULL OR category='' OR category='Misc'
                    OR parse_confidence='low')
-        """, (category, subcategory, _is_transfer_target, merchant_normalized))
+              AND direction NOT IN ('payment','transfer','cancelled')
+        """, (category, subcategory, _is_transfer_target, matcher))
     else:
         cur = conn.execute(
-            "UPDATE transactions SET category=?, subcategory=?, is_transfer=? "
-            "WHERE merchant=?",
-            (category, subcategory, _is_transfer_target, merchant_normalized),
+            "UPDATE transactions SET category=?, subcategory=?, is_transfer=?, "
+            "category_source='user_bulk', category_rule_id=NULL, "
+            "category_explanation='Bulk category decision by user.', "
+            "category_updated_at=datetime('now','localtime'), "
+            "manually_edited_at=datetime('now','localtime') "
+            "WHERE merchant_normalized=? "
+            "AND direction NOT IN ('payment','transfer','cancelled')",
+            (category, subcategory, _is_transfer_target, matcher),
         )
     n = cur.rowcount
     if close:
@@ -1519,22 +2414,27 @@ def get_merchant_transaction_ids(merchant_normalized: str,
     `only_uncertain=True`, only rows that are NULL/empty/Misc/low-confidence
     are returned — the rows safe to overwrite without losing user work.
     """
+    from utils.categorizer import normalize_merchant
+    matcher = normalize_merchant(merchant_normalized)
     close = False
     if conn is None:
         conn = get_connection()
         close = True
     if only_uncertain:
         rows = conn.execute(
-            "SELECT id FROM transactions WHERE merchant=? "
+            "SELECT id FROM transactions WHERE merchant_normalized=? "
             "AND (category IS NULL OR category='' OR category='Misc' "
-            "OR parse_confidence='low') ORDER BY transaction_date DESC",
-            (merchant_normalized,),
+            "OR parse_confidence='low') "
+            "AND direction NOT IN ('payment','transfer','cancelled') "
+            "ORDER BY transaction_date DESC",
+            (matcher,),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT id FROM transactions WHERE merchant=? "
+            "SELECT id FROM transactions WHERE merchant_normalized=? "
+            "AND direction NOT IN ('payment','transfer','cancelled') "
             "ORDER BY transaction_date DESC",
-            (merchant_normalized,),
+            (matcher,),
         ).fetchall()
     out = [int(r["id"]) for r in rows]
     if close:
@@ -1547,6 +2447,9 @@ def apply_category_by_ids(tx_ids: list[int], category: str,
                           *,
                           clear_flags: bool = False,
                           flag_reason_when_cleared: str = "reviewed",
+                          category_source: str = "user_bulk",
+                          category_explanation: str = "Bulk category decision by user.",
+                          allow_protected: bool = False,
                           conn=None) -> dict:
     """Apply `category` (and optionally clear flags) on an explicit ID list.
 
@@ -1569,10 +2472,41 @@ def apply_category_by_ids(tx_ids: list[int], category: str,
 
     if not tx_ids:
         out = {"requested": 0, "now_with_category": 0,
-               "flags_cleared": 0, "is_transfer_synced": 0}
+               "flags_cleared": 0, "is_transfer_synced": 0,
+               "skipped_protected": 0}
         if close:
             conn.close()
         return out
+
+    # Remove duplicates while preserving the UI's selection order.
+    tx_ids = list(dict.fromkeys(int(i) for i in tx_ids))
+    skipped_protected = 0
+    if not allow_protected:
+        input_marks = ",".join(["?"] * len(tx_ids))
+        states = conn.execute(
+            f"SELECT id, direction, category FROM transactions "
+            f"WHERE id IN ({input_marks})", tx_ids,
+        ).fetchall()
+        protected_categories = {
+            "Transfer", "Internal Transfer", "Credit Card Payment", "Payment",
+            "Cancelled", "Refund / Credit",
+            "Reimbursement / Insurance Reimbursement", "Fees / Interest",
+            "Cash Advance", "Interest Income", "Rewards / Cashback",
+        }
+        protected_ids = {
+            int(r["id"]) for r in states
+            if r["direction"] in ("payment", "transfer", "cancelled")
+            or r["category"] in protected_categories
+        }
+        skipped_protected = len(protected_ids)
+        tx_ids = [i for i in tx_ids if i not in protected_ids]
+        if not tx_ids:
+            out = {"requested": 0, "now_with_category": 0,
+                   "flags_cleared": 0, "is_transfer_synced": 0,
+                   "skipped_protected": skipped_protected}
+            if close:
+                conn.close()
+            return out
 
     expected_xfer = 1 if category in (
         "Transfer", "Credit Card Payment", "Payment", "Cancelled"
@@ -1611,15 +2545,22 @@ def apply_category_by_ids(tx_ids: list[int], category: str,
         conn.execute(
             f"UPDATE transactions SET category=?, subcategory=?, "
             f"is_transfer=?, is_flagged=0, flag_reason=?, "
-            f"parse_confidence='high' "
+            f"parse_confidence='high', category_source=?, category_rule_id=NULL, "
+            f"category_explanation=?, category_updated_at=datetime('now','localtime'), "
+            f"manually_edited_at=datetime('now','localtime') "
             f"WHERE id IN ({placeholders})",
-            [category, subcategory, expected_xfer, flag_reason_when_cleared, *tx_ids],
+            [category, subcategory, expected_xfer, flag_reason_when_cleared,
+             category_source, category_explanation, *tx_ids],
         )
     else:
         conn.execute(
-            f"UPDATE transactions SET category=?, subcategory=?, is_transfer=? "
+            f"UPDATE transactions SET category=?, subcategory=?, is_transfer=?, "
+            f"category_source=?, category_rule_id=NULL, category_explanation=?, "
+            f"category_updated_at=datetime('now','localtime'), "
+            f"manually_edited_at=datetime('now','localtime') "
             f"WHERE id IN ({placeholders})",
-            [category, subcategory, expected_xfer, *tx_ids],
+            [category, subcategory, expected_xfer, category_source,
+             category_explanation, *tx_ids],
         )
 
     # Verification pass — re-read the same IDs and count semantic outcomes.
@@ -1642,6 +2583,7 @@ def apply_category_by_ids(tx_ids: list[int], category: str,
         "now_with_category": int(now_with_category),
         "flags_cleared":     int(flags_cleared),
         "is_transfer_synced": int(is_transfer_synced),
+        "skipped_protected": int(skipped_protected),
     }
     if close:
         conn.commit()
@@ -1818,17 +2760,39 @@ def insert_account_balance(rec: dict, conn: Optional[sqlite3.Connection] = None)
 def get_account_balances(conn: Optional[sqlite3.Connection] = None,
                          latest_only: bool = True) -> list[dict]:
     """Return account balances. If latest_only, only the most-recent row
-    per (account_name, account_kind) is returned."""
+    per linked account is returned. Legacy unlinked snapshots fall back to
+    their saved name and kind."""
     close = False
     if conn is None:
         conn = get_connection()
         close = True
     if latest_only:
+        # Newest as_of_date per account, with id only as a tie-breaker.
+        #
+        # This used to be MAX(id), which is the order rows were *typed*, not
+        # the date they are about. Recording July and then backfilling
+        # January made January the latest balance, so every screen reading
+        # this — the net worth prefill included — silently went backwards by
+        # six months. The grouping is unchanged, so linked accounts still
+        # group by account_ref and legacy unlinked rows by name and kind.
         rows = conn.execute("""
             SELECT * FROM account_balances ab
-            WHERE id IN (
-                SELECT MAX(id) FROM account_balances
-                GROUP BY account_name, account_kind
+            WHERE ab.id = (
+                SELECT other.id FROM account_balances other
+                WHERE CASE
+                        WHEN other.account_ref IS NOT NULL
+                            THEN 'id:' || other.account_ref
+                        ELSE 'name:' || LOWER(other.account_name)
+                             || ':' || other.account_kind
+                      END
+                    = CASE
+                        WHEN ab.account_ref IS NOT NULL
+                            THEN 'id:' || ab.account_ref
+                        ELSE 'name:' || LOWER(ab.account_name)
+                             || ':' || ab.account_kind
+                      END
+                ORDER BY other.as_of_date DESC, other.id DESC
+                LIMIT 1
             )
             ORDER BY account_kind, account_name
         """).fetchall()
@@ -1877,7 +2841,12 @@ def compute_net_worth_now(conn: Optional[sqlite3.Connection] = None) -> dict:
     missing: list[str] = []
 
     # Latest account balances (one per account).
-    for bal in get_account_balances(conn=conn, latest_only=True):
+    latest_balances = get_account_balances(conn=conn, latest_only=True)
+    balanced_refs = {int(b["account_ref"]) for b in latest_balances
+                     if b.get("account_ref") is not None}
+    balanced_names = {str(b.get("account_name") or "").strip().lower()
+                      for b in latest_balances}
+    for bal in latest_balances:
         kind = (bal.get("account_kind") or "").lower()
         currencies.add((bal.get("currency") or "CAD").upper())
         if bal.get("as_of_date"):
@@ -1912,6 +2881,18 @@ def compute_net_worth_now(conn: Optional[sqlite3.Connection] = None) -> dict:
     if not breakdown:
         missing.append("no account balances or investments")
 
+    unbalanced_accounts = [
+        r["name"] for r in conn.execute(
+            "SELECT id,name FROM accounts WHERE is_archived=0 ORDER BY name"
+        ).fetchall()
+        if int(r["id"]) not in balanced_refs
+        and str(r["name"] or "").strip().lower() not in balanced_names
+    ]
+    if unbalanced_accounts:
+        missing.append(f"{len(unbalanced_accounts)} account(s) missing balances")
+
+    mixed_currency = len({c for c in currencies if c}) > 1
+    configured = bool(breakdown)
     total_assets = sum(b["value"] for b in breakdown if b["is_asset"])
     total_liab   = sum(b["value"] for b in breakdown if not b["is_asset"])
     net_worth    = total_assets - total_liab
@@ -1928,6 +2909,12 @@ def compute_net_worth_now(conn: Optional[sqlite3.Connection] = None) -> dict:
         "mixed_currency":    len({c for c in currencies if c}) > 1,
         "currencies":        sorted(currencies),
         "missing":           missing,
+        "configured":        configured,
+        "calculated":        configured and not mixed_currency,
+        "status": ("mixed_currency" if mixed_currency else
+                   "partial" if configured and unbalanced_accounts else
+                   "configured" if configured else "not_configured"),
+        "missing_account_count": len(unbalanced_accounts),
     }
 
 
@@ -2030,6 +3017,32 @@ def get_monthly_plan(month: str, conn: Optional[sqlite3.Connection] = None) -> O
     return plan
 
 
+def get_applicable_plan(month: str,
+                        conn: Optional[sqlite3.Connection] = None
+                        ) -> Optional[dict]:
+    """The plan that applies to `month`: the month's own plan when one
+    exists, otherwise the most recently saved plan (statements lag the
+    calendar, so the newest saved plan is the user's standing intent).
+
+    Every engine that reads a plan (Safe to Spend, progress, watchlist
+    targets, recommendations) should use THIS so they all agree.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    plan = get_monthly_plan(month, conn=conn)
+    if plan is None:
+        row = conn.execute(
+            "SELECT month FROM monthly_plans ORDER BY month DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            plan = get_monthly_plan(row["month"], conn=conn)
+    if close:
+        conn.close()
+    return plan
+
+
 def list_monthly_plans(conn: Optional[sqlite3.Connection] = None,
                        limit: int = 12) -> list[dict]:
     close = False
@@ -2116,6 +3129,299 @@ def get_goals(conn: Optional[sqlite3.Connection] = None,
     return out
 
 
+def spending_balance_summary(
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict:
+    """Split current balances into spendable cash, protected assets, and cards.
+
+    A linked account's persisted ``available_for_spending`` choice is
+    authoritative. Legacy unlinked balance snapshots use the same conservative
+    defaults as new accounts: chequing and cash are available; savings,
+    investments, and other assets are protected. Liability balances never
+    become spendable.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        balances = get_account_balances(conn=conn, latest_only=True)
+        account_rows = conn.execute(
+            "SELECT id,name,type,available_for_spending FROM accounts"
+        ).fetchall()
+        accounts = {int(row["id"]): dict(row) for row in account_rows}
+        available_total = 0.0
+        excluded_total = 0.0
+        card_liability = 0.0
+        details: list[dict] = []
+        for balance in balances:
+            ref = balance.get("account_ref")
+            account = accounts.get(int(ref)) if ref is not None else None
+            kind = str(
+                (account or {}).get("type")
+                or balance.get("account_kind")
+                or "other_asset"
+            ).lower()
+            value = float(balance.get("balance") or 0)
+            if kind == "credit_card":
+                card_liability += abs(value)
+                available = False
+            elif kind in LIABILITY_KINDS:
+                available = False
+            elif account is not None:
+                available = bool(int(
+                    account.get("available_for_spending") or 0
+                ))
+            else:
+                available = kind in DEFAULT_SPENDABLE_ACCOUNT_TYPES
+
+            positive_value = max(0.0, value)
+            if kind in ASSET_KINDS:
+                if available:
+                    available_total += positive_value
+                else:
+                    excluded_total += positive_value
+            details.append({
+                "account_ref": int(ref) if ref is not None else None,
+                "account_name": (
+                    (account or {}).get("name")
+                    or balance.get("account_name")
+                    or "Account"
+                ),
+                "account_kind": kind,
+                "balance": round(value, 2),
+                "available_for_spending": available,
+            })
+        return {
+            "available_balance": round(available_total, 2),
+            "excluded_balance": round(excluded_total, 2),
+            "credit_card_liability": round(card_liability, 2),
+            "accounts": details,
+        }
+    finally:
+        if close:
+            conn.close()
+
+
+def balance_reconciliation(
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict:
+    """Reconcile required spending accounts with their latest balances.
+
+    Safe to Spend needs one current snapshot for every active chequing and
+    credit-card account. A snapshot is current only through its ``as_of_date``;
+    any newer transaction on that account reopens reconciliation. Savings and
+    investment balances remain optional because they are not spending inputs.
+
+    Older databases without first-class account rows are handled conservatively
+    from their unlinked balance names/kinds and legacy transaction account
+    types. This keeps the migration readable without pretending a missing card
+    snapshot is a zero-dollar liability.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        from utils.analysis_period import supported_latest_date
+
+        supported = supported_latest_date(conn=conn)
+        supported_iso = supported.isoformat() if supported else "0000-00-00"
+        latest_balances = get_account_balances(conn=conn, latest_only=True)
+        active = list_accounts(conn=conn)
+        required = [
+            account for account in active
+            if str(account.get("type") or "").lower()
+            in {"chequing", "credit_card"}
+        ]
+        items: list[dict] = []
+
+        if required:
+            by_ref = {
+                int(row["account_ref"]): row
+                for row in latest_balances
+                if row.get("account_ref") is not None
+            }
+            for account in required:
+                account_id = int(account["id"])
+                balance = by_ref.get(account_id)
+                as_of = str((balance or {}).get("as_of_date") or "")
+                last_activity = str(account.get("last_activity") or "")
+                newer_import = bool(
+                    as_of and last_activity and last_activity > as_of
+                )
+                status = (
+                    "missing" if not balance
+                    else "out_of_date" if newer_import
+                    else "current"
+                )
+                items.append({
+                    "account_ref": account_id,
+                    "account_name": account.get("name") or "Account",
+                    "account_kind": account.get("type") or "",
+                    "as_of_date": as_of,
+                    "last_activity": last_activity,
+                    "status": status,
+                    "ready": status == "current",
+                    "imports_newer_than_balance": newer_import,
+                })
+            active_kinds = {
+                str(account.get("type") or "").lower()
+                for account in required
+            }
+            unlinked_kinds = {
+                str(row[0] or "").lower()
+                for row in conn.execute(
+                    "SELECT DISTINCT account_type FROM transactions "
+                    "WHERE account_ref IS NULL"
+                ).fetchall()
+            }
+            if "mastercard" in unlinked_kinds:
+                unlinked_kinds.add("credit_card")
+            for kind in ("chequing", "credit_card"):
+                if kind in active_kinds or kind not in unlinked_kinds:
+                    continue
+                aliases = (
+                    {kind, "mastercard"}
+                    if kind == "credit_card" else {kind}
+                )
+                candidates = [
+                    row for row in latest_balances
+                    if row.get("account_ref") is None
+                    and str(row.get("account_kind") or "").lower() in aliases
+                ]
+                balance = max(
+                    candidates,
+                    key=lambda row: (
+                        str(row.get("as_of_date") or ""),
+                        int(row.get("id") or 0),
+                    ),
+                    default=None,
+                )
+                placeholders = ",".join("?" for _ in aliases)
+                last = conn.execute(
+                    f"SELECT MAX(transaction_date) FROM transactions "
+                    f"WHERE account_ref IS NULL "
+                    f"AND LOWER(account_type) IN ({placeholders}) "
+                    f"AND transaction_date <= ?",
+                    (*tuple(sorted(aliases)), supported_iso),
+                ).fetchone()[0]
+                as_of = str((balance or {}).get("as_of_date") or "")
+                last_activity = str(last or "")
+                newer_import = bool(
+                    as_of and last_activity and last_activity > as_of
+                )
+                status = (
+                    "missing" if not balance
+                    else "out_of_date" if newer_import else "current"
+                )
+                items.append({
+                    "account_ref": None,
+                    "account_name": (
+                        (balance or {}).get("account_name")
+                        or ("Credit card" if kind == "credit_card" else "Chequing")
+                    ),
+                    "account_kind": kind,
+                    "as_of_date": as_of,
+                    "last_activity": last_activity,
+                    "status": status,
+                    "ready": status == "current",
+                    "imports_newer_than_balance": newer_import,
+                })
+        else:
+            # Legacy fallback: infer only the two required account kinds. A
+            # card with transactions but no matching balance remains missing.
+            legacy_kinds = {
+                str(row[0] or "").lower()
+                for row in conn.execute(
+                    "SELECT DISTINCT account_type FROM transactions"
+                ).fetchall()
+            }
+            if "mastercard" in legacy_kinds:
+                legacy_kinds.add("credit_card")
+            required_kinds = [
+                kind for kind in ("chequing", "credit_card")
+                if kind in legacy_kinds or any(
+                    str(row.get("account_kind") or "").lower() == kind
+                    for row in latest_balances
+                )
+            ]
+            for kind in required_kinds:
+                aliases = {kind, "mastercard"} if kind == "credit_card" else {kind}
+                candidates = [
+                    row for row in latest_balances
+                    if str(row.get("account_kind") or "").lower() in aliases
+                ]
+                balance = max(
+                    candidates,
+                    key=lambda row: (
+                        str(row.get("as_of_date") or ""), int(row.get("id") or 0)
+                    ),
+                    default=None,
+                )
+                placeholders = ",".join("?" for _ in aliases)
+                last = conn.execute(
+                    f"SELECT MAX(transaction_date) FROM transactions "
+                    f"WHERE LOWER(account_type) IN ({placeholders}) "
+                    f"AND transaction_date <= ?",
+                    (*tuple(sorted(aliases)), supported_iso),
+                ).fetchone()[0]
+                as_of = str((balance or {}).get("as_of_date") or "")
+                last_activity = str(last or "")
+                newer_import = bool(
+                    as_of and last_activity and last_activity > as_of
+                )
+                status = (
+                    "missing" if not balance
+                    else "out_of_date" if newer_import
+                    else "current"
+                )
+                items.append({
+                    "account_ref": None,
+                    "account_name": (
+                        (balance or {}).get("account_name")
+                        or ("Credit card" if kind == "credit_card" else "Chequing")
+                    ),
+                    "account_kind": kind,
+                    "as_of_date": as_of,
+                    "last_activity": last_activity,
+                    "status": status,
+                    "ready": status == "current",
+                    "imports_newer_than_balance": newer_import,
+                })
+
+        missing = [item for item in items if item["status"] == "missing"]
+        out_of_date = [
+            item for item in items if item["status"] == "out_of_date"
+        ]
+        return {
+            "ready": bool(items) and not missing and not out_of_date,
+            "required_count": len(items),
+            "current_count": sum(1 for item in items if item["ready"]),
+            "missing_count": len(missing),
+            "out_of_date_count": len(out_of_date),
+            "imports_newer_than_balance": bool(out_of_date),
+            "accounts": items,
+        }
+    finally:
+        if close:
+            conn.close()
+
+
+def get_goal(goal_id: int,
+             conn: Optional[sqlite3.Connection] = None) -> Optional[dict]:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    row = conn.execute(
+        "SELECT * FROM goal_targets WHERE id=?", (int(goal_id),),
+    ).fetchone()
+    if close:
+        conn.close()
+    return dict(row) if row else None
+
+
 def update_goal(goal_id: int, updates: dict,
                 conn: Optional[sqlite3.Connection] = None) -> None:
     close = False
@@ -2144,6 +3450,186 @@ def delete_goal(goal_id: int,
     if close:
         conn.commit()
         conn.close()
+
+
+_CURRENT_TABLES = {
+    "transactions", "investments", "contributions", "budgets",
+    "import_log", "profiles", "score_weights", "watch_list",
+    "recommendations_log", "learned_rules", "recurring_preferences", "category_change_undo", "investment_snapshot_batches",
+    "investment_positions", "net_worth_snapshots", "account_balances",
+    "statement_summaries", "monthly_plans", "category_budget_targets",
+    "goal_targets", "review_log", "accounts", "import_profiles",
+    "income_source_preferences", "net_worth_estimates", "net_worth_entries",
+    "shared_expense_settings", "shared_expense_rules",
+    "goal_contributions", "data_repair_log", "app_migrations",
+}
+
+_CURRENT_COLUMNS = {
+    "transactions": {
+        "merchant_normalized", "category_source", "ai_suggested_category",
+        "account_ref", "shared_expense_override", "shared_user_share_pct",
+    },
+    "learned_rules": {"enabled", "source_import_batch_id"},
+    "recurring_preferences": {"display_name", "category"},
+    "import_profiles": {"suggested_account_ref"},
+    "import_log": {"semantics_version"},
+    "account_balances": {"account_ref"},
+    "goal_targets": {
+        "progress_method", "linked_account_ref",
+        "planned_monthly_contribution", "contribution_frequency",
+        "include_in_plan", "currency",
+        "completed_at",
+    },
+    "monthly_plans": {
+        "fixed_obligations", "flexible_allowance", "safety_buffer",
+    },
+}
+
+
+def _schema_requires_migration(path) -> bool:
+    """Return True when an existing Ledger DB predates the current schema.
+
+    This is intentionally read-only and conservative. A database containing
+    any Ledger-era tables but missing a current table or additive column gets
+    a recovery point before ``init_db`` changes it.
+    """
+    path = path.resolve()
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    uri = f"file:{path.as_posix()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        tables = {
+            row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        }
+        if not tables:
+            return False
+        if not _CURRENT_TABLES.issubset(tables):
+            return True
+        for table, required in _CURRENT_COLUMNS.items():
+            columns = {
+                row[1] for row in conn.execute(
+                    f"PRAGMA table_info({table})"
+                ).fetchall()
+            }
+            if not required.issubset(columns):
+                return True
+        migration = conn.execute(
+            "SELECT 1 FROM app_migrations WHERE migration_key=?",
+            (_BUILTIN_CATEGORIZATION_MIGRATION,),
+        ).fetchone()
+        if migration is None:
+            return True
+        investment_migration = conn.execute(
+            "SELECT 1 FROM app_migrations WHERE migration_key=?",
+            (_INVESTMENT_SEMANTICS_MIGRATION,),
+        ).fetchone()
+        if investment_migration is None:
+            return True
+        for index in conn.execute(
+            "PRAGMA index_list(recommendations_log)"
+        ).fetchall():
+            if index[2]:
+                cols = conn.execute(
+                    f"PRAGMA index_info({index[1]})"
+                ).fetchall()
+                if len(cols) == 1 and cols[0][2] == "rec_key":
+                    return False
+        return True
+    except sqlite3.DatabaseError:
+        # Let the normal init/open path surface the corruption clearly. A raw
+        # file copy here could create false confidence in an invalid backup.
+        return False
+    finally:
+        if "conn" in locals():
+            conn.close()
+
+
+def record_goal_contribution(goal_id: int, amount: float,
+                             contributed_on: Optional[str] = None,
+                             notes: str = "",
+                             conn: Optional[sqlite3.Connection] = None) -> int:
+    """Record a positive manual contribution and advance manual progress.
+
+    The log row and goal total update are one transaction. Linked-account
+    goals reject manual contributions so progress sources never get combined
+    silently.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    amount = float(amount)
+    if amount <= 0:
+        if close:
+            conn.close()
+        raise ValueError("Contribution amount must be greater than zero.")
+    goal = get_goal(goal_id, conn=conn)
+    if not goal:
+        if close:
+            conn.close()
+        raise ValueError("Goal not found.")
+    method = (goal.get("progress_method") or "manual").strip().lower()
+    if method != "manual":
+        if close:
+            conn.close()
+        raise ValueError(
+            "Manual contributions are only available for manual-progress goals."
+        )
+    day = contributed_on or date.today().isoformat()
+    # Validate before the savepoint so malformed dates fail without writes.
+    date.fromisoformat(day)
+    conn.execute("SAVEPOINT goal_contribution")
+    try:
+        cur = conn.execute(
+            "INSERT INTO goal_contributions "
+            "(goal_id, amount, contributed_on, notes) VALUES (?,?,?,?)",
+            (int(goal_id), amount, day, (notes or "").strip()),
+        )
+        conn.execute(
+            "UPDATE goal_targets SET current_amount="
+            "COALESCE(current_amount,0)+?, updated_at=datetime('now','localtime') "
+            "WHERE id=?",
+            (amount, int(goal_id)),
+        )
+        conn.execute("RELEASE SAVEPOINT goal_contribution")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT goal_contribution")
+        conn.execute("RELEASE SAVEPOINT goal_contribution")
+        if close:
+            conn.close()
+        raise
+    if close:
+        conn.commit()
+        conn.close()
+    return int(cur.lastrowid)
+
+
+def list_goal_contributions(goal_id: Optional[int] = None,
+                            conn: Optional[sqlite3.Connection] = None
+                            ) -> list[dict]:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    if goal_id is None:
+        rows = conn.execute(
+            "SELECT * FROM goal_contributions "
+            "ORDER BY contributed_on DESC, id DESC"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM goal_contributions WHERE goal_id=? "
+            "ORDER BY contributed_on DESC, id DESC",
+            (int(goal_id),),
+        ).fetchall()
+    out = [dict(r) for r in rows]
+    if close:
+        conn.close()
+    return out
 
 
 def verify_merchant_category(merchant_normalized: str, category: str,
@@ -2186,3 +3672,392 @@ def verify_merchant_category(merchant_normalized: str, category: str,
     if close:
         conn.close()
     return out
+
+
+# ─────────────────────────────────────────────
+# Weekly check-in history (Home page)
+# ─────────────────────────────────────────────
+def insert_checkin(entry: dict, conn: Optional[sqlite3.Connection] = None) -> int:
+    """Record a completed weekly check-in. Returns the new row id.
+
+    Expected keys: planning_period, data_through, safe_to_spend,
+    primary_action, notes (all optional except none — a bare completion
+    with just the timestamp is still valid).
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    cursor = conn.execute(
+        """
+        INSERT INTO review_log
+            (planning_period, data_through, safe_to_spend,
+             primary_action, notes)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            entry.get("planning_period"),
+            entry.get("data_through"),
+            entry.get("safe_to_spend"),
+            entry.get("primary_action"),
+            entry.get("notes"),
+        ),
+    )
+    conn.commit()
+    rid = cursor.lastrowid
+    if close:
+        conn.close()
+    return rid
+
+
+def get_last_checkin(conn: Optional[sqlite3.Connection] = None) -> Optional[dict]:
+    """Most recent completed check-in, or None."""
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    row = conn.execute(
+        "SELECT * FROM review_log ORDER BY completed_at DESC, id DESC LIMIT 1"
+    ).fetchone()
+    if close:
+        conn.close()
+    return dict(row) if row else None
+
+
+# ─────────────────────────────────────────────
+# Accounts (v8)
+# ─────────────────────────────────────────────
+# Legacy transactions.account_type strings → migrated-account definitions.
+# Deliberately generic names: the backfill never guesses institutions.
+_MIGRATED_ACCOUNT_MAP = {
+    "chequing":   ("Chequing (migrated)",    "chequing"),
+    "savings":    ("Savings (migrated)",     "savings"),
+    "mastercard": ("Credit card (migrated)", "credit_card"),
+    "cash":       ("Cash (migrated)",        "cash"),
+}
+_MIGRATED_FALLBACK = ("Imported (migrated)", "other_asset")
+
+ACCOUNT_TYPES = [
+    "chequing", "savings", "cash", "credit_card",
+    "loan", "mortgage", "investment", "other_asset", "other_liability",
+]
+DEFAULT_SPENDABLE_ACCOUNT_TYPES = {"chequing", "cash"}
+ACCOUNT_TYPE_LABELS = {
+    "chequing":        "Chequing",
+    "savings":         "Savings",
+    "cash":            "Cash",
+    "credit_card":     "Credit card",
+    "loan":            "Loan / line of credit",
+    "mortgage":        "Mortgage",
+    "investment":      "Investment",
+    "other_asset":     "Other asset",
+    "other_liability": "Other debt",
+}
+LIABILITY_ACCOUNT_TYPES = {"credit_card", "loan", "mortgage",
+                           "other_liability"}
+
+
+def _migrate_accounts_schema(conn) -> None:
+    """Atomically add account_ref columns and backfill migrated accounts.
+
+    Idempotent: reruns are no-ops once transactions carry account_ref.
+    Never touches amounts, categories, provenance, or dedup hashes of
+    existing rows.
+    """
+    conn.execute("SAVEPOINT accounts_schema")
+    try:
+        _ensure_columns(conn, "accounts", [
+            ("available_for_spending", "INTEGER"),
+        ])
+        conn.execute(
+            "UPDATE accounts SET available_for_spending="
+            "CASE WHEN type IN ('chequing','cash') THEN 1 ELSE 0 END "
+            "WHERE available_for_spending IS NULL"
+        )
+        _ensure_columns(conn, "transactions", [
+            ("account_ref", "INTEGER"),
+        ])
+        _ensure_columns(conn, "import_profiles", [
+            ("suggested_account_ref", "INTEGER"),
+        ])
+
+        # Backfill: one migrated account per distinct legacy
+        # account_type that still has unassigned rows.
+        rows = conn.execute(
+            """
+            SELECT DISTINCT COALESCE(account_type, '') AS at
+            FROM transactions WHERE account_ref IS NULL
+            """
+        ).fetchall()
+        for r in rows:
+            legacy = (r["at"] or "").strip().lower()
+            name, acct_type = _MIGRATED_ACCOUNT_MAP.get(
+                legacy, _MIGRATED_FALLBACK)
+            acct = conn.execute(
+                "SELECT id FROM accounts WHERE name=? AND is_migrated=1",
+                (name,),
+            ).fetchone()
+            if acct:
+                acct_id = acct["id"]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO accounts "
+                    "(name, type, available_for_spending, is_migrated) "
+                    "VALUES (?, ?, ?, 1)",
+                    (name, acct_type,
+                     1 if acct_type in DEFAULT_SPENDABLE_ACCOUNT_TYPES else 0),
+                )
+                acct_id = cur.lastrowid
+            conn.execute(
+                "UPDATE transactions SET account_ref=? "
+                "WHERE account_ref IS NULL "
+                "  AND COALESCE(account_type,'') = ?",
+                (acct_id, r["at"]),
+            )
+        conn.execute("RELEASE SAVEPOINT accounts_schema")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT accounts_schema")
+        conn.execute("RELEASE SAVEPOINT accounts_schema")
+        raise
+
+
+def _migrate_goals_schema(conn) -> None:
+    """Atomically extend the original goals table without rewriting history.
+
+    Older goals keep their manual amount or legacy computed metric. New goals
+    can link one first-class account and reserve a monthly contribution in the
+    existing savings plan. The contribution log is intentionally separate so
+    a manual progress update remains inspectable after an app restart.
+    """
+    conn.execute("SAVEPOINT goals_schema")
+    try:
+        _ensure_columns(conn, "goal_targets", [
+            ("progress_method", "TEXT DEFAULT 'manual'"),
+            ("linked_account_ref", "INTEGER"),
+            ("planned_monthly_contribution", "REAL DEFAULT 0"),
+            ("contribution_frequency", "TEXT DEFAULT 'monthly'"),
+            ("include_in_plan", "INTEGER DEFAULT 1"),
+            ("show_milestones", "INTEGER DEFAULT 1"),
+            ("currency", "TEXT DEFAULT 'CAD'"),
+            ("completed_at", "TEXT"),
+        ])
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS goal_contributions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                contributed_on TEXT NOT NULL,
+                notes TEXT,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (goal_id) REFERENCES goal_targets(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_goal_linked_account "
+            "ON goal_targets(linked_account_ref)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_goal_contributions_goal_date "
+            "ON goal_contributions(goal_id, contributed_on)"
+        )
+        _backfill_goals_schema(conn)
+        conn.execute("RELEASE SAVEPOINT goals_schema")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT goals_schema")
+        conn.execute("RELEASE SAVEPOINT goals_schema")
+        raise
+
+
+def _migrate_monthly_plan_schema(conn) -> None:
+    """Add the explicit inputs used by the native Plan workflow."""
+    conn.execute("SAVEPOINT monthly_plan_schema")
+    try:
+        _ensure_columns(conn, "monthly_plans", [
+            ("fixed_obligations", "REAL DEFAULT 0"),
+            ("flexible_allowance", "REAL DEFAULT 0"),
+            ("safety_buffer", "REAL DEFAULT 0"),
+            ("detected_commitments_at_save", "REAL"),
+            ("fixed_override_reason", "TEXT"),
+        ])
+        conn.execute("RELEASE SAVEPOINT monthly_plan_schema")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT monthly_plan_schema")
+        conn.execute("RELEASE SAVEPOINT monthly_plan_schema")
+        raise
+
+
+def _backfill_goals_schema(conn) -> None:
+    """Preserve old goal behavior while normalizing retired status names."""
+    conn.execute(
+        "UPDATE goal_targets SET progress_method='legacy_metric' "
+        "WHERE linked_metric IS NOT NULL AND linked_metric != '' "
+        "AND COALESCE(progress_method, 'manual')='manual'"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET progress_method='manual' "
+        "WHERE progress_method IS NULL OR progress_method=''"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET planned_monthly_contribution=0 "
+        "WHERE planned_monthly_contribution IS NULL"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET contribution_frequency='monthly' "
+        "WHERE contribution_frequency IS NULL OR contribution_frequency=''"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET include_in_plan=1 "
+        "WHERE include_in_plan IS NULL"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET currency='CAD' "
+        "WHERE currency IS NULL OR currency=''"
+    )
+    conn.execute(
+        "UPDATE goal_targets SET status='completed', "
+        "completed_at=COALESCE(completed_at, updated_at, datetime('now')) "
+        "WHERE status='done'"
+    )
+
+
+def create_account(account: dict,
+                   conn: Optional[sqlite3.Connection] = None) -> int:
+    """Create an account. Returns the new id.
+
+    Required: name, type (one of ACCOUNT_TYPES). Optional: institution,
+    currency, opening_balance, opening_balance_date.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        name = (account.get("name") or "").strip()
+        acct_type = (account.get("type") or "").strip()
+        if not name:
+            raise ValueError("Account name is required.")
+        if acct_type not in ACCOUNT_TYPES:
+            raise ValueError(f"Unknown account type: {acct_type!r}")
+        dup = conn.execute(
+            "SELECT id FROM accounts WHERE lower(name)=lower(?) "
+            "AND is_archived=0",
+            (name,),
+        ).fetchone()
+        if dup:
+            raise ValueError(
+                f"An active account named '{name}' already exists.")
+        cur = conn.execute(
+            """
+            INSERT INTO accounts (name, type, institution, currency,
+                                  opening_balance, opening_balance_date,
+                                  available_for_spending)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name, acct_type,
+                (account.get("institution") or "").strip() or None,
+                (account.get("currency") or "CAD").strip().upper() or "CAD",
+                float(account.get("opening_balance") or 0.0),
+                account.get("opening_balance_date") or None,
+                int(bool(account.get(
+                    "available_for_spending",
+                    acct_type in DEFAULT_SPENDABLE_ACCOUNT_TYPES,
+                ))),
+            ),
+        )
+        if close:
+            conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if close:
+            conn.close()
+
+
+def list_accounts(conn: Optional[sqlite3.Connection] = None,
+                  include_archived: bool = False) -> list[dict]:
+    """Accounts with transaction counts and latest activity."""
+    from utils.analysis_period import supported_latest_date
+
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    supported = supported_latest_date(conn=conn)
+    supported_iso = supported.isoformat() if supported else "0000-00-00"
+    where = "" if include_archived else "WHERE a.is_archived = 0"
+    rows = conn.execute(
+        f"""
+        SELECT a.*,
+               COUNT(t.id)               AS tx_count,
+               MAX(CASE WHEN t.transaction_date <= ?
+                   THEN t.transaction_date END) AS last_activity
+        FROM accounts a
+        LEFT JOIN transactions t ON t.account_ref = a.id
+        {where}
+        GROUP BY a.id
+        ORDER BY a.is_archived, a.name COLLATE NOCASE
+        """,
+        (supported_iso,),
+    ).fetchall()
+    out = [dict(r) for r in rows]
+    if close:
+        conn.close()
+    return out
+
+
+def get_account(account_id: int,
+                conn: Optional[sqlite3.Connection] = None
+                ) -> Optional[dict]:
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    row = conn.execute("SELECT * FROM accounts WHERE id=?",
+                       (int(account_id),)).fetchone()
+    if close:
+        conn.close()
+    return dict(row) if row else None
+
+
+def update_account(account_id: int, updates: dict,
+                   conn: Optional[sqlite3.Connection] = None) -> bool:
+    """Update editable fields. Type changes are allowed but the caller
+    must confirm with the user (they change net-worth math)."""
+    allowed = {"name", "type", "institution", "currency",
+               "opening_balance", "opening_balance_date", "is_archived",
+               "available_for_spending"}
+    fields = {k: v for k, v in updates.items() if k in allowed}
+    if not fields:
+        return False
+    if "type" in fields and fields["type"] not in ACCOUNT_TYPES:
+        raise ValueError(f"Unknown account type: {fields['type']!r}")
+    if "available_for_spending" in fields:
+        fields["available_for_spending"] = int(bool(
+            fields["available_for_spending"]
+        ))
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    sets = ", ".join(f"{k}=?" for k in fields)
+    cur = conn.execute(
+        f"UPDATE accounts SET {sets}, "
+        f"updated_at=datetime('now','localtime') WHERE id=?",
+        [*fields.values(), int(account_id)],
+    )
+    if close:
+        conn.commit()
+        conn.close()
+    return cur.rowcount > 0
+
+
+def archive_account(account_id: int, archived: bool = True,
+                    conn: Optional[sqlite3.Connection] = None) -> bool:
+    """Archive (or restore) an account. History is always preserved —
+    there is deliberately no delete for accounts holding transactions."""
+    return update_account(account_id,
+                          {"is_archived": 1 if archived else 0},
+                          conn=conn)

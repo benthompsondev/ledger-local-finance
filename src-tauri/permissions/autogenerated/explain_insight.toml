@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-explain-insight"
+description = "Enables the explain_insight command without any pre-configured scope."
+commands.allow = ["explain_insight"]
+
+[[permission]]
+identifier = "deny-explain-insight"
+description = "Denies the explain_insight command without any pre-configured scope."
+commands.deny = ["explain_insight"]

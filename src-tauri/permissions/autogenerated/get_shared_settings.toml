@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-shared-settings"
+description = "Enables the get_shared_settings command without any pre-configured scope."
+commands.allow = ["get_shared_settings"]
+
+[[permission]]
+identifier = "deny-get-shared-settings"
+description = "Denies the get_shared_settings command without any pre-configured scope."
+commands.deny = ["get_shared_settings"]

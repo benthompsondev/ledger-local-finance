@@ -36,12 +36,16 @@ Usage
     python -m scripts.create_demo_data --out data/finance.demo.db --force
     python -m scripts.create_demo_data --months 6 --force
 
-Run the app against the demo DB
-───────────────────────────────
-    set LEDGER_DEMO_DB=1   (Windows cmd)
-    $env:LEDGER_DEMO_DB=1  (PowerShell)
-    export LEDGER_DEMO_DB=1 (bash)
-    python -m streamlit run app.py
+Run the desktop app against the demo DB (PowerShell)
+────────────────────────────────────────────────────
+    $env:LEDGER_DATA_DIR = "$env:TEMP\northstar-ledger-demo"
+    $env:LEDGER_DEMO_DB = "1"
+    npm run desktop:dev
+
+There is no demo toggle inside the app. Demo mode is these two environment
+variables, so clearing them returns you to your real data:
+
+    Remove-Item Env:LEDGER_DATA_DIR, Env:LEDGER_DEMO_DB
 """
 from __future__ import annotations
 
@@ -162,17 +166,31 @@ def _insert_tx(conn: sqlite3.Connection, *,
                flag_reason: str | None = None,
                batch_id: int | None = None,
                idx: int = 0) -> None:
-    dh = _dedup_hash(account, tx_date, raw, amount, idx)
+    from utils.financial_semantics import classify_transaction_type
+
+    signed_amount = (
+        -abs(float(amount)) if direction == "debit" else abs(float(amount))
+    )
+    transaction_type = classify_transaction_type(
+        raw, account, direction, category,
+    )
+    category_source = (
+        "protected" if transaction_type in {
+            "employment_income", "internal_transfer", "credit_card_payment",
+            "investment_transfer", "refund", "reimbursement",
+        } else "import_rule"
+    )
+    dh = _dedup_hash(account, tx_date, raw, signed_amount, idx)
     conn.execute(
         """INSERT OR IGNORE INTO transactions
            (account_type, transaction_date, raw_description, merchant,
             amount, direction, category, is_transfer, is_flagged,
             flag_reason, dedup_hash, currency, parse_confidence,
-            import_batch_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (account, tx_date, raw, merchant, amount, direction, category,
+            import_batch_id, transaction_type, category_source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (account, tx_date, raw, merchant, signed_amount, direction, category,
          is_transfer, is_flagged, flag_reason, dh, "CAD", "high",
-         batch_id),
+         batch_id, transaction_type, category_source),
     )
 
 
@@ -337,7 +355,7 @@ def _seed_transfers(conn, months, batch_id) -> int:
                    raw="TRANSFER TO SAVINGS",
                    merchant="TRANSFER TO SAVINGS",
                    amount=xfer_amt, direction="debit",
-                   category="Transfer Out", is_transfer=1,
+                   category="Internal Transfer", is_transfer=1,
                    batch_id=batch_id, idx=d_xfer*7+2)
         _insert_tx(conn,
                    account="savings",
@@ -345,7 +363,7 @@ def _seed_transfers(conn, months, batch_id) -> int:
                    raw="TRANSFER FROM CHEQUING",
                    merchant="TRANSFER FROM CHEQUING",
                    amount=xfer_amt, direction="credit",
-                   category="Transfer In", is_transfer=1,
+                   category="Internal Transfer", is_transfer=1,
                    batch_id=batch_id, idx=d_xfer*7+3)
         n += 4
     return n
@@ -477,20 +495,41 @@ def _seed_plan_and_goals(conn: sqlite3.Connection, anchor: date) -> dict:
             "type":           "emergency_fund",
             "target_amount":  10_000.0,
             "current_amount":  4_500.0,
-            "linked_metric":  "cash_balance",
+            "target_date":    (anchor + timedelta(days=365)).isoformat(),
+            "linked_metric":  None,
+            "progress_method": "manual",
+            "planned_monthly_contribution": 500.0,
+            "include_in_plan": 1,
             "status":         "active",
             "notes":          "DEMO goal — 6 months of essential expenses.",
         }, conn=conn)
         insert_goal({
             "name":           "Demo Visa paydown",
-            "type":           "debt_reduction",
+            "type":           "debt_payoff",
             "target_amount":   1_500.0,
             "current_amount":     420.0,
+            "target_date":    (anchor + timedelta(days=240)).isoformat(),
             "linked_metric":  None,
+            "progress_method": "manual",
+            "planned_monthly_contribution": 150.0,
+            "include_in_plan": 1,
             "status":         "active",
             "notes":          "DEMO goal — pay Visa balance to zero.",
         }, conn=conn)
-        out["goals"] = 2
+        insert_goal({
+            "name":           "Demo annual insurance",
+            "type":           "true_expense",
+            "target_amount":   1_200.0,
+            "current_amount":    600.0,
+            "target_date":    (anchor + timedelta(days=180)).isoformat(),
+            "linked_metric":  None,
+            "progress_method": "manual",
+            "planned_monthly_contribution": 100.0,
+            "include_in_plan": 1,
+            "status":         "active",
+            "notes":          "DEMO true expense — annual insurance.",
+        }, conn=conn)
+        out["goals"] = 3
     except Exception:
         pass
     return out
@@ -554,7 +593,11 @@ def main(argv: list[str] | None = None) -> int:
             anchor = today.replace(day=1) - timedelta(days=1)  # last full month
             anchor = anchor.replace(day=15)
             months = _months_back(anchor, args.months)
-            batch_id = 1  # synthetic — no import_log row needed for demo
+            # Demo seed rows are not an imported statement batch. Leaving the
+            # provenance link empty prevents the first real/demo walkthrough
+            # import (normally import_log.id=1) from claiming every seeded row
+            # and making batch undo unsafe.
+            batch_id = None
 
             n_pay   = _seed_payroll(conn,     months, batch_id)
             n_fix   = _seed_fixed_bills(conn, months, batch_id)
@@ -566,6 +609,34 @@ def main(argv: list[str] | None = None) -> int:
 
             nw_out = _seed_balances_and_nw(conn, anchor)
             plan_out = _seed_plan_and_goals(conn, anchor)
+            conn.commit()
+
+            # Named demo accounts (instead of the generic "(migrated)"
+            # names the backfill would create on next app start).
+            _DEMO_ACCOUNTS = {
+                "chequing":   ("Demo Chequing",    "chequing"),
+                "savings":    ("Demo Savings",     "savings"),
+                "mastercard": ("Demo Credit Card", "credit_card"),
+            }
+            _demo_account_ids = {}
+            for legacy, (name, acct_type) in _DEMO_ACCOUNTS.items():
+                cur = conn.execute(
+                    "INSERT INTO accounts (name, type, institution) "
+                    "VALUES (?, ?, 'Demo Bank')",
+                    (name, acct_type),
+                )
+                _demo_account_ids[legacy] = int(cur.lastrowid)
+                conn.execute(
+                    "UPDATE transactions SET account_ref=? "
+                    "WHERE account_ref IS NULL AND account_type=?",
+                    (cur.lastrowid, legacy),
+                )
+            conn.execute(
+                "UPDATE goal_targets SET progress_method='linked_account', "
+                "linked_account_ref=?, currency='CAD' "
+                "WHERE name='Demo emergency fund'",
+                (_demo_account_ids["savings"],),
+            )
             conn.commit()
 
             tx_count = conn.execute(
@@ -600,10 +671,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Category targets:        {plan_out.get('category_targets', 0)}")
     print(f"  Goals:                   {plan_out.get('goals', 0)}")
     print()
-    print("Run the app against this DB with LEDGER_DEMO_DB=1, e.g.:")
-    print("  set LEDGER_DEMO_DB=1 && python -m streamlit run app.py    (cmd)")
-    print("  $env:LEDGER_DEMO_DB='1'; python -m streamlit run app.py   (PowerShell)")
-    print("  LEDGER_DEMO_DB=1 python -m streamlit run app.py           (bash)")
+    print("Run the desktop app against this database (PowerShell):")
+    print(f'  $env:LEDGER_DATA_DIR = "{out_path.parent}"')
+    print('  $env:LEDGER_DEMO_DB = "1"')
+    print("  npm run desktop:dev")
+    print()
+    print("Clear both variables afterwards to go back to your real data:")
+    print("  Remove-Item Env:LEDGER_DATA_DIR, Env:LEDGER_DEMO_DB")
     return 0
 
 

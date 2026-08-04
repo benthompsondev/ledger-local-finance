@@ -209,15 +209,15 @@ st.markdown('<p class="ledger-section-header">Overview</p>', unsafe_allow_html=T
 _acct_note = "" if not dash_acct_filter else f" · {dash_acct_filter} only"
 st.caption(
     f"Period: **{start}** → **{end}**{_acct_note}. "
-    "Income = true deposits (payroll, e-Transfers in, interest). "
-    "Spending = debits net of refunds. "
+    "Income = money in (payroll, e-Transfers in, interest, and refunds). "
+    "Spending = exact purchases, bills, and fees. "
     "Internal transfers (CC payments, savings ↔ chequing) are always excluded."
 )
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Income",              f"${cf['income']:,.2f}",
-          help="All deposits (direction=credit, amount>0). Excludes CC payments, cancelled, and savings pullbacks.")
+          help="Money entering an account, including refunds. Excludes CC payments, cancelled rows, and savings pullbacks.")
 k2.metric("Spending",            f"${cf['spending']:,.2f}",
-          help="All debits net of refund credits. Excludes CC payments (chequing→MC) and cancelled.")
+          help="Exact purchases, bills, and fees. Excludes income, CC payments, transfers, and cancelled rows.")
 k3.metric("Net",                  f"${cf['net']:,.2f}",    delta=f"{cf['savings_rate']:.1f}% saved",
           help="Income − Spending. Savings rate = Net / Income.")
 k4.metric("Money Pulse",    f"{score}/100",          delta=score_label(score))
@@ -276,7 +276,17 @@ if _runway.get("available"):
             help="Expected income minus spending so far, remaining bills/subscriptions, savings goal, exact debt/fee reserve, and a small buffer.",
         )
     with r2:
-        st.metric("Daily pace", f"${float(_safe.get('daily_amount') or 0):,.0f}/day")
+        # daily_amount is None when the planning period has ended — a
+        # daily rate for a finished period is meaningless, never show one.
+        if _safe.get("period_ended") or _safe.get("daily_amount") is None:
+            st.metric(
+                "Daily pace", "—",
+                help=("This planning period has ended. "
+                      "Start or update your next plan."),
+            )
+        else:
+            st.metric("Daily pace",
+                      f"${float(_safe['daily_amount']):,.0f}/day")
     with r3:
         st.markdown(
             f"<div style='font-size:0.82rem;color:#8b949e'>Runway status</div>"
@@ -514,8 +524,11 @@ def _improve_hint(dim_key: str, dim: dict) -> str:
 
 
 def _safe(s: str) -> str:
-    """Escape literal '$' so st.markdown doesn't interpret '$...$' as LaTeX."""
-    return str(s or "").replace("$", r"\$")
+    """Escape literal '$' so st.markdown doesn't interpret '$...$' as
+    LaTeX. Idempotent: text that already carries '\\$' (e.g. insight
+    bodies escaped at the source) is not escaped a second time —
+    double-escaping is what rendered '\\529/mo' on the live page."""
+    return str(s or "").replace(r"\$", "$").replace("$", r"\$")
 
 
 def _html_safe(s: str) -> str:
@@ -668,9 +681,22 @@ with cop_col:
     )
     moves = cop.get("moves") or []
     if moves:
-        st.markdown("**Top 3 next moves:**")
-        for m in moves:
-            st.markdown(f"- {_safe(m)}")
+        # Rendered as HTML, not markdown bullets: markdown list items
+        # kept re-triggering LaTeX handling on the dollar amounts.
+        # Rec titles arrive pre-escaped (\$) for markdown consumers —
+        # HTML shows backslashes literally, so unescape first.
+        _move_items = "".join(
+            f"<li style='margin-bottom:2px'>"
+            f"{_html_safe(str(m).replace(chr(92) + '$', '$'))}</li>"
+            for m in moves
+        )
+        st.markdown(
+            f"<div style='font-size:0.9rem;color:#c9d1d9'>"
+            f"<b>Top 3 next moves:</b>"
+            f"<ul style='margin:4px 0 0 20px;padding:0'>{_move_items}</ul>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     grounded = cop.get("grounded_from") or []
     if grounded:
         st.caption("Grounded in: " + " · ".join(grounded)
@@ -893,11 +919,11 @@ if recs:
     with _rc1:
         _impact_chip = (f" · up to ~${annual:,.0f}/yr potential"
                         if annual > 0 else "")
-        st.caption(
+        st.caption(_safe(
             f"💡 **{high_recs} high-priority** · "
             f"{len(recs)} total recommendations{_impact_chip}. "
             f"Top: {top_recs[0]['title'] if top_recs else '—'}"
-        )
+        ))
     with _rc2:
         if st.button("Money Moves →", key="dash_recs_jump",
                      use_container_width=True):
@@ -912,12 +938,12 @@ if det["count"] > 0:
     st.divider()
     _sd_c1, _sd_c2 = st.columns([5, 1])
     with _sd_c1:
-        st.caption(
+        st.caption(_safe(
             f"🔁 **{det['count']} recurring services** detected · "
             f"~${det.get('active_monthly_estimate', det['monthly_estimate']):,.0f}/mo · "
             f"~${det.get('active_annual_total', det['annual_total']):,.0f}/yr. "
             "Cancellation candidates and stale subs live on the Reduce page."
-        )
+        ))
     with _sd_c2:
         if st.button("Reduce →", key="dash_reduce_jump",
                      use_container_width=True):

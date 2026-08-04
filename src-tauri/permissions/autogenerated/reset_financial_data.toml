@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-financial-data"
+description = "Enables the reset_financial_data command without any pre-configured scope."
+commands.allow = ["reset_financial_data"]
+
+[[permission]]
+identifier = "deny-reset-financial-data"
+description = "Denies the reset_financial_data command without any pre-configured scope."
+commands.deny = ["reset_financial_data"]

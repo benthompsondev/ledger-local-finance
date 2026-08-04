@@ -1,0 +1,2 @@
+# Test-only dependencies. The app itself does not need these to run.
+pytest>=8.0.0

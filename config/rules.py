@@ -6,12 +6,17 @@ Add your own rules at the bottom.
 """
 
 RULES = [
+    # High-value fixed obligations and merchant-aware fallbacks. These run
+    # before broad retail rules so a statement memo of "Other" does not turn
+    # every unfamiliar merchant into Shopping.
+    ("NESTO",                     "Housing / Mortgage",   "Mortgage",              True),
 
     # ── SAVINGS-SPECIFIC PATTERNS (must come first — highest priority) ──────────────────
     # Internal savings → chequing transfers — must NOT count as income or spending.
     # Pass 17: routed to "Internal Transfer" so they're clearly distinct from
     # Tangerine-Savings investment movements ("Savings" category).
     ("Internet Withdrawal to Tangerine Chequing", "Internal Transfer", "Savings -> Chequing", False),
+    ("Internet Withdrawal to Tangerine",          "Internal Transfer", "Savings -> owned account", False),
     ("Internet Transfer to Tangerine Chequing",   "Internal Transfer", "Savings -> Chequing", False),
     ("Internet Deposit from Tangerine Savings",   "Internal Transfer", "Chequing <- Savings", False),
     ("Internet Deposit from Tangerine",           "Internal Transfer", "Chequing <- Savings", False),
@@ -36,12 +41,17 @@ RULES = [
     ("Opening Balance",           None,                   None,                    False),  # None = skip row
     ("Closing Balance",           None,                   None,                    False),
 
-    # Income — Pass 17: promoted to specific subtypes so Income page breaks
-    # them out cleanly. SJH = Saint Joseph's Healthcare payroll deposit.
+    # Income — specific subtypes keep the Income page useful without relying
+    # on any private employer name.
     ("PAYROLL",                   "Payroll Income",       "Payroll",               False),
     ("EFT Deposit",               "Income",               "Direct Deposit",        False),
     ("TAX REFUND",                "Income",               "CRA",                   False),
-    ("CRA ",                      "Income",               "Government",            False),
+    # Direction remains authoritative. Negative government payments are
+    # handled below as spending; genuine positive tax refunds stay income.
+    ("CRA PAYMENT",                "Government / Taxes",   "CRA payment",           False),
+    ("CRA REVENUE",                "Government / Taxes",   "CRA payment",           False),
+    ("SERVICE CANADA",             "Government / Taxes",   "Government",            False),
+    ("CRA ",                       "Income",               "Government",            False),
     ("Shakepay",                  "Income",               "Crypto/Shakepay",       False),
     ("DRAFTERS INC",              "Income",               "Freelance",             False),
 
@@ -71,7 +81,7 @@ RULES = [
     ("INTERAC e-Transfer From: YOUR NAME", "Transfer",      "Self-Transfer",         False),
 
     # Outbound to other people = real spending
-    ("INTERAC e-Transfer To:",    "Transfer Out",         "e-Transfer Sent",       False),
+    ("INTERAC e-Transfer To:",    "E-transfer / Personal payment", "Personal payment", False),
     # Inbound from other people = real income
     ("INTERAC e-Transfer From:",  "Transfer In",          "e-Transfer Received",   False),
     # Generic INTERAC fallback
@@ -238,11 +248,13 @@ RULES = [
     ("SPORT CHEK",                "Shopping",             "Sport Chek",            False),
     ("PRO HOCKEY LIFE",           "Shopping",             "Pro Hockey Life",       False),
     ("DOLLARAMA",                 "Shopping",             "Dollarama",             False),
+    ("MICHAELS",                  "Shopping",             "Michaels",              False),
     ("DOLLAR TREE",               "Shopping",             "Dollar Tree",           False),
     ("2NDTURN CANADA",            "Shopping",             "2ndTurn",               False),
     ("AMAZE DEALS",               "Shopping",             "Amaze Deals",           False),
     ("SEPHORA",                   "Shopping",             "Sephora",               False),
     ("BLUENOTES",                 "Shopping",             "Blue Notes",            False),
+    ("THRIFTYS",                  "Shopping / Clothing",  "Clothing",              False),
     ("URBAN PLANET",              "Shopping",             "Urban Planet",          False),
     ("MINISO",                    "Shopping",             "Miniso",                False),
     ("NANONOBLE",                 "Shopping",             "Nanonoble",             False),
@@ -253,7 +265,8 @@ RULES = [
     ("GRNHRZNSODB",               "Shopping",             "Green Horizons (landscape)", False),
     ("IMAGINEX",                  "Shopping",             "Imaginex",              False),
     ("CREEM.IO*IMAGINEX",         "Subscriptions & Digital", "Imaginex Sub",       True),
-    ("ECONOMICAL INSURANCE",      "Shopping",             "Insurance",             True),
+    ("ECONOMICAL INSURANCE",      "Insurance",            "Insurance",             True),
+    ("INSURANCE",                 "Insurance",            "Insurance",             True),
     ("MARSHALL",                  "Shopping",             "Marshalls",             False),
     ("H&M",                       "Shopping",             "H&M",                   False),
     ("ZARA",                      "Shopping",             "Zara",                  False),
@@ -265,6 +278,12 @@ RULES = [
     ("OPENAI *CHATGPT SUBSCR",    "Subscriptions & Digital", "ChatGPT",            True),
     ("OPENAI* CHATGPT",           "Subscriptions & Digital", "ChatGPT",            True),
     ("OPENAI",                    "Subscriptions & Digital", "OpenAI",             True),
+    ("POE",                       "Subscriptions & Digital", "Poe AI",              True),
+    ("RUNWARE",                   "Subscriptions & Digital", "Runware AI",          True),
+    ("DEEPLEARNING.AI",           "Subscriptions & Digital", "DeepLearning.AI",     True),
+    ("SOPHIA LEARNING",           "Subscriptions & Digital", "Online learning",     True),
+    ("SHENGSHU AI",               "Subscriptions & Digital", "AI service",          True),
+    ("PORKBUN",                   "Domains / Web services", "Domains",               True),
     ("DISNEY PLUS",               "Subscriptions & Digital", "Disney+",            True),
     ("Disney Plus",               "Subscriptions & Digital", "Disney+",            True),
     ("NETFLIX",                   "Subscriptions & Digital", "Netflix",            True),
@@ -304,18 +323,20 @@ RULES = [
     # their money is going to one-off fun vs. monthly bills.
     ("CINEPLEX",                  "Entertainment",        "Cineplex",              False),
     ("LANDMARK CINEMAS",          "Entertainment",        "Landmark Cinemas",      False),
+    ("RBC AMPHITHEATRE",          "Entertainment",        "Live event",            False),
     ("AMC ",                      "Entertainment",        "AMC",                   False),
-    ("STEAM",                     "Entertainment",        "Steam",                 False),
-    ("STEAMGAMES",                "Entertainment",        "Steam",                 False),
-    ("STEAMPOWERED",              "Entertainment",        "Steam",                 False),
-    ("PlayStation Network",       "Entertainment",        "PlayStation",           True),
+    ("STEAM",                     "Gaming / Entertainment", "Steam",               False),
+    ("STEAMGAMES",                "Gaming / Entertainment", "Steam",               False),
+    ("STEAMPOWERED",              "Gaming / Entertainment", "Steam",               False),
+    ("PLAYSTATION",               "Gaming / Entertainment", "PlayStation",         True),
+    ("GAMEBRIDGE",                "Gaming / Entertainment", "Games",               False),
     ("RIOT* ",                    "Entertainment",        "Riot Games",            False),
     ("RIOT GAMES",                "Entertainment",        "Riot Games",            False),
-    ("EPIC GAMES",                "Entertainment",        "Epic Games",            False),
+    ("EPIC GAMES",                "Gaming / Entertainment", "Epic Games",           False),
     ("EA ",                       "Entertainment",        "EA Games",              False),
     ("G2ABVSHOP",                 "Entertainment",        "G2A Games",             False),
     ("G2A.COM",                   "Entertainment",        "G2A Games",             False),
-    ("GAMESTOP",                  "Entertainment",        "GameStop",              False),
+    ("GAMESTOP",                  "Gaming / Entertainment", "GameStop",             False),
     ("CONCERT",                   "Entertainment",        "Concert",               False),
     ("TICKETMASTER",              "Entertainment",        "Ticketmaster",          False),
     ("STUBHUB",                   "Entertainment",        "StubHub",               False),
@@ -324,7 +345,6 @@ RULES = [
     ("ESCAPE ROOM",               "Entertainment",        "Escape Room",           False),
 
     # ── HEALTH / CARE ────────────────────────────────────────────────────────
-    ("ST JOSEPH'S HEALTHCARE",    "Health / Care",        "SJH Healthcare",        True),
     ("ABMA COUNSELLING",          "Health / Care",        "Counselling",           True),
     ("WATERLOO FAMILY DENTAL",    "Health / Care",        "Dental",                False),
     ("DENTAL",                    "Health / Care",        "Dental",                False),
@@ -337,7 +357,9 @@ RULES = [
     ("OPTOMETRIST",               "Health / Care",        "Vision",                False),
     ("GYM",                       "Health / Care",        "Gym",                   True),
     ("GOODLIFE",                  "Health / Care",        "GoodLife Fitness",      True),
-    ("YMCA",                      "Health / Care",        "YMCA",                  True),
+    ("LIFELABS",                  "Health / Care",        "LifeLabs",              False),
+    ("NBX*YMCA",                  "Fitness",              "YMCA",                  True),
+    ("YMCA",                      "Fitness",              "YMCA",                  True),
 
     # ── PETS ─────────────────────────────────────────────────────────────────
     ("PETSMART",                  "Pets",                 "PetSmart",              False),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-insight-feed"
+description = "Enables the get_insight_feed command without any pre-configured scope."
+commands.allow = ["get_insight_feed"]
+
+[[permission]]
+identifier = "deny-get-insight-feed"
+description = "Denies the get_insight_feed command without any pre-configured scope."
+commands.deny = ["get_insight_feed"]

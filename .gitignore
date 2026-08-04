@@ -8,6 +8,17 @@ __pycache__/
 dist/
 build/
 .eggs/
+node_modules/
+dist-desktop/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/ledger-engine-*.exe
+src-tauri/icons/android/
+src-tauri/icons/ios/
+src-tauri/icons/*.icns
+src-tauri/icons/Square*Logo.png
+src-tauri/icons/StoreLogo.png
+*.tsbuildinfo
 
 # ── Virtual environments ─────────────────────────────────────────────────
 .venv/
@@ -23,6 +34,8 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.json
+data/backups/
+data/.*.tmp*
 
 # Demo data should be generated locally and reviewed before sharing.
 
@@ -40,6 +53,11 @@ exports/bug_reports/
 
 # ── AI categorization config (contains API key — never commit, never export) ─
 config.json
+
+# ── Environment files ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
 
 # ── OS files ─────────────────────────────────────────────────────────────
 .DS_Store
@@ -69,3 +87,6 @@ Tangerine Statements/
 
 # Internal handoff / local working notes
 CLAUDE_HANDOFF.md
+
+# local Claude pointer (committed guide is AGENTS.md)
+CLAUDE.md

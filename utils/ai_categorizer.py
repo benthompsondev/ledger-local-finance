@@ -429,9 +429,8 @@ def _deterministic_suggest(tx: dict) -> Optional[dict]:
 
     Pass 17: deterministic rule matches to SYSTEM categories
     (Credit Card Payment / Internal Transfer / Payroll Income / etc.) ARE
-    returned. They're not AI-eligible, but they're DETERMINISTICALLY correct
-    — Tangerine label "EFT Deposit from SJH" really is Payroll Income, full
-    stop. The user listed these explicitly as expected categorizer outputs.
+    returned. They're not AI-eligible, but they're deterministically correct.
+    For example, an explicit payroll-deposit rule remains Payroll Income.
     The `_AI_FORBIDDEN` filter is only for the AI tier.
     """
     try:

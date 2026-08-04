@@ -1,0 +1,2 @@
+# Build-only dependency for Ledger's Windows bundle and installer.
+pyinstaller==6.21.0

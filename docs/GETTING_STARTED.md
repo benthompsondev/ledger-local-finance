@@ -1,161 +1,187 @@
-# Getting Started With Ledger
+# Getting started with Northstar Ledger
 
-This is the beginner path for trying Ledger locally.
+This is the beginner path for running Northstar Ledger on your own machine.
 
-Ledger is a local-first finance app. It runs on your computer, stores data in a local SQLite database, and does not need an online account. The safest first run is demo mode, which uses fake generated transactions and fake balances.
+It is a local-first finance app for Windows. It runs on your computer, stores
+everything in a local SQLite database, and does not need an account or an
+internet connection for any of the finance math.
 
-## What You Need
+The safest first run is demo mode, which uses generated fake transactions so
+you can look around before pointing it at real statements.
 
-- Python 3.12 or newer
-- Git, if you want to clone the repo from the command line
+## Easiest way to try it
 
-On Windows, install Python from [python.org](https://www.python.org/downloads/) and tick **Add Python to PATH** if the installer offers it.
+Download the latest Windows installer from
+[GitHub Releases](https://github.com/benthompsondev/ledger-local-finance/releases/latest).
+It is a per-user install and does not require Python, Node, Rust, or
+administrator rights.
 
-To check whether Python is available:
+The installer is currently unsigned, so Windows SmartScreen may warn you the
+first time. Check the SHA-256 value on the release page before running it.
 
-```powershell
-py --version
-```
+The sections below are for running Northstar from source. For that you need:
 
-If that does not work, try:
+- [Python 3.13+](https://www.python.org/downloads/) — tick **Add Python to
+  PATH** during install if the installer offers it
+- [Node.js 24+](https://nodejs.org/) — the frontend tests load TypeScript directly, and only Node 23.6 and up strip types without a flag
+- [Rust](https://rustup.rs/) — the installer walks you through it
+- [Git](https://git-scm.com/), if you want to clone from the command line
+
+To check each one:
 
 ```powershell
 python --version
+node --version
+cargo --version
 ```
 
-## Download Ledger
+If `python` is not found, try `py --version` instead.
 
-### Option 1: Git Clone
+You can also [take the browser product tour](https://benthompsondev.github.io/ledger-local-finance/)
+before downloading anything. The tour uses screenshots and generated data; the
+finance engine itself remains in the Windows desktop app.
+
+## Get the code
 
 ```powershell
 git clone https://github.com/benthompsondev/ledger-local-finance.git
 cd ledger-local-finance
 ```
 
-### Option 2: Download ZIP
+If you would rather not use Git, open the repo on GitHub, click **Code**, click
+**Download ZIP**, extract it, and open PowerShell in the extracted folder.
 
-1. Open the GitHub repo.
-2. Click **Code**.
-3. Click **Download ZIP**.
-4. Extract the ZIP.
-5. Open PowerShell in the extracted `ledger-local-finance` folder.
-
-The ZIP option is fine if you only want to try the app.
-
-## First Run With Fake Demo Data
-
-Use demo mode first. It creates `data/finance.demo.db` with fake transactions and opens the app locally.
-
-Windows:
+## Install dependencies
 
 ```powershell
-py Ledger_Launcher.py --demo
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+npm ci
 ```
 
-If `py` is not available:
+The first `npm ci` and the first Rust build both take a few minutes. After
+that they are cached.
+
+## First run with demo data
+
+There is no demo switch inside the app. Demo mode is two environment variables,
+which is deliberate: the app can never quietly decide for itself whether it is
+looking at invented data or yours.
+
+Generate the dataset into a temp folder and point the app at it:
 
 ```powershell
-python Ledger_Launcher.py --demo
+$demoDir = Join-Path $env:TEMP "northstar-ledger-demo"
+New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
+.\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
+$env:LEDGER_DATA_DIR = $demoDir
+$env:LEDGER_DEMO_DB = "1"
+npm run desktop:dev
 ```
 
-PowerShell helper:
+A desktop window opens. It does not use a browser and does not start a local
+web server. Everything reads and writes inside that temp folder, so your real
+database at `%LOCALAPPDATA%\Ledger\finance.db` is never opened.
+
+When you are done, clear both variables. They only last for that PowerShell
+session, but clearing them makes it obvious:
 
 ```powershell
-.\run_windows.ps1 -Demo
+Remove-Item Env:LEDGER_DATA_DIR, Env:LEDGER_DEMO_DB
 ```
 
-Linux/macOS:
+Then start the app again with `npm run desktop:dev` to work against your real
+data.
 
-```bash
-make setup
-make demo
-```
+## What to look at first
 
-Open:
+1. **Home** — the weekly check-in. Safe to Spend, what changed, and the few
+   things worth your attention.
+2. **Insights** — spending pace against last month, category movement, income
+   steadiness.
+3. **Plan** — turn recent spending into a monthly plan and see what is actually
+   left over after fixed costs, reserves, savings and buffer.
+4. **Transactions** — the full ledger, searchable and filterable.
 
-```text
-http://127.0.0.1:8501
-```
+The sixth tab, **Coach**, only does anything once you configure an AI provider,
+so skip it for now.
 
-The first run can take a few minutes because Ledger creates a local Python environment and installs dependencies.
+Settings is the gear in the top right, not a tab. Backup and restore,
+preferences, categorization controls and the optional AI setup all live there.
 
-## What To Click First
+## Using your own statements
 
-- **Dashboard**: Money Pulse, safe-to-spend, and weekly actions
-- **Import**: where PDFs or CSVs are uploaded
-- **Reduce**: subscriptions and controllable spending targets
-- **Plan**: monthly target, bills, goals, and runway
-- **Net Worth**: assets, liabilities, holdings, and snapshots
-- **Reports**: deeper review after the dashboard
+When you are ready, clear the two demo variables above, restart the app, and go
+to **Add Data**.
 
-## Use Your Own Files
+It handles:
 
-After demo mode works, close the app and open a fresh terminal.
+- bank and credit card CSV exports
+- Tangerine Mastercard, Chequing and Savings PDFs
+- investment holdings CSV snapshots
 
-Windows:
+Drop a file in and it will show you what it detected: the date format, the
+decimal convention, and which columns it mapped. Check that summary before
+confirming. If the file's evidence is contradictory the import stops rather
+than guessing, which is deliberate — a silently wrong date or a hundredfold
+amount is worse than a refused file.
+
+Every import is recorded as a batch you can remove later. Re-importing the same
+file does nothing, because duplicates are caught by both file hash and
+transaction fingerprint.
+
+## Building an installer
+
+If you want a normal installed app rather than the dev window:
 
 ```powershell
-py Ledger_Launcher.py
+powershell -File scripts/build_native_desktop.ps1
 ```
 
-or:
+The installer is written to `src-tauri/target/release/bundle/nsis/`. It is a
+per-user install and does not need administrator rights.
 
-```powershell
-.\run_windows.ps1
-```
+Note there is no auto-update yet. Installing a newer build over an older one is
+currently a manual reinstall.
 
-Linux/macOS:
+## If something fails
 
-```bash
-make run
-```
-
-Then use the **Import** page with supported files:
-
-- Tangerine Mastercard PDFs
-- Tangerine Chequing or Savings PDFs
-- generic transaction CSV files
-- holdings CSV snapshots
-
-Ledger stores imported data in `data/finance.db`. That file stays local and is ignored by git.
-
-## If Something Fails
-
-Run the local readiness check:
-
-Windows:
+Run the readiness check:
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.doctor
 ```
 
-Linux/macOS:
+It reports missing files, missing dependencies and anything private that has
+been staged in git by mistake.
 
-```bash
-make check
-```
+If the desktop window will not start, the most common causes are a missing Rust
+toolchain or an incomplete `npm ci`. Both print a clear error.
 
-This checks the Python version, main dependencies, required files, demo-data status, and whether private-looking files are tracked by git.
-
-If the Windows launcher fails, check `launcher.log` in the Ledger folder. It records the setup step that failed and usually includes copy/paste repair commands.
-
-## Privacy Notes
-
-Ledger is meant to run locally.
-
-Do not upload or share:
-
-- `data/`
-- `config.json`
-- statement PDFs
-- exported files with real transactions
-- screenshots with real balances or account details
-- `launcher.log` if it contains local machine details
-
-If you need to share a clean copy of the project, use:
+To confirm the finance engine itself is healthy:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.make_share_zip
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The share script excludes local databases, API keys, logs, exports, virtual environments, and generated private files.
+## Privacy notes
+
+- Your database lives at `%LOCALAPPDATA%\Ledger\finance.db` and the file never
+  leaves your machine.
+- All the finance math is local and deterministic. No telemetry, no analytics,
+  no account.
+- If you enable the optional online AI, the evidence packet for the question
+  you asked is sent to the provider you configured. That packet contains real
+  figures from your ledger: totals, categories, merchant names and dates,
+  depending on the feature. Only the request you triggered is sent, and the app
+  works fully without AI.
+- Your provider key is encrypted with Windows DPAPI and tied to your Windows
+  user account.
+- Never commit real statements, exports, screenshots of real data, or the
+  database. `scripts/doctor.py` will warn you if any of them are staged.
+
+## Where to go next
+
+- [README.md](../README.md) for what the app does and how it is built
+- [AGENTS.md](../AGENTS.md) for architecture and conventions
+- [CONTRIBUTING.md](../CONTRIBUTING.md) if you want to change something

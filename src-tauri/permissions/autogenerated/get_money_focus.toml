@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-money-focus"
+description = "Enables the get_money_focus command without any pre-configured scope."
+commands.allow = ["get_money_focus"]
+
+[[permission]]
+identifier = "deny-get-money-focus"
+description = "Denies the get_money_focus command without any pre-configured scope."
+commands.deny = ["get_money_focus"]

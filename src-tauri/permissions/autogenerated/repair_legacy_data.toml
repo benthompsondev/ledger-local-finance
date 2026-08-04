@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-repair-legacy-data"
+description = "Enables the repair_legacy_data command without any pre-configured scope."
+commands.allow = ["repair_legacy_data"]
+
+[[permission]]
+identifier = "deny-repair-legacy-data"
+description = "Denies the repair_legacy_data command without any pre-configured scope."
+commands.deny = ["repair_legacy_data"]

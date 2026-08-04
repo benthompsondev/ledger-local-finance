@@ -970,14 +970,19 @@ def main() -> int:
                   "amount", "daily_amount", "days_left", "period_end",
                   "confidence", "formula"
               )))
-        check("p36 runway: formula has core fields",
-              all(k in ((rw36.get("safe_to_spend") or {}).get("formula") or {})
-                  for k in (
+        _runway_formula = (
+            (rw36.get("safe_to_spend") or {}).get("formula") or {}
+        )
+        check("p36 runway: formula is complete or safely withheld",
+              (rw36.get("available") and all(
+                  k in _runway_formula for k in (
                       "income_available_or_expected", "spending_so_far",
                       "planned_bills_remaining",
                       "active_subscriptions_remaining",
                       "goal_commitments", "debt_or_fee_reserve", "buffer"
                   )))
+              or (not rw36.get("available") and not _runway_formula
+                  and bool(rw36.get("reason"))))
         check("p36 runway: watchlists list",
               isinstance(rw36.get("watchlists"), list))
         md36 = mission_deck(conn=c35, limit=3)
@@ -1797,8 +1802,7 @@ def main() -> int:
                 "CLAUDE_HANDOFF.md",
             ):
                 check(f"share zip has no {forbidden}",
-                      not any(n.endswith("/" + forbidden) or
-                              n.endswith(forbidden) and "/" not in n[len(forbidden):]
+                      not any(n.rstrip("/").rsplit("/", 1)[-1] == forbidden
                               for n in names))
             # Forbidden directory prefixes (any depth under ledger/).
             for forbidden_dir in (

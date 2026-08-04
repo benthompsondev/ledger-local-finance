@@ -13,8 +13,9 @@ import json
 import hashlib
 from pathlib import Path
 from datetime import datetime
+from utils.platform_utils import get_data_dir
 
-WATCHER_STATE_FILE = Path(__file__).parent.parent / "data" / "watcher_state.json"
+WATCHER_STATE_FILE = get_data_dir() / "watcher_state.json"
 
 
 def _load_state() -> dict:

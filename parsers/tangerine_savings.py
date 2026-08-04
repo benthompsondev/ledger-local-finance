@@ -1,26 +1,27 @@
 """
 Tangerine Savings Account statement PDF parser.
 
-Real format (verified from actual PDFs, Feb + Mar 2026):
+Layout verified against real statements. Every figure, name and account
+number below is invented; only the shape of the lines is real.
 
 Statement header (page 1):
   Statement
   www.tangerine.ca
   February 01, 2026 To February 28, 2026
   ...
-  The Details - Tangerine Savings Account - 3031472835
+  The Details - Tangerine Savings Account - 0000000000
 
 Transaction rows come in two forms:
 
   1. Single-line (date + description + amount + balance on one line):
-     07 Feb 2026 Credit Card Rewards Redemption 18.01 119.34
-     10 Feb 2026 EFT Deposit from MANULIFE 178.00 297.34
-     28 Feb 2026 Interest Paid 0.03 227.37
+     07 Feb 2026 Credit Card Rewards Redemption 10.00 110.00
+     10 Feb 2026 EFT Deposit from INVENTED PAYER 100.00 210.00
+     28 Feb 2026 Interest Paid 0.05 160.05
 
   2. Multi-line withdrawal (description split across two lines):
      Internet Withdrawal to Tangerine Chequing Account   ← description (no date)
-     13 Feb 2026 200.00 97.34                             ← date + amount + balance
-     - 4010461272                                         ← orphan account number
+     13 Feb 2026 50.00 160.00                             ← date + amount + balance
+     - 0000000000                                         ← orphan account number
 
 Parsing rules:
   - Only parse "The Details - Tangerine Savings Account" section
@@ -59,7 +60,7 @@ DATE_RE = re.compile(
     r"^(\d{2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\s+(.*)",
     re.IGNORECASE,
 )
-# Orphan account number lines: "- 3031472835" or "3031472835" (with or without dash)
+# Orphan account number lines: "- 0000000000" or "0000000000" (with/without dash)
 ORPHAN_ACCT_RE = re.compile(r"^-?\s*\d{10}$")
 NUMBER_RE = re.compile(r"[\d,]+\.\d{2}")
 
@@ -198,13 +199,14 @@ def build_transaction(
     """Build and enrich a savings transaction dict."""
     direction = determine_direction_savings(description)
     is_tr = 1 if direction == "transfer" else 0
+    signed_amount = abs(amount) if direction == "credit" else -abs(amount)
 
     tx = {
         "account_type":       "savings",
         "transaction_date":   tx_date,
         "posted_date":        None,
         "raw_description":    description,
-        "amount":             amount,
+        "amount":             signed_amount,
         "currency":           "CAD",
         "direction":          direction,
         "is_transfer":        is_tr,
@@ -272,7 +274,7 @@ def parse_pdf(filepath: str | Path, statement_period: Optional[str] = None) -> d
         if not in_savings_section:
             continue
 
-        # Discard orphan account number lines ("- 3031472835")
+        # Discard orphan account number lines ("- 0000000000")
         if ORPHAN_ACCT_RE.match(line):
             continue
 

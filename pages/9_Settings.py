@@ -8,16 +8,26 @@ from pathlib import Path
 from datetime import datetime
 
 from utils.database import (
+    DB_PATH,
     init_db, get_connection, delete_all_transactions, rerun_categorization,
     get_budgets, upsert_budget, delete_budget,
     get_profiles, get_active_profile, upsert_profile, set_active_profile, delete_profile,
     get_score_weights, save_score_weights,
     get_watch_list, add_to_watch_list, remove_from_watch_list,
-    list_learned_rules, delete_learned_rule,
+    list_learned_rules, update_learned_rule_by_id,
+    delete_learned_rule_by_id,
 )
 from utils.watcher import get_watch_folder, set_watch_folder
-from utils.platform_utils import watch_folder_placeholder, open_folder_in_explorer, is_windows
+from utils.platform_utils import (
+    get_config_path, get_data_dir, get_exports_dir,
+    watch_folder_placeholder, open_folder_in_explorer, is_windows,
+)
+from utils.backups import (
+    BackupValidationError, backup_dir, create_backup, list_backups,
+    restore_database, save_uploaded_backup,
+)
 from config.categories import CATEGORIES, BUDGETABLE_CATEGORIES, SYSTEM_CATEGORIES
+from utils.categorizer import normalize_merchant
 from utils.ai_config import (
     get_ai_settings, update_ai_settings, clear_api_key, redacted_settings,
     SUPPORTED_PROVIDERS, DEFAULT_MODELS, DEFAULT_BASE_URLS,
@@ -28,6 +38,7 @@ from utils.ai_explainer import (
     explain_recommendation, ask_ledger, weekly_review, explain_scenario,
     ai_health_check, last_ai_call_status,
 )
+from utils import __version__
 
 
 def _render_diag(feature_id: str, res: dict) -> None:
@@ -139,7 +150,7 @@ st.caption(
 # to a 4-card landing instead of "Profiles first."
 # ══════════════════════════════════════════════════════════════════════
 SECTIONS = [
-    "Profiles", "Budgets", "Scoring", "Rules",
+    "Accounts", "Profiles", "Budgets", "Scoring", "Rules",
     "AI Categorization", "AI Features", "Watch List",
     "Data & Export", "About",
 ]
@@ -148,6 +159,14 @@ SECTIONS = [
 # Pass 35 Phase 7: friendlier user-facing wording on the landing cards.
 # Same destinations and same gating; just less developer-speak.
 _LANDING_CARDS = [
+    {
+        "title":   "🏦 Accounts",
+        "purpose": ("Your chequing, savings, credit-card, and cash "
+                    "accounts — names, opening balances, and whether "
+                    "each counts toward net worth."),
+        "button":  "Manage accounts",
+        "section": "Accounts",
+    },
     {
         "title":   "🧠 AI Suggestions",
         "purpose": ("Let Ledger suggest categories for transactions it "
@@ -167,8 +186,8 @@ _LANDING_CARDS = [
     {
         "title":   "💾 Import & Backup",
         "purpose": ("Set the folder Ledger watches for new statements, "
-                    "make a clean share bundle, or send a sanitized "
-                    "bug report."),
+                    "create or restore a safe database backup, or make a "
+                    "clean share bundle."),
         "button":  "Open data tools",
         "section": "Data & Export",
     },
@@ -253,7 +272,8 @@ if _settings_section is None:
 #    to the chosen mode's allowed sections, with the current section
 #    pre-selected. The 9 if/elif content blocks below operate on
 #    `section` exactly as before.
-_BASIC_SECTIONS    = ["AI Categorization", "Rules", "Watch List", "Data & Export"]
+_BASIC_SECTIONS    = ["Accounts", "AI Categorization", "Rules",
+                      "Watch List", "Data & Export"]
 _ADVANCED_SECTIONS = _BASIC_SECTIONS + ["Profiles", "Budgets", "Scoring"]
 _DEVELOPER_SECTIONS = SECTIONS  # All
 
@@ -284,6 +304,130 @@ else:
         st.rerun()
 
 conn = get_connection()
+
+# ═══════════════════════════════════════════════════════════════════════
+# 0. ACCOUNTS
+# ═══════════════════════════════════════════════════════════════════════
+if section == "Accounts":
+    from utils.database import (
+        ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, LIABILITY_ACCOUNT_TYPES,
+        list_accounts, update_account, archive_account,
+    )
+    from utils.balances import account_balance
+    from utils.account_picker import render_new_account_form
+    import pandas as _pd_acct
+
+    st.subheader("Accounts")
+    st.caption(
+        "Every transaction belongs to one account. Balances are "
+        "computed deterministically from opening balance plus imported "
+        "and manual activity. Archiving hides an account from pickers "
+        "and totals but keeps its full history — accounts holding "
+        "transactions can never be deleted."
+    )
+
+    _all_accts = list_accounts(conn=conn, include_archived=True)
+    if not _all_accts:
+        st.info("No accounts yet — create your first below, or just "
+                "start on the Add Data page.", icon="🏦")
+    else:
+        _rows = []
+        for a in _all_accts:
+            b = account_balance(a, conn=conn)
+            _rows.append({
+                "Account": a["name"]
+                + (" (archived)" if a.get("is_archived") else ""),
+                "Type": ACCOUNT_TYPE_LABELS.get(a["type"], a["type"]),
+                "Institution": a.get("institution") or "—",
+                "Balance": f"${b['balance']:,.2f} {b['currency']}",
+                "In net worth": ("No (archived)" if a.get("is_archived")
+                                 else ("Yes — subtracts"
+                                       if b["is_liability"]
+                                       else "Yes — adds")),
+                "Transactions": a.get("tx_count") or 0,
+                "Last activity": a.get("last_activity") or "—",
+            })
+        st.dataframe(_pd_acct.DataFrame(_rows),
+                     use_container_width=True, hide_index=True)
+
+        for a in _all_accts:
+            _arch = bool(a.get("is_archived"))
+            with st.expander(
+                f"{'🗄 ' if _arch else ''}{a['name']} · "
+                f"{ACCOUNT_TYPE_LABELS.get(a['type'], a['type'])}",
+                expanded=False,
+            ):
+                e1, e2 = st.columns([2, 1.4])
+                _new_name = e1.text_input(
+                    "Name", value=a["name"], key=f"acct_name_{a['id']}")
+                _new_type = e2.selectbox(
+                    "Type", ACCOUNT_TYPES,
+                    index=ACCOUNT_TYPES.index(a["type"])
+                    if a["type"] in ACCOUNT_TYPES else 0,
+                    format_func=lambda t: ACCOUNT_TYPE_LABELS.get(t, t),
+                    key=f"acct_type_{a['id']}")
+                e3, e4, e5 = st.columns([1.6, 1, 1.2])
+                _new_inst = e3.text_input(
+                    "Institution", value=a.get("institution") or "",
+                    key=f"acct_inst_{a['id']}")
+                _new_open = e4.number_input(
+                    "Opening balance ($)",
+                    value=float(a.get("opening_balance") or 0),
+                    step=100.0, format="%.2f",
+                    key=f"acct_open_{a['id']}")
+                _new_open_date = e5.text_input(
+                    "Opening date (YYYY-MM-DD, optional)",
+                    value=a.get("opening_balance_date") or "",
+                    key=f"acct_odate_{a['id']}")
+
+                _type_changed = _new_type != a["type"]
+                _open_changed = (
+                    abs(_new_open - float(a.get("opening_balance") or 0))
+                    > 0.005)
+                if _type_changed or _open_changed:
+                    _sides_now = ("subtracts from"
+                                  if _new_type in LIABILITY_ACCOUNT_TYPES
+                                  else "adds to")
+                    st.warning(
+                        f"This change affects balances: the account "
+                        f"will {'switch to a type that ' if _type_changed else ''}"
+                        f"{_sides_now} net worth"
+                        f"{' with a different opening balance' if _open_changed else ''}. "
+                        f"Tick to confirm.",
+                        icon="⚠️",
+                    )
+                    _confirmed = st.checkbox(
+                        "I understand this changes computed balances",
+                        key=f"acct_confirm_{a['id']}")
+                else:
+                    _confirmed = True
+
+                b1, b2, _ = st.columns([1, 1.2, 3])
+                if b1.button("Save", key=f"acct_save_{a['id']}",
+                             type="primary", disabled=not _confirmed):
+                    try:
+                        update_account(a["id"], {
+                            "name": _new_name,
+                            "type": _new_type,
+                            "institution": _new_inst,
+                            "opening_balance": _new_open,
+                            "opening_balance_date": _new_open_date or None,
+                        }, conn=conn)
+                        conn.commit()
+                        st.success("Saved.")
+                        st.rerun()
+                    except ValueError as _e:
+                        st.error(str(_e))
+                _arch_label = "Restore" if _arch else "Archive"
+                if b2.button(_arch_label, key=f"acct_arch_{a['id']}"):
+                    archive_account(a["id"], archived=not _arch,
+                                    conn=conn)
+                    conn.commit()
+                    st.rerun()
+
+    st.divider()
+    if render_new_account_form(conn, key="settings_accounts"):
+        st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. PROFILES
@@ -672,9 +816,13 @@ elif section == "Rules":
             st.warning(f"Could not read rules.py: {e}")
 
     st.divider()
-    if st.button("Re-run Categorization on All Transactions", type="primary"):
+    st.caption(
+        "Reprocesses automatic categories only. Manual edits, bulk approvals, "
+        "accepted AI decisions, and older rows with unknown provenance are preserved."
+    )
+    if st.button("Re-run Automatic Categorization", type="primary"):
         conn2 = get_connection()
-        n = rerun_categorization(conn=conn2)
+        n = rerun_categorization(conn=conn2, preserve_manual=True)
         conn2.commit()
         conn2.close()
         st.success(f"Updated categories on {n} transactions.")
@@ -701,16 +849,88 @@ elif section == "Rules":
     )
     learned = list_learned_rules(conn=conn)
     if learned:
+        _delete_rule_id = st.session_state.get("confirm_rule_delete_id")
         for lr in learned:
-            lc1, lc2, lc3, lc4, lc5 = st.columns([3, 2, 1.2, 1.2, 1])
-            lc1.write(f"**{lr['merchant_normalized']}**")
-            lc2.write(lr["category"])
-            lc3.caption(f"hits: {lr.get('hit_count') or 0}")
-            lc4.caption(lr.get("source") or "user")
-            if lc5.button("Remove", key=f"rm_learned_{lr['id']}"):
-                delete_learned_rule(lr["merchant_normalized"], conn=conn)
-                conn.commit()
-                st.rerun()
+            with st.container(border=True):
+                _canonical_matcher = normalize_merchant(
+                    lr.get("merchant_normalized") or ""
+                )
+                _migration_overlap = (
+                    bool(_canonical_matcher)
+                    and _canonical_matcher != lr.get("merchant_normalized")
+                    and any(
+                        int(other["id"]) != int(lr["id"])
+                        and other.get("merchant_normalized") == _canonical_matcher
+                        for other in learned
+                    )
+                )
+                lc1, lc2, lc3 = st.columns([3, 2, 1.4])
+                lc1.write(f"**{lr['merchant_normalized']}**")
+                lc1.caption(
+                    f"source: {lr.get('source') or 'user'} · "
+                    f"hits: {lr.get('hit_count') or 0} · "
+                    f"updated: {(lr.get('updated_at') or lr.get('created_at') or '—')[:16]}"
+                )
+                _rule_options = list(CATEGORIES)
+                if lr.get("category") not in _rule_options:
+                    _rule_options.insert(0, lr.get("category") or "Uncategorized")
+                _rule_cat = lc2.selectbox(
+                    "Category", _rule_options,
+                    index=_rule_options.index(lr.get("category") or "Uncategorized"),
+                    key=f"learned_cat_{lr['id']}",
+                    disabled=_migration_overlap,
+                )
+                _rule_enabled = lc3.checkbox(
+                    "Enabled",
+                    value=(False if _migration_overlap
+                           else bool(lr.get("enabled", 1))),
+                    key=f"learned_enabled_{lr['id']}",
+                    help="Disabled rules stay saved but do not affect future imports.",
+                    disabled=_migration_overlap,
+                )
+                _rule_example = st.text_input(
+                    "Example statement description",
+                    value=lr.get("example_description") or "",
+                    key=f"learned_example_{lr['id']}",
+                    disabled=_migration_overlap,
+                )
+                if _migration_overlap:
+                    st.warning(
+                        f"This disabled legacy rule overlaps the active "
+                        f"**{_canonical_matcher}** rule. Edit that active rule "
+                        "or delete this duplicate."
+                    )
+                rc1, rc2, _ = st.columns([1.2, 1, 5])
+                if rc1.button("Save changes", key=f"save_learned_{lr['id']}",
+                              type="primary", disabled=_migration_overlap):
+                    update_learned_rule_by_id(
+                        lr["id"], category=_rule_cat,
+                        subcategory=lr.get("subcategory"),
+                        enabled=_rule_enabled,
+                        example_description=_rule_example or None,
+                        conn=conn,
+                    )
+                    conn.commit()
+                    st.success(f"Saved rule for {lr['merchant_normalized']}.")
+                    st.rerun()
+                if rc2.button("Delete…", key=f"rm_learned_{lr['id']}"):
+                    st.session_state["confirm_rule_delete_id"] = int(lr["id"])
+                    st.rerun()
+                if _delete_rule_id == int(lr["id"]):
+                    st.warning(
+                        "Delete this future-import rule? Existing transaction "
+                        "categories will not change."
+                    )
+                    _dc1, _dc2, _ = st.columns([1.2, 1, 5])
+                    if _dc1.button("Confirm delete", type="primary",
+                                   key=f"confirm_rule_delete_{lr['id']}"):
+                        delete_learned_rule_by_id(lr["id"], conn=conn)
+                        conn.commit()
+                        st.session_state.pop("confirm_rule_delete_id", None)
+                        st.rerun()
+                    if _dc2.button("Cancel", key=f"cancel_rule_delete_{lr['id']}"):
+                        st.session_state.pop("confirm_rule_delete_id", None)
+                        st.rerun()
     else:
         st.info("No learned rules yet. When you correct a flagged transaction in Review, you'll see an option to teach Ledger that merchant→category pair.")
 
@@ -1181,9 +1401,125 @@ elif section == "Data & Export":
     c5.metric("Profiles",       prof_count)
     c6.metric("Watch list",     watch_count)
 
-    db_path = Path(__file__).parent.parent / "data" / "finance.db"
+    db_path = Path(DB_PATH).resolve()
     st.caption(f"Database: `{db_path}`")
-    st.caption("**Backup:** copy `data/finance.db` to save all your data.")
+    st.caption(
+        "Ledger uses SQLite-safe snapshots so committed data in the WAL is "
+        "included. Do not copy the live database file while Ledger is open."
+    )
+
+    st.divider()
+
+    # ── Database backup and restore ──────────────────────────────────
+    st.subheader("Database Backup & Restore")
+    st.caption(
+        "Backups contain your complete local Ledger database. Keep them "
+        "private. Restoring always creates one more recovery backup first."
+    )
+    _backup_rows = list_backups(db_path)
+    _bc1, _bc2, _bc3 = st.columns(3)
+    if _bc1.button(
+        "Create backup now", type="primary", use_container_width=True,
+        key="settings_create_db_backup",
+    ):
+        try:
+            _created = create_backup(reason="manual", conn=conn)
+            st.success(f"Backup created: {_created.name}")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Backup failed safely: {exc}")
+    if _bc2.button(
+        "Open backup folder", use_container_width=True,
+        key="settings_open_backup_folder",
+    ):
+        _directory = backup_dir(db_path)
+        _directory.mkdir(parents=True, exist_ok=True)
+        open_folder_in_explorer(_directory)
+    if _bc3.button(
+        "Open data folder", use_container_width=True,
+        key="settings_open_data_folder_top",
+    ):
+        open_folder_in_explorer(get_data_dir())
+
+    if _backup_rows:
+        _backup_options = {row["name"]: row for row in _backup_rows}
+        _selected_name = st.selectbox(
+            "Available recovery points",
+            list(_backup_options),
+            key="settings_backup_selection",
+        )
+        _selected_backup = _backup_options[_selected_name]
+        _created_label = _selected_backup["created_at"].strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        st.caption(
+            f"Created {_created_label} · "
+            f"{_selected_backup['size_bytes'] / 1024:,.1f} KB"
+        )
+        st.download_button(
+            "Download selected backup",
+            data=_selected_backup["path"].read_bytes(),
+            file_name=_selected_backup["name"],
+            mime="application/vnd.sqlite3",
+            key="settings_download_backup",
+        )
+    else:
+        _selected_backup = None
+        st.info("No backups yet. Create one before making a risky change.")
+
+    with st.expander("Restore or add a backup", expanded=False):
+        _uploaded_db = st.file_uploader(
+            "Add a Ledger backup file",
+            type=["db", "sqlite", "sqlite3"],
+            key="settings_upload_db_backup",
+            help=("The file is integrity-checked and must contain Ledger's "
+                  "core tables before it is saved."),
+        )
+        if _uploaded_db is not None and st.button(
+            "Validate and add backup", key="settings_save_uploaded_backup"
+        ):
+            try:
+                _saved = save_uploaded_backup(
+                    _uploaded_db.name, _uploaded_db.getvalue(),
+                    db_path=db_path,
+                )
+                st.success(f"Validated and added: {_saved.name}")
+                st.rerun()
+            except BackupValidationError as exc:
+                st.error(str(exc))
+
+        if _selected_backup is not None:
+            st.warning(
+                "Restore replaces the active database with the selected "
+                "recovery point. A pre-restore backup is created first."
+            )
+            _restore_confirm = st.checkbox(
+                f"I want to restore {_selected_backup['name']}",
+                key="settings_restore_confirm",
+            )
+            if st.button(
+                "Restore selected backup",
+                type="primary",
+                disabled=not _restore_confirm,
+                key="settings_restore_database",
+            ):
+                conn.close()
+                try:
+                    _restored = restore_database(
+                        _selected_backup["path"], db_path=db_path
+                    )
+                    st.success(
+                        "Restore completed and the database passed its "
+                        "integrity check."
+                    )
+                    st.info(
+                        "Close and reopen Ledger before continuing so every "
+                        "page reloads the restored data."
+                    )
+                    st.stop()
+                except Exception as exc:
+                    conn = get_connection()
+                    st.error(f"Restore failed safely: {exc}")
 
     st.divider()
 
@@ -1196,7 +1532,7 @@ elif section == "Data & Export":
     )
 
     _root = Path(__file__).parent.parent
-    _config = _root / "config.json"
+    _config = get_config_path()
     _ai_configured = False
     _ai_provider = ""
     try:
@@ -1284,7 +1620,7 @@ elif section == "Data & Export":
                 from utils.agent_context import build_agent_context
                 import json as _json
                 ctx = build_agent_context()
-                out = _root / "exports" / "openclaw_finance_context.json"
+                out = get_exports_dir() / "openclaw_finance_context.json"
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(_json.dumps(ctx, indent=2, default=str),
                                encoding="utf-8")
@@ -1323,7 +1659,7 @@ elif section == "Data & Export":
         set_watch_folder(None)
         st.info("Watch folder cleared.")
     if wc3.button("Open data folder"):
-        open_folder_in_explorer(Path(__file__).parent.parent / "data")
+        open_folder_in_explorer(get_data_dir())
 
     st.divider()
 
@@ -1425,8 +1761,8 @@ elif section == "Data & Export":
 # 7. ABOUT
 # ═══════════════════════════════════════════════════════════════════════
 elif section == "About":
-    st.subheader("Ledger — Personal Finance Dashboard v2.1 (Windows-ready)")
-    st.markdown("""
+    st.subheader(f"Ledger — Personal Finance Dashboard {__version__}")
+    st.markdown(f"""
 **Stack:** Python 3.11 · Streamlit · SQLite · pdfplumber · Plotly
 
 **What's new in v2.0:**
@@ -1440,7 +1776,7 @@ elif section == "About":
 - **Merchant drilldown** — full history per merchant in Transactions
 
 **Design principles:**
-- All data stored locally in `data/finance.db` — nothing sent anywhere
+- All data stored locally in Ledger's data folder — nothing sent anywhere
 - Parsers tuned to real Tangerine PDF format (chequing v2 + Mastercard v4 bounding-box)
 - Double-counting prevention: CC payments and savings transfers excluded from spending
 - Backfill-safe: importing older or newer PDFs always updates trends correctly
@@ -1450,7 +1786,7 @@ elif section == "About":
 
 ---
 
-**Version:** 2.0.0  
+**Version:** {__version__}
 **Supported sources:** Tangerine Chequing PDF, Tangerine Mastercard PDF, CSV
 
 **Limitations:**

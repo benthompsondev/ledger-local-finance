@@ -32,6 +32,7 @@ import sqlite3
 import time
 import urllib.error
 import urllib.request
+from datetime import date
 from typing import Optional
 
 from utils.ai_config import get_ai_settings, ai_is_ready
@@ -1481,12 +1482,16 @@ def _build_ask_packet(skill: str, conn: sqlite3.Connection) -> dict:
             # Heuristic: most-recent income credit ≥ $200 anchors a
             # rough payday cadence. We surface the date but never
             # claim certainty.
+            from utils.analysis_period import supported_latest_date
+
+            supported = supported_latest_date(conn=conn)
             row = conn.execute("""
                 SELECT MAX(transaction_date) AS d
                 FROM transactions
                 WHERE direction='credit' AND amount >= 200
                   AND category IN ('Payroll Income','Income')
-            """).fetchone()
+                  AND transaction_date <= ?
+            """, ((supported or date.today()).isoformat(),)).fetchone()
             packet["last_payday_guess"] = (row["d"] if row else None)
 
     return packet

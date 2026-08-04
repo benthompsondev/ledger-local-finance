@@ -1,29 +1,34 @@
 # Screenshot Guide
 
-Use demo data only. Do not capture real merchant names, balances, statements, account labels, or API-key settings.
+Use demo data only. Do not capture real merchant names, balances, statements,
+account labels, file paths, or API-key settings.
 
-Suggested public screenshot set:
+The current public screenshots are from Northstar Ledger 2.5.5 and use the
+generated database from `scripts.create_demo_data`:
 
-| File | Page | What to Show |
-|---|---|---|
-| `dashboard.png` | Dashboard | Money Pulse, top categories, plan status, and next action |
-| `import.png` | Import | supported file types and import history with demo statements |
-| `reduce.png` | Reduce | weekly challenge, active candidates, and controllable cut targets |
-| `plan.png` | Plan | safe-to-spend card and category targets |
-| `net_worth.png` | Net Worth | net-worth trend and goal progress |
-| `reports.png` | Reports | Monthly Review and Trends routing |
+| File | Screen |
+|---|---|
+| `native-home-2.5.5.png` | Home check-in, spending pace, and synthetic totals |
+| `native-plan-2.5.5.png` | Current-month planning decisions |
+| `native-insights-2.5.5.png` | Same-day spending and category comparisons |
 
-Run with demo data:
+Older images in this folder show retired versions of the interface. Keep them
+only as development history; do not use them in the README or product tour.
+
+Run the native desktop app with demo data:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.create_demo_data
-$env:LEDGER_DEMO_DB="1"
-.\.venv\Scripts\python.exe -m streamlit run app.py
+$demoDir = Join-Path $env:TEMP "northstar-ledger-demo"
+New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
+.\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
+$env:LEDGER_DATA_DIR = $demoDir
+$env:LEDGER_DEMO_DB = "1"
+npm run desktop:dev
 ```
 
 Before committing screenshots:
 
-- confirm the demo banner is visible
-- confirm no real names or account labels appear
-- confirm no browser autofill or local file paths appear
-- keep images under `docs/screenshots/`
+- Confirm every merchant and account label is obviously synthetic.
+- Confirm no browser autofill, local file path, or API-key field appears.
+- Keep the app version in the filename so old screens are not mistaken for the
+  current product.

@@ -99,13 +99,19 @@ def coverage_summary(conn=None) -> dict:
 # end-of-month distance. No DB writes, no schema changes; partial rows
 # remain visible in Transactions and Import history.
 
-# Min days of activity to consider a month "complete enough." Tangerine
-# Chequing + Mastercard statements together usually show 20+ distinct
-# transaction days per real month. A month with <14 distinct days OR
-# whose last imported day is more than 7 days before month-end is treated
-# as partial.
-_MR_MIN_COMPLETE_DAYS = 14
+# A month is complete when the statement covers it end to end, not when the
+# user happened to spend often. Requiring a fixed number of transaction days
+# punished frugal households, cash users, retirees and anyone importing a
+# single account: seven purchases spread across a month, with activity
+# through the end of it, describes a whole month perfectly well.
+#
+# So completeness now asks two things of the coverage: does activity reach
+# near the end of the month, and does it start near the beginning. A couple
+# of rows clustered in one week is still partial.
 _MR_MIN_END_OF_MONTH_LAG = 7
+_MR_MIN_START_OF_MONTH_LAG = 10
+_MR_MIN_COMPLETE_DAYS = 3
+_MR_MIN_SPAN_DAYS = 14
 
 
 def statement_coverage(conn=None) -> dict:
@@ -139,23 +145,71 @@ def statement_coverage(conn=None) -> dict:
     DB right now" should read `latest_data_month`.
     """
     import calendar as _cal
+    from utils.analysis_period import supported_date_bounds
+
     c, opened = _conn(conn)
-    rows = c.execute(
-        """
-        SELECT
-            strftime('%Y-%m', transaction_date) AS month,
-            COUNT(DISTINCT date(transaction_date)) AS distinct_days,
-            MIN(transaction_date) AS first_day,
-            MAX(transaction_date) AS last_day,
-            COUNT(*) AS tx_count
-        FROM transactions
-        WHERE direction != 'cancelled'
-          AND transaction_date IS NOT NULL
-        GROUP BY month
-        ORDER BY month
-        """
-    ).fetchall()
+    first_supported, last_supported = supported_date_bounds(conn=c)
+    rows = []
+    per_statement: dict[str, list] = {}
+    if first_supported is not None and last_supported is not None:
+        rows = c.execute(
+            """
+            SELECT
+                strftime('%Y-%m', transaction_date) AS month,
+                COUNT(DISTINCT date(transaction_date)) AS distinct_days,
+                MIN(transaction_date) AS first_day,
+                MAX(transaction_date) AS last_day,
+                COUNT(*) AS tx_count
+            FROM transactions
+            WHERE direction != 'cancelled'
+              AND transaction_date BETWEEN ? AND ?
+            GROUP BY month
+            ORDER BY month
+            """,
+            (first_supported.isoformat(), last_supported.isoformat()),
+        ).fetchall()
+        # The same question asked of one imported statement at a time.
+        # Grouping only by account still lets several partial exports of that
+        # account add up to a whole month. import_batch_id is the closest
+        # available statement boundary when a CSV carries no explicit period.
+        for row in c.execute(
+            """
+            SELECT
+                strftime('%Y-%m', transaction_date) AS month,
+                COALESCE(account_ref, -1) AS account,
+                import_batch_id,
+                COUNT(DISTINCT date(transaction_date)) AS distinct_days,
+                MIN(transaction_date) AS first_day,
+                MAX(transaction_date) AS last_day
+            FROM transactions
+            WHERE direction != 'cancelled'
+              AND import_batch_id IS NOT NULL
+              AND transaction_date BETWEEN ? AND ?
+            GROUP BY month, account, import_batch_id
+            """,
+            (first_supported.isoformat(), last_supported.isoformat()),
+        ).fetchall():
+            per_statement.setdefault(row["month"] or "", []).append(row)
     _close(c, opened)
+
+    def _covers_the_month(first_day_str: str, last_day_str: str,
+                          days_in_month: int, distinct_days: int) -> bool:
+        """Does one imported statement reach both ends of the month?
+
+        Deliberately the same edge and span thresholds the month as a whole
+        is held to, asked of one import batch instead of the pile.
+        """
+        try:
+            first = int(first_day_str[8:10])
+            last = int(last_day_str[8:10])
+        except (ValueError, IndexError):
+            return False
+        return (
+            first <= _MR_MIN_START_OF_MONTH_LAG
+            and max(0, days_in_month - last) <= _MR_MIN_END_OF_MONTH_LAG
+            and max(0, last - first) >= _MR_MIN_SPAN_DAYS
+            and distinct_days >= _MR_MIN_COMPLETE_DAYS
+        )
 
     by_month: dict[str, dict] = {}
     complete_months: list[str] = []
@@ -176,17 +230,58 @@ def statement_coverage(conn=None) -> dict:
             last_day = 1
         days_until_eom = max(0, days_in_month - last_day)
         distinct_days = int(r["distinct_days"] or 0)
+        first_day_str = r["first_day"] or f"{month}-01"
+        try:
+            first_day = int(first_day_str[8:10])
+        except ValueError:
+            first_day = 1
+        span_days = max(0, last_day - first_day)
 
         reasons: list[str] = []
-        if distinct_days < _MR_MIN_COMPLETE_DAYS:
-            reasons.append(
-                f"only {distinct_days} distinct day(s) imported "
-                f"(need >= {_MR_MIN_COMPLETE_DAYS})"
-            )
+        # A month still running is not complete, however much of it has been
+        # imported. The end-of-month tolerance below exists because statements
+        # often stop a few days early, and it cannot tell "the statement ended
+        # on the 28th" apart from "it is the 28th". Late in a month that made
+        # the current month look finished, so its part-month income averaged
+        # into the typical-income baseline and its part-month total was
+        # charted against genuinely finished months.
+        if date(y, m, days_in_month) >= date.today():
+            reasons.append(f"{month} has not finished yet")
         if days_until_eom > _MR_MIN_END_OF_MONTH_LAG:
             reasons.append(
                 f"latest imported day is {last_day_str} "
                 f"({days_until_eom} day(s) before month end)"
+            )
+        if first_day > _MR_MIN_START_OF_MONTH_LAG:
+            reasons.append(
+                f"earliest imported day is {first_day_str} "
+                f"(nothing in the first {first_day - 1} day(s))"
+            )
+        # A handful of rows bunched into one week is not a month, however
+        # close to month end the last of them falls.
+        if distinct_days < _MR_MIN_COMPLETE_DAYS or span_days < _MR_MIN_SPAN_DAYS:
+            reasons.append(
+                f"only {distinct_days} day(s) of activity spanning "
+                f"{span_days} day(s)"
+            )
+        # At least one imported statement has to have covered the month on its
+        # own. This prevents both cross-account mosaics and several fragments
+        # of one account from being assembled into a trusted month.
+        #
+        # A quiet account is not asked to prove anything: it only has to be
+        # true of *some* account, so a savings account with one transaction
+        # all month cannot make the month partial.
+        statements = per_statement.get(month, [])
+        if statements and not any(
+            _covers_the_month(
+                a["first_day"] or "", a["last_day"] or "", days_in_month,
+                int(a["distinct_days"] or 0),
+            )
+            for a in statements
+        ):
+            reasons.append(
+                f"no single imported statement covers {month} end to end; "
+                f"separate fragments only overlap to look complete"
             )
         complete = not reasons
         reason = "complete" if complete else "; ".join(reasons)
@@ -546,71 +641,416 @@ def cash_advance_status(conn=None) -> dict:
 
 # ── Monthly aggregates ─────────────────────────────────────────────────
 
-def monthly_aggregates(conn=None) -> list[dict]:
+def monthly_aggregates(conn=None, share_view: str = "personal") -> list[dict]:
     """
     Per-month income, spending, net, savings rate, CC payments.
 
-    Uses the SAME canonical filter language as analytics.compute_cashflow(),
-    so Dashboard, Spending, Income, and Trends never disagree on totals.
-
-      income   = credits with amount > 0, excluding CC payments / cancelled /
-                 savings pullbacks (direction='transfer')
-      spending = debits excluding same, MINUS refund credits (negative credits)
+    Uses canonical transaction types, so signed storage and category labels
+    cannot make Dashboard, Spending, Income, and Trends disagree.
     """
     c, opened = _conn(conn)
-    rows = c.execute("""
-        SELECT
-            strftime('%Y-%m', transaction_date) AS month,
-            SUM(CASE
-                WHEN direction = 'credit'
-                 AND amount > 0
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled')
-                THEN amount ELSE 0
-            END) AS income,
-            SUM(CASE
-                WHEN direction = 'debit'
-                 AND amount > 0
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled','Transfer')
-                THEN amount ELSE 0
-            END) AS spending_gross,
-            SUM(CASE
-                WHEN direction = 'credit'
-                 AND amount < 0
-                THEN ABS(amount) ELSE 0
-            END) AS refund_offset,
-            SUM(CASE WHEN direction='payment' THEN ABS(amount) ELSE 0 END) AS cc_payments_out,
-            SUM(CASE
-                WHEN direction = 'debit' AND category = 'Transfer Out'
-                THEN ABS(amount) ELSE 0
-            END) AS transfer_out,
-            COUNT(*) AS tx_count
-        FROM transactions
-        WHERE direction != 'cancelled'
-        GROUP BY month
-        ORDER BY month
-    """).fetchall()
-    _close(c, opened)
+    from collections import defaultdict
+    from utils.analysis_period import supported_date_bounds
+    from utils.financial_semantics import cashflow_totals
 
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    first_supported, last_supported = supported_date_bounds(conn=c)
+    rows = []
+    if first_supported is not None and last_supported is not None:
+        rows = c.execute(
+            "SELECT * FROM transactions "
+            "WHERE transaction_date BETWEEN ? AND ? "
+            "ORDER BY transaction_date",
+            (first_supported.isoformat(), last_supported.isoformat()),
+        ).fetchall()
+    for row in rows:
+        tx = dict(row)
+        month = str(tx.get("transaction_date") or "")[:7]
+        if month:
+            grouped[month].append(tx)
+    # Whether a month is complete is financial logic, so the engine decides
+    # it once here. Insights previously re-derived it in React as
+    # `m.month < data.month`, which is how Home and Insights ended up
+    # disagreeing about which months counted.
+    coverage = statement_coverage(conn=c).get(
+        "statement_coverage_by_month"
+    ) or {}
     result = []
-    for r in rows:
-        income   = r["income"]          or 0
-        gross    = r["spending_gross"]  or 0
-        refunds  = r["refund_offset"]   or 0
-        spending = max(0.0, gross - refunds)
-        net      = income - spending
+    for month in sorted(grouped):
+        from utils.shared_expenses import apply_shared_view
+        rows = apply_shared_view(grouped[month], c, share_view)
+        totals = cashflow_totals(rows, view=share_view)
         result.append({
-            "month":           r["month"],
-            "income":          round(income, 2),
-            "spending":        round(spending, 2),
-            "net":             round(net, 2),
-            "savings_rate":    round(net / income * 100, 1) if income > 0 else 0.0,
-            "cc_payments_out": round(r["cc_payments_out"] or 0, 2),
-            "transfer_out":    round(r["transfer_out"] or 0, 2),
-            "tx_count":        r["tx_count"],
+            "month": month,
+            "complete": bool(coverage.get(month, {}).get("complete")),
+            "income": totals["income"],
+            "spending": totals["spending"],
+            "net": totals["net"],
+            "savings_rate": totals["savings_rate"],
+            "cc_payments_out": round(sum(
+                abs(float(tx.get("amount") or 0)) for tx in rows
+                if tx.get("transaction_type") == "credit_card_payment"
+            ), 2),
+            "transfer_out": round(sum(
+                abs(float(tx.get("amount") or 0)) for tx in rows
+                if tx.get("transaction_type") == "personal_transfer"
+                and tx.get("direction") == "debit"
+            ), 2),
+            "tx_count": len(rows),
         })
+    _close(c, opened)
     return result
+
+
+def _latest_transaction_date(c):
+    """The newest date the data genuinely reaches, or today when empty.
+
+    Deliberately not ``MAX(transaction_date)``: every window below is
+    measured back from this, so one row dated years ahead would push all of
+    the real activity outside the view.
+    """
+    from datetime import date as _date
+
+    from utils.analysis_period import supported_latest_date
+
+    return supported_latest_date(conn=c) or _date.today()
+
+
+def _month_covers_day(coverage: dict, month: str, day: int) -> bool:
+    """Whether a complete imported month reaches the equivalent day."""
+    info = (coverage.get("statement_coverage_by_month") or {}).get(month) or {}
+    if not bool(info.get("complete")):
+        return False
+    last_day = str(info.get("last_day") or "")
+    try:
+        return int(last_day[8:10]) >= int(day)
+    except (TypeError, ValueError):
+        return False
+
+
+def _daily_spending(
+    month: str, max_day: int, c, share_view: str = "personal",
+    excluded_merchants: Optional[set[str]] = None,
+) -> list[dict]:
+    """Cumulative spending by day-of-month for one month, capped at max_day.
+
+    Uses the same canonical exclusions as monthly_aggregates: purchases,
+    bills, and fees only, excluding income, payments, transfers, and cancelled
+    rows. It also uses the same shared-view split as get_category_totals, so a
+    pace endpoint equals the category total for the same day and share view.
+    """
+    from collections import defaultdict
+    from utils.categorizer import normalize_merchant
+    from utils.financial_semantics import cashflow_role
+    from utils.shared_expenses import apply_shared_view
+
+    rows = c.execute(
+        "SELECT * FROM transactions "
+        "WHERE strftime('%Y-%m', transaction_date)=? "
+        "AND CAST(strftime('%d', transaction_date) AS INTEGER)<=?",
+        (month, int(max_day)),
+    ).fetchall()
+    grouped: dict[int, list[dict]] = defaultdict(list)
+    for tx in apply_shared_view((dict(row) for row in rows), c, share_view):
+        merchant_key = str(
+            tx.get("merchant_normalized")
+            or normalize_merchant(str(
+                tx.get("merchant") or tx.get("raw_description") or ""
+            ))
+        )
+        if (
+            excluded_merchants is not None
+            and (
+                merchant_key in excluded_merchants
+                or str(tx.get("category") or "") in _RUNWAY_FIXED_CATEGORIES
+            )
+        ):
+            continue
+        grouped[int(str(tx["transaction_date"])[8:10])].append(tx)
+    by_day = {}
+    for day, day_rows in grouped.items():
+        gross = sum(
+            abs(float(tx.get("_cashflow_amount") or 0))
+            for tx in day_rows if cashflow_role(tx) == "spending"
+        )
+        by_day[day] = gross
+    series, running = [], 0.0
+    for day in range(1, int(max_day) + 1):
+        running += by_day.get(day, 0.0)
+        series.append({"day": day, "cumulative": round(max(0.0, running), 2)})
+    return series
+
+
+def spending_pace(
+    conn=None, today=None, share_view: str = "personal",
+    flexible_only: bool = False,
+) -> dict:
+    """Cumulative spending through the newest imported date, against the
+    previous month through the latest day both months share.
+
+    The current month is never truncated: `current` and `current_total` always
+    run through the analysis date. Only the comparison is capped, because a
+    shorter prior month has no day 31 to compare against. When the two differ,
+    `comparison_through_day` is lower than `current_through_day` and the delta
+    is computed from `current_total_comparable`, not `current_total`.
+    """
+    import calendar
+    from datetime import date as _date, timedelta as _timedelta
+
+    c, opened = _conn(conn)
+    try:
+        today = today or _latest_transaction_date(c)
+        month = today.strftime("%Y-%m")
+        prev_last = _date(today.year, today.month, 1) - _timedelta(days=1)
+        prev_month = prev_last.strftime("%Y-%m")
+        # The current month runs to the analysis date. The prior month can only
+        # be read to its own final day, so comparisons cap there — a 31-day
+        # month has no counterpart in a 28, 29, or 30-day one.
+        current_through_day = today.day
+        comparison_through_day = min(today.day, prev_last.day)
+        day = current_through_day
+        prev_cap = comparison_through_day
+        excluded_merchants = None
+        if flexible_only:
+            from utils.categorizer import normalize_merchant
+            from utils.planner import bills_and_commitments
+            excluded_merchants = {
+                str(
+                    item.get("merchant_normalized")
+                    or normalize_merchant(str(item.get("merchant") or ""))
+                )
+                for item in bills_and_commitments(conn=c).get("items") or []
+                if item.get("included_in_forecast")
+            }
+
+        current = _daily_spending(
+            month, current_through_day, c, share_view, excluded_merchants,
+        )
+        previous = _daily_spending(
+            prev_month, prev_cap, c, share_view, excluded_merchants,
+        )
+
+        def _cumulative_at(series: list[dict], target_day: int) -> float:
+            """Cumulative value at a given day, without truncating the series."""
+            if not series:
+                return 0.0
+            index = min(max(int(target_day), 1), len(series)) - 1
+            return float(series[index]["cumulative"])
+
+        cur_total = current[-1]["cumulative"] if current else 0.0
+        # Deltas must compare equal spans, so the current side is read back to
+        # the shared day rather than shortening the series everyone else uses.
+        cur_total_comparable = _cumulative_at(current, comparison_through_day)
+        prev_total = previous[-1]["cumulative"] if previous else 0.0
+
+        def _month_has_rows(target: str) -> bool:
+            return bool(
+                c.execute(
+                    "SELECT 1 FROM transactions "
+                    "WHERE strftime('%Y-%m', transaction_date) = ? LIMIT 1",
+                    (target,),
+                ).fetchone()
+            )
+
+        coverage = statement_coverage(conn=c) or {}
+        has_cur = _month_has_rows(month)
+        has_prev = _month_covers_day(coverage, prev_month, prev_cap)
+        # Comparable same-day pace across the three completed months before
+        # the current one. This is an optional reference, never a forecast.
+        average_series = []
+        cursor = _date(today.year, today.month, 1) - _timedelta(days=1)
+        prior_series = []
+        for _ in range(3):
+            target = cursor.strftime("%Y-%m")
+            cap = min(day, cursor.day)
+            if _month_covers_day(coverage, target, cap):
+                prior_series.append(_daily_spending(
+                    target, cap, c, share_view, excluded_merchants,
+                ))
+            cursor = _date(cursor.year, cursor.month, 1) - _timedelta(days=1)
+        if len(prior_series) >= 2:
+            max_comparable_day = min(day, max(len(series) for series in prior_series))
+            for point_day in range(1, max_comparable_day + 1):
+                values = [
+                    series[min(point_day, len(series)) - 1]["cumulative"]
+                    for series in prior_series if series
+                ]
+                if values:
+                    average_series.append({
+                        "day": point_day,
+                        "cumulative": round(sum(values) / len(values), 2),
+                    })
+        average_through_day = len(average_series)
+        average_total = (
+            average_series[-1]["cumulative"] if average_series else None
+        )
+        return {
+            "available": has_cur or has_prev,
+            "month": month,
+            "previous_month": prev_month,
+            "day": day,
+            "current_through_day": current_through_day,
+            "comparison_through_day": comparison_through_day,
+            "days_in_month": calendar.monthrange(today.year, today.month)[1],
+            "previous_days_in_month": prev_last.day,
+            "current": current,
+            "previous": previous if has_prev else [],
+            "current_total": round(cur_total, 2),
+            "current_total_comparable": round(cur_total_comparable, 2),
+            "previous_total_same_day": round(prev_total, 2)
+            if has_prev
+            else None,
+            "delta": (
+                round(cur_total_comparable - prev_total, 2) if has_prev else None
+            ),
+            "current_complete": False,
+            "average_90_day": average_series,
+            "average_90_day_total": average_total,
+            "average_90_day_delta": (
+                round(_cumulative_at(current, average_through_day) - average_total, 2)
+                if average_total is not None and average_through_day
+                else None
+            ),
+            "average_90_day_month_count": len(prior_series),
+            "average_90_day_reason": (
+                "" if len(prior_series) >= 2
+                else "Not enough comparable history yet. Import at least two prior months through the same day."
+            ),
+            "view": "flexible" if flexible_only else "total",
+        }
+    finally:
+        _close(c, opened)
+
+
+def category_pace_breakdown(
+    conn=None, today=None, limit: int = 8, share_view: str = "personal",
+) -> dict:
+    """Where money went this month through the analysis date, each category
+    compared with the previous month through the latest day both months share.
+
+    Current amounts always cover the full month to date so this reconciles with
+    canonical current-month spending. Only the per-category comparison is capped
+    at `comparison_through_day`."""
+    from datetime import date as _date, timedelta as _timedelta
+
+    c, opened = _conn(conn)
+    try:
+        today = today or _latest_transaction_date(c)
+        month = today.strftime("%Y-%m")
+        prev_last = _date(today.year, today.month, 1) - _timedelta(days=1)
+        prev_month = prev_last.strftime("%Y-%m")
+        current_through_day = today.day
+        comparison_through_day = min(today.day, prev_last.day)
+        through_day = current_through_day
+        prev_cap = comparison_through_day
+
+        def _per_category(target_month: str, max_day: int) -> dict:
+            import calendar as _calendar
+            from utils.database import get_category_totals
+
+            year, month_number = map(int, target_month.split("-"))
+            capped_day = min(
+                int(max_day), _calendar.monthrange(year, month_number)[1]
+            )
+            rows = get_category_totals(
+                f"{target_month}-01",
+                f"{target_month}-{capped_day:02d}",
+                share_view=share_view,
+                conn=c,
+            )
+            return {r["category"]: float(r["total"] or 0) for r in rows}
+
+        coverage = statement_coverage(conn=c) or {}
+        cur = _per_category(month, current_through_day)
+        # Per-category deltas compare equal spans. Only re-read the current
+        # month when the comparison day is actually shorter.
+        cur_comparable = (
+            cur if comparison_through_day >= current_through_day
+            else _per_category(month, comparison_through_day)
+        )
+        # Whether the previous month was imported far enough to be compared
+        # against at all. An empty prev used to be indistinguishable from a
+        # previous month in which nothing was spent: every category read
+        # prev_amount 0.0 and a delta equal to its whole current amount, so
+        # an uncomparable month rendered as "everything is up".
+        comparison_available = _month_covers_day(coverage, prev_month, prev_cap)
+        prev = (
+            _per_category(prev_month, prev_cap) if comparison_available else {}
+        )
+        # Equivalent-day average across the prior three months that have data,
+        # same share view — "your normal by this point in the month". Only
+        # months with activity count; a category absent in a counted month is 0.
+        avg_maps = []
+        cursor = prev_last
+        for _ in range(3):
+            target_month = cursor.strftime("%Y-%m")
+            cap = min(through_day, cursor.day)
+            month_map = _per_category(target_month, cap)
+            if _month_covers_day(coverage, target_month, cap) and month_map:
+                avg_maps.append(month_map)
+            cursor = _date(cursor.year, cursor.month, 1) - _timedelta(days=1)
+
+        def _avg_for(cat: str):
+            if len(avg_maps) < 2:
+                return None
+            return round(sum(m.get(cat, 0.0) for m in avg_maps) / len(avg_maps), 2)
+
+        total = sum(cur.values())
+        items = []
+        for cat, amount in sorted(cur.items(), key=lambda kv: -kv[1])[:limit]:
+            prev_amount = prev.get(cat, 0.0)
+            avg_amount = _avg_for(cat)
+            # Two different baselines, so two different spans.
+            #
+            # The prior month is a single adjacent month that may have ended
+            # earlier, so that delta uses the equal-span figure.
+            #
+            # The three-month average already caps each of its months at that
+            # month's own final day, exactly as spending_pace does, so it
+            # represents a typical whole month and is compared against the full
+            # month-to-date amount. Using the capped figure here made the
+            # category disagree with the overall average delta: identical data
+            # reported +6.67 overall and -3.33 for the only category in it.
+            comparable_amount = cur_comparable.get(cat, 0.0)
+            items.append(
+                {
+                    "category": cat,
+                    "amount": round(amount, 2),
+                    "share": round(amount / total * 100, 1) if total else 0.0,
+                    "previous": (
+                        round(prev_amount, 2) if comparison_available else None
+                    ),
+                    "delta": (
+                        round(comparable_amount - prev_amount, 2)
+                        if comparison_available else None
+                    ),
+                    "average": avg_amount,
+                    "average_delta": (
+                        round(amount - avg_amount, 2)
+                        if avg_amount is not None else None
+                    ),
+                }
+            )
+        return {
+            "available": bool(items),
+            "month": month,
+            "previous_month": prev_month,
+            "through_day": through_day,
+            "current_through_day": current_through_day,
+            "comparison_through_day": comparison_through_day,
+            "previous_days_in_month": prev_last.day,
+            # Read this before showing any higher/lower wording. When it is
+            # false, `previous` and `delta` are None on every item and the
+            # only honest things to show are the amount and the share.
+            "comparison_available": bool(comparison_available),
+            "total": round(total, 2),
+            "comparable_total": round(sum(cur_comparable.values()), 2),
+            "has_average": len(avg_maps) >= 2,
+            "average_month_count": len(avg_maps),
+            "items": items,
+        }
+    finally:
+        _close(c, opened)
 
 
 def category_monthly(category: str, conn=None) -> list[dict]:
@@ -756,19 +1196,22 @@ def _mr_top_merchants_for_category(
     """Top N merchants in `category` for the given YYYY-MM month."""
     if not category or not month:
         return []
+    from utils.financial_semantics import (
+        sql_type_placeholders, transaction_types_for_role,
+    )
+    spending_types = transaction_types_for_role("spending")
     rows = conn.execute(
-        """
+        f"""
         SELECT merchant, SUM(ABS(amount)) AS total, COUNT(*) AS tx_count
         FROM transactions
         WHERE category = ?
           AND strftime('%Y-%m', transaction_date) = ?
-          AND direction = 'debit'
-          AND is_transfer = 0
+          AND transaction_type IN ({sql_type_placeholders(spending_types)})
         GROUP BY merchant
         ORDER BY total DESC
         LIMIT ?
         """,
-        (category, month, int(limit)),
+        (category, month, *spending_types, int(limit)),
     ).fetchall()
     return [
         {
@@ -917,30 +1360,21 @@ def monthly_review(conn=None) -> dict:
         # Per-category compare for the latest two months only —
         # category_drift averages over a window, which obscures a single
         # spiky month. Here we want raw current-vs-previous totals.
-        rows = c.execute(
-            """
-            SELECT
-                category,
-                strftime('%Y-%m', transaction_date) AS m,
-                SUM(ABS(amount)) AS total
-            FROM transactions
-            WHERE direction='debit' AND is_transfer=0
-              AND strftime('%Y-%m', transaction_date) IN (?, ?)
-            GROUP BY category, m
-            """,
-            (out["month"], out["prev_month"]),
-        ).fetchall()
-        cat_now: dict[str, float] = {}
-        cat_prev: dict[str, float] = {}
-        for r in rows:
-            cat = r["category"] or ""
-            if cat in _MR_NON_CONSUMPTION:
-                continue
-            v = float(r["total"] or 0)
-            if r["m"] == out["month"]:
-                cat_now[cat] = v
-            else:
-                cat_prev[cat] = v
+        import calendar as _calendar
+        from utils.database import get_category_totals
+
+        def _month_categories(month_label: str) -> dict[str, float]:
+            year, month_number = map(int, month_label.split("-"))
+            end_day = _calendar.monthrange(year, month_number)[1]
+            return {
+                row["category"]: float(row["total"] or 0)
+                for row in get_category_totals(
+                    f"{month_label}-01", f"{month_label}-{end_day:02d}", conn=c
+                )
+            }
+
+        cat_now = _month_categories(out["month"])
+        cat_prev = _month_categories(out["prev_month"])
 
         movers: list[dict] = []
         for cat in set(cat_now) | set(cat_prev):
@@ -1069,38 +1503,18 @@ def monthly_review(conn=None) -> dict:
 # ── Recurring merchant tracking ────────────────────────────────────────
 
 def recurring_merchants(min_months: int = 3, conn=None) -> list[dict]:
-    c, opened = _conn(conn)
-    rows = c.execute("""
-        SELECT
-            merchant,
-            category,
-            COUNT(DISTINCT strftime('%Y-%m', transaction_date)) AS months_seen,
-            AVG(ABS(amount))  AS avg_amount,
-            MIN(ABS(amount))  AS min_amount,
-            MAX(ABS(amount))  AS max_amount,
-            SUM(ABS(amount))  AS total_paid,
-            COUNT(*)          AS tx_count
-        FROM transactions
-        WHERE direction='debit' AND is_transfer=0
-          AND direction != 'cancelled'
-        GROUP BY merchant
-        HAVING months_seen >= ?
-        ORDER BY avg_amount DESC
-    """, (min_months,)).fetchall()
-    _close(c, opened)
+    from utils.analytics import find_recurring
     result = []
-    for r in rows:
-        avg = r["avg_amount"] or 0
+    for row in find_recurring(conn=conn):
+        if int(row.get("months_seen") or 0) < min_months:
+            continue
+        avg = float(row.get("avg_amount") or 0)
         result.append({
-            "merchant":    r["merchant"],
-            "category":    r["category"],
-            "months_seen": r["months_seen"],
-            "avg_amount":  round(avg, 2),
-            "min_amount":  round(r["min_amount"] or 0, 2),
-            "max_amount":  round(r["max_amount"] or 0, 2),
-            "total_paid":  round(r["total_paid"] or 0, 2),
-            "tx_count":    r["tx_count"],
-            "est_annual":  round(avg * 12, 2),
+            **row,
+            "min_amount": avg,
+            "max_amount": avg,
+            "total_paid": float(row.get("total") or 0),
+            "est_annual": round(avg * 12, 2),
         })
     return result
 
@@ -1731,12 +2145,16 @@ def compute_recommendations(conn=None) -> list[dict]:
         })
 
     # ── 8. Cash advance detected ─────────────────────────────────────
+    # Ninety days back from the supported anchor, so an out-of-range row
+    # cannot slide this window away from the real activity.
+    _ca_anchor = _latest_transaction_date(c).isoformat()
     ca = c.execute("""
         SELECT COUNT(*) AS cnt, SUM(ABS(amount)) AS total
         FROM transactions
         WHERE category='Cash Advance' AND direction='debit'
-          AND transaction_date >= date('now', '-90 days')
-    """).fetchone()
+          AND transaction_date >= date(?, '-90 days')
+          AND transaction_date <= ?
+    """, (_ca_anchor, _ca_anchor)).fetchone()
     if ca and (ca["cnt"] or 0) > 0:
         # Pass 35 Phase 3: choose the wording (and urgency) based on whether
         # later CC payments plausibly cover the cash advance principal.
@@ -1825,6 +2243,14 @@ def compute_recommendations(conn=None) -> list[dict]:
         ctl = top_controllable_categories(conn=c, limit=5) or []
     except Exception:
         ctl = []
+    # One target truth: read category targets from the shared resolver
+    # (saved plan first, 20%-cut fallback) so this card shows the SAME
+    # number as Reduce and the runway watchlists.
+    try:
+        from utils.planner import resolve_category_targets
+        _resolved_targets = resolve_category_targets(conn=c) or {}
+    except Exception:
+        _resolved_targets = {}
     _already_in_recs = {r["category"] for r in recs}
     for ctl_cat in ctl:
         cat_name = ctl_cat["category"]
@@ -1836,20 +2262,29 @@ def compute_recommendations(conn=None) -> list[dict]:
         if m_avg < 50:
             # Below the noise floor — not worth a card.
             continue
-        save_mo = round(m_avg * 0.20, 2)
+        _rt = _resolved_targets.get(cat_name) or {}
+        target = float(_rt.get("target") or round(m_avg * 0.80, 2))
+        _from_plan = _rt.get("source") == "plan"
+        save_mo = round(max(0.0, m_avg - target), 2)
+        if save_mo < 1:
+            # Already at or under target — nothing to cut here.
+            continue
         save_yr = round(save_mo * 12, 2)
         first_action = _CONTROLLABLE_FIRST_ACTION.get(
             cat_name,
             f"Open Transactions filtered to {cat_name} and review the "
             f"largest 5 charges.",
         )
+        _basis_note = ("your saved plan's target" if _from_plan
+                       else "a suggested 20% cut")
         recs.append({
             "key":           f"controllable_{cat_name.replace(' ', '_')}",
-            "title":         f"Reduce {cat_name} to ${m_avg * 0.80:,.0f}/mo target",
+            "title":         f"Reduce {cat_name} to ${target:,.0f}/mo target",
             "body":          (
                 f"Spending ~${m_avg:,.0f}/mo on {cat_name} (90-day avg "
-                f"across {ctl_cat.get('tx_count', 0)} tx). A 20% cut would "
-                f"free ~${save_mo:,.0f}/mo (~${save_yr:,.0f}/yr). "
+                f"across {ctl_cat.get('tx_count', 0)} tx). Hitting "
+                f"{_basis_note} of ${target:,.0f}/mo would free "
+                f"~${save_mo:,.0f}/mo (~${save_yr:,.0f}/yr). "
                 f"First step: {first_action}"
             ),
             "category":      cat_name,
@@ -1866,7 +2301,8 @@ def compute_recommendations(conn=None) -> list[dict]:
             "drivers": [
                 {"kind": "controllable_category_target",
                  "category": cat_name, "monthly_avg": round(m_avg, 2),
-                 "target": round(m_avg * 0.80, 2),
+                 "target": round(target, 2),
+                 "target_source": _rt.get("source") or "suggested",
                  "save_monthly": save_mo, "save_yearly": save_yr},
             ],
         })
@@ -2104,7 +2540,12 @@ def merchant_detail(merchant: str, conn=None) -> dict:
     """
     Returns full stats for a single merchant: monthly breakdown, trend, all transactions.
     """
+    from utils.analysis_period import supported_date_bounds
+
     c, opened = _conn(conn)
+    first_supported, last_supported = supported_date_bounds(conn=c)
+    first_iso = first_supported.isoformat() if first_supported else "0000-00-00"
+    last_iso = last_supported.isoformat() if last_supported else "0000-00-00"
 
     stats = c.execute("""
         SELECT
@@ -2118,21 +2559,24 @@ def merchant_detail(merchant: str, conn=None) -> dict:
             category
         FROM transactions
         WHERE merchant = ? AND direction='debit' AND is_transfer=0
-    """, (merchant,)).fetchone()
+          AND transaction_date BETWEEN ? AND ?
+    """, (merchant, first_iso, last_iso)).fetchone()
 
     monthly = c.execute("""
         SELECT strftime('%Y-%m', transaction_date) AS month, SUM(ABS(amount)) AS total, COUNT(*) AS cnt
         FROM transactions
         WHERE merchant = ? AND direction='debit' AND is_transfer=0
+          AND transaction_date BETWEEN ? AND ?
         GROUP BY month ORDER BY month
-    """, (merchant,)).fetchall()
+    """, (merchant, first_iso, last_iso)).fetchall()
 
     txs = c.execute("""
         SELECT id, transaction_date, raw_description, amount, category, flag_reason, parse_confidence
         FROM transactions
         WHERE merchant = ? AND direction='debit' AND is_transfer=0
+          AND transaction_date BETWEEN ? AND ?
         ORDER BY transaction_date DESC
-    """, (merchant,)).fetchall()
+    """, (merchant, first_iso, last_iso)).fetchall()
 
     _close(c, opened)
 
@@ -2187,15 +2631,10 @@ def subscription_detective(conn=None, lookback_months: int = 6,
     # `last_seen` against this rather than today() so a fresh import of
     # data from 2025-12 doesn't immediately look "stale" if today is
     # 2026-04. Falls back to today() when there's literally no data.
-    anchor_row = c.execute(
-        "SELECT MAX(transaction_date) AS m FROM transactions"
-    ).fetchone()
-    anchor_iso = (anchor_row["m"] if anchor_row and anchor_row["m"]
-                  else date.today().isoformat())
-    try:
-        anchor_d = date.fromisoformat(anchor_iso)
-    except Exception:
-        anchor_d = date.today()
+    from utils.analysis_period import supported_latest_date
+
+    anchor_d = supported_latest_date(conn=c) or date.today()
+    anchor_iso = anchor_d.isoformat()
 
     # Candidate set: merchants with ≥2 months of activity, category=Subscriptions or
     # cadence-like (same amount recurring). Restrict to Subscriptions & Digital for safety.
@@ -2214,10 +2653,13 @@ def subscription_detective(conn=None, lookback_months: int = 6,
         WHERE direction='debit' AND is_transfer=0
           AND category IN ('Subscriptions & Digital')
           AND transaction_date >= date(?, ?)
+          AND transaction_date <= ?
         GROUP BY merchant
         HAVING months_seen >= 2
         ORDER BY avg_amount DESC
-    """, (anchor_iso, f'-{lookback_months*31} days')).fetchall()
+    """, (
+        anchor_iso, f'-{lookback_months*31} days', anchor_iso,
+    )).fetchall()
 
     subs: list[dict] = []
     for r in rows:
@@ -2672,28 +3114,64 @@ def _remaining_commitments(month: str, anchor_date: str, conn) -> dict:
     }
 
 
+def _flexible_spending_so_far(
+    start_date: str,
+    through_date: str,
+    commitments: list[dict],
+    conn,
+) -> float:
+    """Return ordinary spending after removing recognized fixed commitments."""
+    from utils.categorizer import normalize_merchant
+    from utils.financial_semantics import (
+        sql_type_placeholders, transaction_types_for_role,
+    )
+    from utils.shared_expenses import apply_shared_view
+
+    fixed_merchants = {
+        str(
+            item.get("merchant_normalized")
+            or normalize_merchant(str(item.get("merchant") or ""))
+        )
+        for item in commitments
+        if item.get("included_in_forecast")
+    }
+    spending_types = transaction_types_for_role("spending")
+    rows = conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ? "
+        "AND transaction_type IN ("
+        + sql_type_placeholders(spending_types) + ")",
+        (start_date, through_date, *spending_types),
+    ).fetchall()
+    total = 0.0
+    for row in apply_shared_view((dict(row) for row in rows), conn, "personal"):
+        merchant_key = str(
+            row.get("merchant_normalized")
+            or normalize_merchant(str(
+                row.get("merchant") or row.get("raw_description") or ""
+            ))
+        )
+        if (
+            merchant_key in fixed_merchants
+            or str(row.get("category") or "") in _RUNWAY_FIXED_CATEGORIES
+        ):
+            continue
+        total += abs(float(row.get("_cashflow_amount") or 0))
+    return round(total, 2)
+
+
 def _category_totals(month: str, through_date: str, conn) -> dict[str, float]:
     start, _end, _days = _month_bounds_from_label(month)
-    rows = conn.execute(
-        """
-        SELECT category, SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction='debit'
-          AND is_transfer=0
-          AND category NOT IN ('Transfer','Transfer Out','Transfer In',
-                               'Payment','Credit Card Payment','Cancelled',
-                               'Internal Transfer')
-        GROUP BY category
-        """,
-        (start, through_date),
-    ).fetchall()
+    from utils.database import get_category_totals
+    rows = get_category_totals(start, through_date, conn=conn)
     return {r["category"] or "Uncategorized": float(r["total"] or 0) for r in rows}
 
 
 def _plan_category_targets(month: str, conn) -> dict[str, float]:
-    from utils.database import get_monthly_plan
-    plan = get_monthly_plan(month, conn=conn) or {}
+    # get_applicable_plan (not get_monthly_plan): during statement lag
+    # the freshly confirmed calendar-month plan should still drive the
+    # data month's watchlist targets.
+    from utils.database import get_applicable_plan
+    plan = get_applicable_plan(month, conn=conn) or {}
     return {
         r.get("category"): float(r.get("target_amount") or 0)
         for r in (plan.get("category_targets") or [])
@@ -2712,7 +3190,17 @@ def _build_watchlists(
 ) -> list[dict]:
     current_totals = _category_totals(current_month, anchor_date, conn)
     truth_totals = _category_totals(truth_month, _month_bounds_from_label(truth_month)[1], conn)
-    targets = _plan_category_targets(current_month, conn)
+    # One target truth: use the shared resolver (standing plan intent,
+    # resolved for the calendar month) so the watchlist/mission target
+    # for a category is the SAME number Reduce and Money Moves show.
+    try:
+        from utils.planner import resolve_category_targets
+        _resolved = resolve_category_targets(conn=conn) or {}
+        targets = {cat: float(rt.get("target") or 0)
+                   for cat, rt in _resolved.items()
+                   if rt.get("source") == "plan"}
+    except Exception:
+        targets = _plan_category_targets(current_month, conn)
     watchlists: list[dict] = []
 
     candidates = []
@@ -2790,8 +3278,17 @@ def _build_watchlists(
     return watchlists[:4]
 
 
-def money_runway(conn=None) -> dict:
-    """Deterministic safe-to-spend and weekly-control packet."""
+def money_runway(conn=None, today=None) -> dict:
+    """Deterministic safe-to-spend and weekly-control packet.
+
+    `today` is injectable for tests; defaults to the real date. It only
+    influences whether the planning period counts as ended — all money
+    math still comes from imported data.
+    """
+    if isinstance(today, str) and today:
+        today = date.fromisoformat(today)
+    if not isinstance(today, date):
+        today = date.today()
     c, opened = _conn(conn)
     try:
         cov = statement_coverage(conn=c) or {}
@@ -2841,40 +3338,223 @@ def money_runway(conn=None) -> dict:
         anchor = date.fromisoformat(anchor_date)
         days_elapsed = max(1, (anchor - month_start).days + 1)
         days_left = max(0, (date.fromisoformat(period_end) - anchor).days)
+        # The period is also over when the CALENDAR has moved past its
+        # end, even if the last imported day sits a little before
+        # month-end (imports always lag reality). Without this check the
+        # engine happily reported "1 day left" for a month that ended
+        # weeks ago — and a daily pace to go with it.
+        if today > date.fromisoformat(period_end):
+            days_left = 0
 
         truth_cf = _cashflow_for_month(truth_month, c)
         current_cf = _current_month_activity(current_month, anchor_date, c)
 
-        from utils.database import get_monthly_plan
-        plan = get_monthly_plan(current_month, conn=c)
-        income_expected = float(
-            (plan or {}).get("income_target")
-            or truth_cf.get("income")
-            or current_cf.get("income")
-            or 0
+        # Applicable plan: the data month's own plan, else the most
+        # recently saved one — statements lag the calendar, and the
+        # newest saved plan is the user's standing intent.
+        from utils.database import get_applicable_plan
+        plan = get_applicable_plan(current_month, conn=c)
+        from utils.database import (
+            balance_reconciliation, get_account_balances,
+            spending_balance_summary,
         )
+        latest_balances = get_account_balances(conn=c, latest_only=True)
+        balance_summary = spending_balance_summary(conn=c)
+        reconciliation = balance_reconciliation(conn=c)
+        available_balance = float(
+            balance_summary.get("available_balance") or 0
+        )
+        excluded_balance = float(
+            balance_summary.get("excluded_balance") or 0
+        )
+        card_liability = float(
+            balance_summary.get("credit_card_liability") or 0
+        )
+        if not plan or float(plan.get("income_target") or 0) <= 0:
+            return {
+                "available": False,
+                "reason": "Confirm a monthly plan before Northstar estimates spendable money.",
+                "truth_month": truth_month,
+                "latest_data_month": latest_data_month,
+                "using_partial_month": using_partial,
+                "partial_month_note": partial_note,
+                "safe_to_spend": {
+                    "amount": 0.0, "daily_amount": None, "weekly_amount": 0.0,
+                    "days_left": int(days_left), "period_end": period_end,
+                    "period_ended": days_left <= 0, "confidence": "unavailable",
+                    "formula": {},
+                },
+                "runway_status": "unknown", "why": [], "watchlists": [],
+                "upcoming": [], "wins": [],
+                "data_caveats": caveats + ["A confirmed plan is required."],
+            }
+        from utils.planner import bills_and_commitments, plan_commitment_agreement
+        bills = bills_and_commitments(conn=c)
+        agreement = plan_commitment_agreement(plan, bills=bills, conn=c)
+        if not reconciliation.get("ready"):
+            account = next(
+                (
+                    item for item in reconciliation.get("accounts") or []
+                    if not item.get("ready")
+                ),
+                {},
+            )
+            if account.get("status") == "out_of_date":
+                detail = (
+                    f"Update {account.get('account_name') or 'the account'}: "
+                    f"its balance is from {account.get('as_of_date') or 'an unknown date'}, "
+                    f"but transactions continue through "
+                    f"{account.get('last_activity') or 'a newer date'}."
+                )
+            else:
+                detail = (
+                    f"Add a current balance for "
+                    f"{account.get('account_name') or 'each chequing and credit-card account'}."
+                )
+            return {
+                "available": False,
+                "reason": f"Not ready — fix this first: {detail}",
+                "truth_month": truth_month,
+                "latest_data_month": latest_data_month,
+                "using_partial_month": using_partial,
+                "partial_month_note": partial_note,
+                "safe_to_spend": {
+                    "amount": 0.0, "daily_amount": None, "weekly_amount": 0.0,
+                    "days_left": int(days_left), "period_end": period_end,
+                    "period_ended": days_left <= 0, "confidence": "unavailable",
+                    "formula": {
+                        "reconciliation": reconciliation,
+                        "plan_agreement": agreement,
+                    },
+                },
+                "runway_status": "unknown", "why": [], "watchlists": [],
+                "upcoming": [], "wins": [],
+                "data_caveats": caveats + [detail],
+            }
+        if not agreement.get("agreed"):
+            detail = (
+                f"review fixed commitments. The saved plan uses "
+                f"${float(agreement.get('saved') or 0):,.2f}; reviewed "
+                f"commitments are ${float(agreement.get('detected') or 0):,.2f}."
+            )
+            return {
+                "available": False,
+                "reason": f"Not ready — fix this first: {detail}",
+                "truth_month": truth_month,
+                "latest_data_month": latest_data_month,
+                "using_partial_month": using_partial,
+                "partial_month_note": partial_note,
+                "safe_to_spend": {
+                    "amount": 0.0, "daily_amount": None, "weekly_amount": 0.0,
+                    "days_left": int(days_left), "period_end": period_end,
+                    "period_ended": days_left <= 0, "confidence": "unavailable",
+                    "formula": {
+                        "reconciliation": reconciliation,
+                        "plan_agreement": agreement,
+                    },
+                },
+                "runway_status": "unknown", "why": [], "watchlists": [],
+                "upcoming": [], "wins": [],
+                "data_caveats": caveats + [agreement.get("reason") or detail],
+            }
+        if available_balance <= 0 or not latest_balances:
+            return {
+                "available": False,
+                "reason": (
+                    "Add a current balance for an account marked available "
+                    "for spending, or review the account setting."
+                ),
+                "truth_month": truth_month,
+                "latest_data_month": latest_data_month,
+                "using_partial_month": using_partial,
+                "partial_month_note": partial_note,
+                "safe_to_spend": {
+                    "amount": 0.0, "daily_amount": None, "weekly_amount": 0.0,
+                    "days_left": int(days_left), "period_end": period_end,
+                    "period_ended": days_left <= 0, "confidence": "unavailable",
+                    "formula": {},
+                },
+                "runway_status": "unknown", "why": [], "watchlists": [],
+                "upcoming": [], "wins": [],
+                "data_caveats": caveats + [
+                    "A current spendable-account balance is required."
+                ],
+            }
+        income_expected = float(plan.get("income_target") or 0)
         spending_so_far = float(current_cf.get("spending") or 0)
         remaining = _remaining_commitments(current_month, anchor_date, c)
-        goal_commitments = float((plan or {}).get("savings_target") or 0)
+        # Named goals explain the headline savings target; they are not a
+        # second reserve on top of it. When named monthly allocations exceed
+        # the saved plan target, the allocations become the effective target
+        # so reserved goal money never appears spendable.
+        from utils.goals import goal_plan_summary
+        goal_plan = goal_plan_summary(
+            float((plan or {}).get("savings_target") or 0), conn=c,
+            today=anchor,
+        )
+        goal_commitments = float(goal_plan["remaining_savings_target"])
 
         from utils.analytics import compute_score
         score = compute_score(conn=c) or {}
         fc = score.get("finance_charges") or {}
         debt_or_fee_reserve = float(fc.get("total") or 0)
 
-        buffer = round(max(25.0, min(250.0, income_expected * 0.05)), 2) if income_expected > 0 else 0.0
-        amount = (
-            income_expected
-            - spending_so_far
+        saved_buffer = (plan or {}).get("safety_buffer")
+        if saved_buffer is not None and float(saved_buffer) > 0:
+            buffer = round(max(0.0, float(saved_buffer)), 2)
+        else:
+            buffer = (
+                round(max(25.0, min(250.0, income_expected * 0.05)), 2)
+                if income_expected > 0 else 0.0
+            )
+        stable_received = float(c.execute(
+            "SELECT COALESCE(SUM(ABS(amount)),0) FROM transactions "
+            "WHERE transaction_type='employment_income' "
+            "AND transaction_date BETWEEN ? AND ?",
+            (start, anchor_date),
+        ).fetchone()[0] or 0)
+        future_income_forecast = max(0.0, income_expected - stable_received)
+        cash_cushion = (
+            available_balance
             - float(remaining["fixed_remaining"])
             - float(remaining["active_subscriptions_remaining"])
+            - card_liability
             - goal_commitments
             - debt_or_fee_reserve
             - buffer
         )
-        daily_amount = amount / max(days_left, 1) if days_left > 0 else amount
+        flexible_allowance = float(plan.get("flexible_allowance") or 0)
+        if flexible_allowance <= 0:
+            flexible_allowance = max(
+                0.0,
+                income_expected
+                - float(plan.get("fixed_obligations") or 0)
+                - float(plan.get("savings_target") or 0)
+                - buffer,
+            )
+        flexible_spent = _flexible_spending_so_far(
+            start, anchor_date, bills.get("items") or [], c,
+        )
+        flexible_remaining = flexible_allowance - flexible_spent
+        amount = min(flexible_remaining, cash_cushion)
+        # Daily/weekly pacing is only meaningful while days remain in the
+        # period. A 0-days-left month must NOT divide (the old fallback
+        # rendered "-$783/day" — the whole month's number posing as a
+        # daily rate). period_ended lets callers show a plain-language
+        # "period has ended" state instead.
+        period_ended = days_left <= 0
+        # One implementation of the daily and weekly share, shared with the
+        # flow fallback in utils/checkin.py so the two cannot drift. A
+        # finished period yields neither: quoting a week's allowance for a
+        # month that has ended is a different claim, not a smaller number.
+        from utils.checkin import weekly_allowance
+        _rates = weekly_allowance(amount, int(days_left))
+        daily_amount = _rates["daily_amount"]
+        weekly_amount = _rates["weekly_amount"]
         if amount < 0:
             status = "danger"
+        elif period_ended:
+            status = "watch"
         elif daily_amount < 15:
             status = "tight"
         elif daily_amount < 35:
@@ -2882,14 +3562,33 @@ def money_runway(conn=None) -> dict:
         else:
             status = "clear"
 
-        confidence = "high" if plan and not using_partial else ("medium" if truth_month else "low")
+        confidence = "high" if not using_partial else "medium"
         why = [
-            f"Baseline month: {truth_month}.",
-            f"${spending_so_far:,.0f} spent so far in {current_month}.",
+            (
+                f"${flexible_remaining:,.0f} remains in the monthly flexible "
+                "allowance after flexible spending so far."
+            ),
+            (
+                f"${cash_cushion:,.0f} is the cash cushion after current "
+                "card balances, remaining bills, savings, and buffer."
+            ),
+            (
+                f"${future_income_forecast:,.0f} of planned income has not arrived "
+                "and is shown only as a forecast, not spendable now."
+            ),
             f"${float(remaining['fixed_remaining']) + float(remaining['active_subscriptions_remaining']):,.0f} reserved for remaining bills/subscriptions.",
         ]
         if goal_commitments:
-            why.append(f"${goal_commitments:,.0f} reserved for this month's savings goal.")
+            allocated = float(goal_plan["goal_allocations_total"])
+            if allocated:
+                why.append(
+                    f"${goal_commitments:,.0f} reserved for savings, including "
+                    f"${allocated:,.0f} assigned to named goals."
+                )
+            else:
+                why.append(
+                    f"${goal_commitments:,.0f} reserved for this month's savings target."
+                )
         if buffer:
             why.append(f"${buffer:,.0f} kept as a small safety buffer.")
         if using_partial:
@@ -2911,18 +3610,49 @@ def money_runway(conn=None) -> dict:
             "partial_month_note": partial_note,
             "safe_to_spend": {
                 "amount": round(amount, 2),
-                "daily_amount": round(daily_amount, 2),
+                "daily_amount": (round(daily_amount, 2)
+                                 if daily_amount is not None else None),
+                "weekly_amount": weekly_amount,
                 "days_left": int(days_left),
                 "period_end": period_end,
+                "period_ended": period_ended,
                 "confidence": confidence,
                 "formula": {
-                    "income_available_or_expected": round(income_expected, 2),
+                    "income_available_or_expected": round(
+                        available_balance, 2
+                    ),
+                    "liquid_balance": round(available_balance, 2),
+                    "available_balance": round(available_balance, 2),
+                    "excluded_balance": round(excluded_balance, 2),
+                    "balance_accounts": balance_summary.get("accounts") or [],
+                    "stable_income_target": round(income_expected, 2),
+                    "stable_income_received": round(stable_received, 2),
+                    "stable_income_remaining": 0.0,
+                    "future_income_forecast": round(future_income_forecast, 2),
+                    "future_income_included": False,
                     "spending_so_far": round(spending_so_far, 2),
+                    "flexible_allowance": round(flexible_allowance, 2),
+                    "flexible_spending_so_far": round(flexible_spent, 2),
+                    "flexible_remaining": round(flexible_remaining, 2),
+                    "cash_cushion_after_bills": round(cash_cushion, 2),
+                    "spending_already_in_balance": True,
                     "planned_bills_remaining": remaining["fixed_remaining"],
                     "active_subscriptions_remaining": remaining["active_subscriptions_remaining"],
+                    "credit_card_liability": round(card_liability, 2),
                     "goal_commitments": round(goal_commitments, 2),
+                    "headline_savings_target": goal_plan["headline_savings_target"],
+                    "savings_contributed_this_month": goal_plan[
+                        "contributed_this_month"
+                    ],
+                    "savings_remaining": goal_plan["remaining_savings_target"],
+                    "goal_allocations_total": goal_plan["goal_allocations_total"],
+                    "unallocated_savings": goal_plan["unallocated_savings"],
+                    "allocation_above_plan": goal_plan["allocation_above_plan"],
                     "debt_or_fee_reserve": round(debt_or_fee_reserve, 2),
+                    "nonmonthly_reserves": 0.0,
                     "buffer": buffer,
+                    "reconciliation": reconciliation,
+                    "plan_agreement": agreement,
                 },
             },
             "runway_status": status,
@@ -2954,19 +3684,19 @@ def found_money(conn=None) -> dict:
             }
         start, end, _days = _month_bounds_from_label(truth_month)
         import math
+        from utils.financial_semantics import (
+            sql_type_placeholders, transaction_types_for_role,
+        )
+        spending_types = transaction_types_for_role("spending")
+        type_marks = sql_type_placeholders(spending_types)
         rows = c.execute(
-            """
+            f"""
             SELECT ABS(amount) AS amt
             FROM transactions
             WHERE transaction_date BETWEEN ? AND ?
-              AND direction='debit'
-              AND is_transfer=0
-              AND amount > 0
-              AND category NOT IN ('Transfer','Transfer Out','Transfer In',
-                                   'Payment','Credit Card Payment','Cancelled',
-                                   'Internal Transfer')
+              AND transaction_type IN ({type_marks})
             """,
-            (start, end),
+            (start, end, *spending_types),
         ).fetchall()
         roundup = sum(max(0.0, math.ceil(float(r["amt"] or 0)) - float(r["amt"] or 0)) for r in rows)
 
@@ -3047,25 +3777,51 @@ def mission_deck(conn=None, limit: int = 3) -> list[dict]:
 
         safe = runway.get("safe_to_spend") or {}
         safe_amount = float(safe.get("amount") or 0)
-        daily = float(safe.get("daily_amount") or 0)
+        daily = safe.get("daily_amount")  # None when the period has ended
+        period_ended = bool(safe.get("period_ended"))
         status = runway.get("runway_status") or "watch"
 
         if runway.get("available") and status in {"danger", "tight", "watch"}:
+            if period_ended:
+                _why = (
+                    f"This planning period has ended with "
+                    f"${safe_amount:,.0f} safe-to-spend. Set up the next "
+                    f"month before new spending starts."
+                )
+                _plan_text = (
+                    "When the next statement arrives, I will import it and "
+                    "confirm next month's plan before spending flexibly."
+                )
+            elif safe_amount <= 0:
+                _why = (
+                    f"Safe-to-spend is ${safe_amount:,.0f} — the plan is "
+                    f"already exceeded. Keep the gap from growing."
+                )
+                _plan_text = (
+                    "Until the next income or statement, I will pause "
+                    "flexible spending and only cover fixed bills."
+                )
+            else:
+                _why = (
+                    f"Safe-to-spend is ${safe_amount:,.0f} "
+                    f"(${float(daily or 0):,.0f}/day). Keep the month "
+                    f"from drifting."
+                )
+                _plan_text = (
+                    f"If a day's flexible spending would pass "
+                    f"${max(5.0, float(daily or 0)):,.0f}, then I will "
+                    f"pause one flexible category for 48 hours."
+                )
             _add({
                 "id": "protect_runway",
                 "title": "Protect the month",
                 "kind": "protect",
-                "why_it_matters": (
-                    f"Safe-to-spend is ${safe_amount:,.0f} "
-                    f"(${daily:,.0f}/day). Keep the month from drifting."
-                ),
+                "why_it_matters": _why,
                 "effort": "5 min",
                 "impact_label": "Protects cashflow",
                 "impact_amount": round(max(0.0, abs(safe_amount)), 2) if safe_amount < 0 else None,
                 "confidence": safe.get("confidence") or "medium",
-                "if_then_plan": (
-                    f"If daily spend is over ${max(1, daily):,.0f}, then I will pause one flexible category for 48 hours."
-                ),
+                "if_then_plan": _plan_text,
                 "action_label": "Open Plan",
                 "target_page": "Plan",
                 "evidence": [{"type": "money_runway", "status": status, "safe_to_spend": safe_amount}],

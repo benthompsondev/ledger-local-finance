@@ -1,0 +1,575 @@
+import { useCallback, useEffect, useState } from "react";
+import { AnalysisContextNote } from "./AnalysisContextNote";
+import {
+  addAccountBalance, loadInsights, loadNetWorthTrend, loadSpendingPatterns,
+  deleteNetWorthEntry, saveQuickNetWorth,
+  setAccountSpendingAvailability, setIncomeSourcePreference,
+  setRecurringPreference,
+} from "./api";
+import {
+  CashflowChart, CategoryBars, CategoryDonut, DayOfWeekBars, IncomeSourceDonut,
+  IncomeSteadiness, KeptChart, NetWorthTrendChart, PaceChart, paceComparisonNote,
+  SpendingCalendar,
+} from "./charts";
+import { money, moneyCents } from "./money";
+import {
+  readAnalysisPeriod, readChartPeriod, readShowNetWorth, saveAnalysisPeriod, saveChartPeriod,
+  readCompareBaseline, saveCompareBaseline, readCategoryExpanded, saveCategoryExpanded,
+  type AnalysisPeriod, type ChartPeriod, type CompareBaseline,
+} from "./preferences";
+import { NetWorthEntryForm } from "./NetWorthEntryForm";
+import { NetWorthFact } from "./NetWorthFact";
+import { describeSpan } from "./netWorthFormat";
+import type {
+  InsightsPayload, NetWorthOverview, SpendingPatterns, TxPrefill,
+} from "./types";
+
+interface Props {
+  refreshToken: number;
+  onDrill: (prefill: TxPrefill) => void;
+  onNavigate: (screen: string) => void;
+  onDataChanged: () => void;
+  focusAnchor?: string;
+  focusToken?: number;
+}
+
+function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusAnchor, focusToken }: Props) {
+  const [data, setData] = useState<InsightsPayload | null>(null);
+  const [error, setError] = useState("");
+  const [balanceBusy, setBalanceBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState("");
+  const [paceView,setPaceView]=useState<"flexible"|"total">("flexible");
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(readChartPeriod);
+  const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(readAnalysisPeriod);
+  const [showAllCategories,setShowAllCategories]=useState(readCategoryExpanded);
+  const [baseline,setBaseline]=useState<CompareBaseline>(readCompareBaseline);
+  const [showNetWorth,setShowNetWorth]=useState(readShowNetWorth);
+  const [quickForm,setQuickForm]=useState({assets:"",liabilities:"",asOfDate:new Date().toISOString().slice(0,10)});
+  const [balanceForm, setBalanceForm] = useState({
+    accountRef: 0, balance: "",
+    asOfDate: new Date().toISOString().slice(0, 10), note: "",
+  });
+  const [patterns, setPatterns] = useState<SpendingPatterns | null>(null);
+  const [trend, setTrend] = useState<NetWorthOverview | null>(null);
+  const [editingMonth, setEditingMonth] = useState("");
+  // A reading is typed by hand and cannot be recovered by importing a
+  // statement again, so removing one asks first.
+  const [confirmDelete, setConfirmDelete] = useState("");
+  const refresh = useCallback(async () => {
+    try {
+      setData(await loadInsights(analysisPeriod));
+      setError("");
+      // Secondary, and never allowed to break the page: patterns are extra
+      // colour on top of the figures, not the figures themselves.
+      try { setPatterns(await loadSpendingPatterns(3)); } catch { setPatterns(null); }
+      try { setTrend(await loadNetWorthTrend()); } catch { setTrend(null); }
+    } catch (c) {
+      setError(c instanceof Error ? c.message : String(c));
+    }
+  }, [analysisPeriod]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh, refreshToken]);
+  useEffect(()=>{if(!["account-balances","spending-accounts"].includes(focusAnchor||""))return;setShowNetWorth(true);const timer=window.setTimeout(()=>document.getElementById(focusAnchor||"")?.scrollIntoView({behavior:"smooth",block:"start"}),300);return()=>window.clearTimeout(timer);},[focusAnchor,focusToken,data]);
+  useEffect(() => {
+    if (data?.accounts.length && !balanceForm.accountRef) {
+      setBalanceForm((current) => ({ ...current, accountRef: data.accounts[0].id }));
+    }
+  }, [data, balanceForm.accountRef]);
+
+  if (!data && !error)
+    return (
+      <section className="loading-panel">
+        <span className="loading-dot" />
+        Building insights…
+      </section>
+    );
+
+  const monthStart = data?.period_start ?? "";
+  const monthEnd = data?.period_end ?? "";
+  const insightMonthLabel = data?.analysis.data_month_label
+    || "the latest supported period";
+  const categoryStart = data?.category_pace.month
+    ? `${data.category_pace.month}-01` : "";
+  const categoryEnd = data?.category_pace.month
+    ? `${data.category_pace.month}-${String(data.category_pace.through_day).padStart(2, "0")}` : "";
+  // A plain proportional breakdown for the selected period. It has no
+  // previous period behind it, so the baseline is null rather than zero: a
+  // zero here would read as "nothing was spent on this last month".
+  const periodCategoryItems = (data?.categories ?? []).map((item) => ({
+    category: item.category,
+    amount: item.total,
+    share: item.pct,
+    previous: null,
+    delta: null,
+  }));
+  // Completeness is financial logic and belongs to the engine. Deciding it
+  // here as "any month before the current one" is what made Insights and
+  // Home disagree about which months counted.
+  const cashflow = data?.monthly ?? [];
+  const savings = cashflow.filter((m) => m.complete).slice(-6);
+  const saveBalance = async () => {
+    setBalanceBusy(true); setError("");
+    try {
+      const payload = await addAccountBalance({
+        accountRef: balanceForm.accountRef,
+        balance: Number(balanceForm.balance),
+        asOfDate: balanceForm.asOfDate,
+        note: balanceForm.note,
+        periodDays: analysisPeriod,
+      });
+      setData(payload);
+      setBalanceForm((current) => ({ ...current, balance: "", note: "" }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally { setBalanceBusy(false); }
+  };
+  const reviewRecurring=async(merchant:string,status:string)=>{setReviewBusy(`recurring:${merchant}`);setError("");try{await setRecurringPreference(merchant,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
+  const reviewIncome=async(source:string,status:"confirmed"|"excluded")=>{setReviewBusy(`income:${source}`);setError("");try{await setIncomeSourcePreference(source,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
+  const saveEstimate=async()=>{setBalanceBusy(true);setError("");try{setData(await saveQuickNetWorth({totalAssets:Number(quickForm.assets),totalLiabilities:Number(quickForm.liabilities),asOfDate:quickForm.asOfDate,periodDays:analysisPeriod}));}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
+  const removeEntry=async(month:string)=>{setBalanceBusy(true);setError("");try{setTrend(await deleteNetWorthEntry(month));if(editingMonth===month)setEditingMonth("");setConfirmDelete("");}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
+  const setSpendable=async(accountId:number,available:boolean)=>{setBalanceBusy(true);setError("");try{const result=await setAccountSpendingAvailability(accountId,available);setData(current=>current?{...current,accounts:result.accounts}:current);}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setBalanceBusy(false);}};
+
+  return (
+    <section className="workflow-panel">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">Insights</span>
+          <h2>Patterns from your local data</h2>
+          <p>
+            Clear trends and breakdowns from the transactions you imported.
+          </p>
+        </div>
+        <div className="button-row">
+          <label className="period-control">Period<select value={analysisPeriod} onChange={(event) => { const next = Number(event.target.value) as AnalysisPeriod; setAnalysisPeriod(next); saveAnalysisPeriod(next); }}><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select></label>
+          <button className="ghost-button" onClick={() => void refresh()}>Refresh</button>
+        </div>
+      </div>
+      {error && <div className="inline-error">{error}</div>}
+      {data && (
+        <>
+          <AnalysisContextNote analysis={data.analysis} />
+          <h3 className="insight-section">Spending check-in</h3>
+          <div className="insight-grid home-detail-grid home-essentials">
+            <article className="chart-card">
+              <div className="chart-card-head"><div><h3>{paceView==="flexible"?"Flexible spending pace":"Total spending pace"} in {insightMonthLabel}</h3><p className="chart-explainer">{paceView==="flexible"?"Everyday spending with reviewed fixed commitments removed.":"All genuine spending, including fixed commitments."}</p></div><div className="segmented-control" aria-label="Spending pace view"><button className={paceView==="flexible"?"selected":""} onClick={()=>setPaceView("flexible")}>Flexible</button><button className={paceView==="total"?"selected":""} onClick={()=>setPaceView("total")}>Total</button></div></div>
+              <PaceChart pace={paceView==="flexible"?data.flexible_pace:data.pace} currentLabel={insightMonthLabel} />
+            </article>
+            <article className="chart-card">
+              <div className="chart-card-head">
+                <div>
+                  <h3>Where your money went in {insightMonthLabel} vs {baseline === "average" ? "your 3-month same-day average" : "the prior month"}</h3>
+                  <p className="chart-explainer">{paceComparisonNote(data.category_pace)}</p>
+                </div>
+                {data.category_pace.has_average && (
+                  <div className="segmented-control" aria-label="Comparison baseline">
+                    <button className={baseline === "last" ? "selected" : ""} onClick={() => { setBaseline("last"); saveCompareBaseline("last"); }}>vs last month</button>
+                    <button className={baseline === "average" ? "selected" : ""} onClick={() => { setBaseline("average"); saveCompareBaseline("average"); }}>vs 3-month avg</button>
+                  </div>
+                )}
+              </div>
+              <CategoryBars
+                items={showAllCategories ? data.category_pace.items : data.category_pace.items.slice(0, 8)}
+                total={data.category_pace.total}
+                previousMonth={data.category_pace.previous_month}
+                comparisonAvailable={data.category_pace.comparison_available}
+                baseline={baseline}
+                periodLabel={`${insightMonthLabel} through day ${data.category_pace.through_day}`}
+                  onDrill={(category) => {const item=data.category_pace.items.find(row=>row.category===category);onDrill({ category, cashflowRole: "spending", startDate: categoryStart, endDate: categoryEnd, categoryComparison:item&&item.previous!=null&&item.delta!=null?{category,current:item.amount,previous:item.previous,delta:item.delta,throughDay:data.category_pace.through_day,previousMonth:data.category_pace.previous_month}:undefined });}}
+              />
+              {data.category_pace.items.length > 8 && <button className="ghost-button show-all-button" onClick={() => { const next = !showAllCategories; setShowAllCategories(next); saveCategoryExpanded(next); }}>{showAllCategories ? "Show top 8" : "Show all categories"}</button>}
+              {data.category_pace.comparison_available && (data.category_movers.increase || data.category_movers.decrease) && (
+                <p className="mover-summary">
+                  <strong>Biggest movers:</strong>{" "}
+                  {data.category_movers.increase?.delta != null && `${data.category_movers.increase.category} increased ${money(Math.abs(data.category_movers.increase.delta))}`}
+                  {data.category_movers.increase && data.category_movers.decrease && " · "}
+                  {data.category_movers.decrease?.delta != null && `${data.category_movers.decrease.category} decreased ${money(Math.abs(data.category_movers.decrease.delta))}`}.
+                </p>
+              )}
+            </article>
+          </div>
+
+          {patterns && (patterns.calendar.available
+            || patterns.day_of_week.available) && <>
+            <h3 className="insight-section">Patterns</h3>
+            <div className="insight-grid home-detail-grid">
+              {patterns.calendar.available && <article className="chart-card">
+                <div className="chart-card-head">
+                  <div>
+                    <h3>When you spend</h3>
+                    <p className="chart-explainer">
+                      Every day of the last three months. Darker is a bigger
+                      day. Fixed bills are left out so the pattern shows the
+                      spending you choose.
+                    </p>
+                  </div>
+                </div>
+                <SpendingCalendar calendar={patterns.calendar}
+                  onDrill={(day) => onDrill({ startDate: day, endDate: day })} />
+              </article>}
+              {patterns.day_of_week.available && <article className="chart-card dow-card">
+                <div className="chart-card-head">
+                  <div>
+                    <h3>Which days cost most</h3>
+                    <p className="chart-explainer">
+                      Average spending per weekday, counting how many of each
+                      the window actually held.
+                    </p>
+                  </div>
+                </div>
+                <DayOfWeekBars profile={patterns.day_of_week} />
+              </article>}
+              {/* The year-ago comparison is deliberately not a card of its
+                  own. "Where your money went, this month vs last" already
+                  answers the same question with data everyone has, and a
+                  seasonal comparison only earns space once there is a full,
+                  well-covered year behind it. It returns when that is true. */}
+            </div>
+          </>}
+
+          <h3 className="insight-section">Trends</h3>
+          <div className="insight-grid home-detail-grid">
+            <article className="chart-card">
+              <div className="chart-card-head">
+                <div><h3>Income and spending by month</h3><p>Transfers and card payments are excluded.</p></div>
+                <label className="period-control">Show<select value={chartPeriod} onChange={(event) => { const next = Number(event.target.value) as ChartPeriod; setChartPeriod(next); saveChartPeriod(next); }}><option value={3}>3 months</option><option value={6}>6 months</option><option value={12}>12 months</option></select></label>
+              </div>
+              <CashflowChart months={cashflow.slice(-chartPeriod)} onDrill={(month,role)=>{const[y,m]=month.split("-").map(Number);onDrill({cashflowRole:role,startDate:`${month}-01`,endDate:`${month}-${new Date(y,m,0).getDate().toString().padStart(2,"0")}`});}} />
+            </article>
+            <article className="chart-card">
+              <h3>What you kept</h3>
+              <p className="chart-explainer">Every finished month, drawn against what came in that month, so the rate is visible and not just the amount.</p>
+              <KeptChart months={savings} onDrill={(month,role)=>{const[y,monthNumber]=month.split("-").map(Number);onDrill({cashflowRole:role,startDate:`${month}-01`,endDate:`${month}-${new Date(y,monthNumber,0).getDate().toString().padStart(2,"0")}`});}} />
+            </article>
+          </div>
+
+          <h3 className="insight-section">Spending</h3>
+          <div className="insight-grid home-detail-grid">
+            <article className="chart-card">
+              <h3>
+                Categories — {data.period_label}
+              </h3>
+              {periodCategoryItems.length ? (
+                <>
+                  <CategoryDonut
+                    items={periodCategoryItems}
+                    total={data.cash_flow_summary.spending}
+                    onDrill={(category) => onDrill({ category, cashflowRole: "spending", startDate: monthStart, endDate: monthEnd })}
+                  />
+                </>
+              ) : (
+                <p className="guidance">No spending in this period.</p>
+              )}
+            </article>
+            <article className="chart-card content-card">
+              <h3>Top merchants — {data.period_label}</h3>
+              {data.merchants.slice(0, 8).map((m) => (
+                <button
+                  type="button"
+                  className="rank-row rank-row-click"
+                  key={`${m.merchant}-${m.category}`}
+                  onClick={() => onDrill({ search: m.merchant, cashflowRole: "spending", startDate: monthStart, endDate: monthEnd })}
+                  title={`Open ${m.merchant || "these"} transactions`}
+                >
+                  <span>
+                    {m.merchant || "Unknown"}
+                    <small>
+                      {m.category} · {m.visits} visit{m.visits === 1 ? "" : "s"}
+                    </small>
+                  </span>
+                  <strong>{money(m.total)}</strong>
+                </button>
+              ))}
+              {!data.merchants.length && (
+                <p className="guidance">No merchant activity in this period.</p>
+              )}
+            </article>
+          </div>
+
+          <h3 className="insight-section">Income</h3>
+          <div className="insight-grid home-detail-grid">
+            <article className="chart-card">
+              <h3>Income sources — {data.period_label}</h3>
+              <p className="chart-explainer">Money entering your accounts, including refunds and incoming e-transfers. Transfers between your own accounts stay excluded once matched or marked internal.</p>
+              {data.income_sources.length ? (
+                <><IncomeSourceDonut items={data.income_sources} total={data.income_total} onDrill={(source) => onDrill({ search: source, cashflowRole: "income", startDate: monthStart, endDate: monthEnd })} />
+                <div className="settings-list">{data.income_sources.map(source=><div className="setting-row" key={`${source.source_normalized}-${source.category}`}><button type="button" className="rank-row-click text-button" onClick={()=>onDrill({search:source.source,cashflowRole:"income",startDate:monthStart,endDate:monthEnd})}><strong>{source.source}</strong><small>{moneyCents(source.total)} · {source.tx_count} deposit{source.tx_count===1?"":"s"}</small></button><div className="button-row compact-actions"><button type="button" className={source.stable_status==="confirmed"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewIncome(source.source_normalized,"confirmed")}>Stable: Yes</button><button type="button" className={source.stable_status==="excluded"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewIncome(source.source_normalized,"excluded")}>No</button></div></div>)}</div></>
+              ) : <p className="guidance">No confirmed income in this period.</p>}
+              <IncomeSteadiness months={cashflow} sources={data.income_sources} total={data.income_total} />
+            </article>
+            <article className="chart-card">
+              <div className="chart-card-head"><h3>Recurring costs</h3><button className="ghost-button" onClick={()=>onNavigate("settings#recurring-costs")}>Manage</button></div>
+              {data.recurring.length ? (
+                data.recurring.slice(0, 8).map((r) => (
+                  <div className="setting-row" key={r.merchant}>
+                    <button type="button" className="text-button rank-row-click" onClick={() => onDrill({ search: r.merchant })} title={`Open ${r.merchant} transactions`}>
+                      <span>
+                      {r.merchant}
+                      <small>
+                        {r.cadence} · {r.category} · seen {r.months_seen} months
+                      </small>
+                      {r.is_shared&&<small>Your {r.user_share_pct}% share of {moneyCents(r.household_amount)}/mo</small>}
+                      {r.expected_next&&<small>Expected around {r.expected_next}</small>}
+                      </span>
+                      <strong>{moneyCents(r.avg_amount)}/mo</strong>
+                    </button>
+                    {/* Two states, not three: a cost either recurs or it
+                        does not. "Automatic" described how Northstar found
+                        it, which is a detail, so it is a badge now. */}
+                    <div className="button-row compact-actions">{r.recurring_status==="automatic"&&<span className="suggested-badge">Suggested</span>}<button type="button" className={r.recurring_status==="recurring"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewRecurring(r.merchant_normalized,"recurring")}>Recurring</button><button type="button" className={r.recurring_status==="not_recurring"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewRecurring(r.merchant_normalized,"not_recurring")}>Not recurring</button></div>
+                  </div>
+                ))
+              ) : (
+                <p className="guidance">
+                  Recognized bills can appear after two consistent months; other merchants need at least three.
+                </p>
+              )}
+            </article>
+          </div>
+
+          {showNetWorth&&<><h3 className="insight-section">Net worth</h3>
+          <article className="chart-card wide-card">
+            <div className="chart-card-head">
+              <div>
+                <h3>What you are worth, month by month</h3>
+                <p className="chart-explainer">
+                  Four figures once a month: cash, investments, other assets
+                  and debts. Every point on the chart is a reading you
+                  entered, so nothing here is projected.
+                </p>
+              </div>
+              {trend?.has_entries && trend.since_last_reading && (
+                <span className={`badge${trend.since_last_reading.amount >= 0 ? "" : " badge-warn"}`}>
+                  {trend.since_last_reading.amount >= 0 ? "\u25b2" : "\u25bc"}{" "}
+                  {money(Math.abs(trend.since_last_reading.amount))} since{" "}
+                  {trend.since_last_reading.from_month}
+                </span>
+              )}
+            </div>
+            {trend?.has_entries ? <>
+              <NetWorthTrendChart overview={trend} />
+              <div className="nw-facts">
+                <div><span>Now</span>
+                  <strong>{money(trend.current?.net ?? 0)}</strong>
+                  <small>recorded for {trend.current?.month}</small></div>
+                <NetWorthFact
+                  label="This month" move={trend.month_over_month ?? null}
+                  missing="no reading for the previous month" />
+                <NetWorthFact
+                  label="Three months" move={trend.three_month ?? null}
+                  missing="no reading three months back" />
+                {trend.twelve_month && <NetWorthFact
+                  label="Twelve months" move={trend.twelve_month} missing="" />}
+                <div><span>All recorded</span>
+                  <strong className={(trend.since_first?.amount ?? 0) >= 0 ? "good-text" : ""}>
+                    {(trend.since_first?.amount ?? 0) >= 0 ? "+" : "\u2212"}
+                    {money(Math.abs(trend.since_first?.amount ?? 0))}
+                  </strong>
+                  <small>
+                    {trend.since_first
+                      ? `${trend.since_first.reading_count} reading${trend.since_first.reading_count === 1 ? "" : "s"} spanning ${describeSpan(trend.since_first.months_apart)}, ${trend.since_first.from_month} to ${trend.since_first.to_month}`
+                      : ""}
+                  </small></div>
+              </div>
+
+              {trend.component_moves && trend.component_moves.some((m) => m.change !== 0) && (
+                <div className="nw-components">
+                  <h4>
+                    What moved{trend.component_from_month
+                      ? ` between ${trend.component_from_month} and ${trend.component_to_month}`
+                      : ""}
+                  </h4>
+                  {(trend.component_months_apart ?? 1) > 1 && (
+                    <p className="chart-explainer">
+                      Those readings are {describeSpan(trend.component_months_apart ?? 0)} apart,
+                      not one month.
+                    </p>
+                  )}
+                  <table className="nw-table">
+                    <thead><tr><th>Part</th><th>Before</th><th>Now</th><th>Change</th></tr></thead>
+                    <tbody>
+                      {trend.component_moves.map((m) => {
+                        // A debt going down is good and a debt going up is
+                        // not, which is the opposite of every other row here.
+                        const better = m.field === "liabilities" ? m.change < 0 : m.change > 0;
+                        return (
+                          <tr key={m.field}>
+                            <td>{m.label}</td>
+                            <td>{money(m.before)}</td>
+                            <td>{money(m.now)}</td>
+                            <td className={m.change === 0 ? "" : better ? "good-text" : "warn-text"}>
+                              {m.change === 0 ? "no change"
+                                : `${m.change > 0 ? "+" : "\u2212"}${money(Math.abs(m.change))}`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {(trend.explained?.length ?? 0) > 0 && (
+                <details className="formula-details">
+                  <summary>How this compares with what your statements say</summary>
+                  <p className="chart-explainer">
+                    Your statements only see the accounts you import. The
+                    difference is usually an investment account moving on its
+                    own, which is exactly the part worth watching.
+                  </p>
+                  <table className="nw-table">
+                    <thead><tr><th>Month</th><th>Net worth moved</th><th>Statements kept</th><th>Difference</th></tr></thead>
+                    <tbody>
+                      {trend.explained!.slice(-6).map((row) => (
+                        <tr key={row.month}>
+                          <td>{row.month}</td>
+                          <td>{row.measured >= 0 ? "+" : "\u2212"}{money(Math.abs(row.measured))}</td>
+                          <td>{row.kept >= 0 ? "+" : "\u2212"}{money(Math.abs(row.kept))}</td>
+                          <td>{row.unexplained >= 0 ? "+" : "\u2212"}{money(Math.abs(row.unexplained))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+
+              <details className="formula-details" open={editingMonth !== ""}>
+                <summary>Record or correct a month</summary>
+                <NetWorthEntryForm
+                  prefill={trend.prefill}
+                  existing={trend.entries.find((e) => e.month === editingMonth)}
+                  onSaved={(next) => { setTrend(next); setEditingMonth(""); }}
+                  onCancel={editingMonth ? () => setEditingMonth("") : undefined}
+                />
+              </details>
+
+              <details className="formula-details">
+                <summary>Every reading ({trend.months_recorded})</summary>
+                <table className="nw-table">
+                  <thead><tr><th>Month</th><th>Cash</th><th>Investments</th><th>Other</th><th>Debts</th><th>Net worth</th><th>Change</th><th /></tr></thead>
+                  <tbody>
+                    {[...trend.entries].reverse().map((e) => (
+                      <tr key={e.month}>
+                        <td>{e.month}</td>
+                        <td>{money(e.cash)}</td>
+                        <td>{money(e.investments)}</td>
+                        <td>{money(e.other_assets)}</td>
+                        <td>{money(e.liabilities)}</td>
+                        <td><strong>{money(e.net)}</strong></td>
+                        <td className={e.change == null ? "" : e.change >= 0 ? "good-text" : "warn-text"}>
+                          {e.change == null ? "first reading"
+                            : `${e.change >= 0 ? "+" : "\u2212"}${money(Math.abs(e.change))}`}
+                          {e.change_pct != null && <small> ({e.change_pct > 0 ? "+" : ""}{e.change_pct}%)</small>}
+                        </td>
+                        <td className="nw-row-actions">
+                          {confirmDelete === e.month ? (
+                            <>
+                              <span className="nw-confirm">Remove {e.month}?</span>
+                              <button type="button" className="danger-button"
+                                disabled={balanceBusy}
+                                onClick={() => void removeEntry(e.month)}>Remove</button>
+                              <button type="button" className="ghost-button"
+                                onClick={() => setConfirmDelete("")}>Keep</button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" className="ghost-button"
+                                onClick={() => { setEditingMonth(e.month); setConfirmDelete(""); }}>Edit</button>
+                              <button type="button" className="ghost-button"
+                                onClick={() => setConfirmDelete(e.month)}>Delete</button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            </> : <>
+              <p className="guidance">{trend?.reason ?? "Loading\u2026"}</p>
+              {trend && <NetWorthEntryForm prefill={trend.prefill}
+                onSaved={(next) => setTrend(next)} />}
+              {trend?.prefill.has_balances && (
+                <p className="file-meta">
+                  Prefilled from {trend.prefill.sources.length} account
+                  balance{trend.prefill.sources.length === 1 ? "" : "s"} you
+                  have already entered. Change anything that is out of date.
+                </p>
+              )}
+            </>}
+          </article>
+          <details
+            className="net-worth-section"
+            open={data.net_worth.calculated || ["account-balances","spending-accounts"].includes(focusAnchor||"")}
+          >
+            <summary>{data.net_worth.calculated?`Net worth ${money(data.net_worth.net_worth)}`:data.quick_net_worth?`Quick estimate ${money(data.quick_net_worth.net_worth)}`:"Set up net worth"}</summary>
+          {!data.net_worth.calculated&&<article className="compact-setup-card"><div><strong>Get a useful net worth number</strong><p>Add current balances for detailed tracking, or enter one quick assets-and-debts estimate below.</p></div><div className="form-grid"><label>Total assets<input type="number" min="0" value={quickForm.assets} onChange={(e)=>setQuickForm({...quickForm,assets:e.target.value})}/></label><label>Total debts<input type="number" min="0" value={quickForm.liabilities} onChange={(e)=>setQuickForm({...quickForm,liabilities:e.target.value})}/></label><label>As of<input type="date" value={quickForm.asOfDate} onChange={(e)=>setQuickForm({...quickForm,asOfDate:e.target.value})}/></label></div><button disabled={balanceBusy||(!quickForm.assets&&!quickForm.liabilities)} onClick={()=>void saveEstimate()}>{balanceBusy?"Saving…":"Save quick estimate"}</button>{data.quick_net_worth&&<p className="success-text">Current quick estimate: {money(data.quick_net_worth.net_worth)} as of {data.quick_net_worth.as_of_date}.</p>}</article>}
+          {data.net_worth.calculated&&<><section className="summary-grid summary-grid-three">
+            <article className="metric-card metric-primary">
+              <span className="eyebrow">Net worth</span>
+              <strong>{data.net_worth.calculated ? money(data.net_worth.net_worth) : "Not calculated"}</strong>
+              <p>
+                {data.net_worth.status === "mixed_currency"
+                  ? "Currency conversion is required before these balances can be combined."
+                  : data.net_worth.status === "partial"
+                  ? `Partial net worth — ${data.net_worth.missing_account_count} account${data.net_worth.missing_account_count === 1 ? "" : "s"} missing balances.`
+                  : data.net_worth.as_of_date
+                  ? `As of ${data.net_worth.as_of_date}`
+                  : "Balances not configured. Add current balances to calculate it."}
+              </p>
+            </article>
+            <article className="metric-card">
+              <span className="eyebrow">Assets</span>
+              <strong>{money(data.net_worth.total_assets)}</strong>
+              <p>Latest local balance snapshots.</p>
+            </article>
+            <article className="metric-card">
+              <span className="eyebrow">Liabilities</span>
+              <strong>{money(data.net_worth.total_liabilities)}</strong>
+              <p>Subtracted from assets.</p>
+            </article>
+          </section>
+          {data.balances.length > 0 && (
+            <article className="chart-card">
+              <h3>Account balances</h3>
+              {data.balances.map((b) => (
+                <div
+                  className="rank-row"
+                  key={`${b.account_name}-${b.account_kind}`}
+                >
+                  <span>
+                    {b.account_name}
+                    <small>
+                      {b.account_kind} · as of {b.as_of_date}
+                    </small>
+                  </span>
+                  <strong>{money(b.balance)}</strong>
+                </div>
+              ))}
+            </article>
+          )}
+          </>}
+          <article className="form-card" id="spending-accounts">
+            <h3>Accounts available for spending</h3>
+            <p className="guidance">Chequing and cash start included. Savings and investments stay protected unless you choose otherwise.</p>
+            <div className="settings-list">{data.accounts.filter(account=>!["credit_card","loan","mortgage","other_liability"].includes(account.type)).map(account=><label className="setting-row" key={account.id}><span><strong>{account.name}</strong><small>{account.type_label}{account.available_for_spending?" · included in Safe to Spend":" · protected from Safe to Spend"}</small></span><input type="checkbox" checked={account.available_for_spending} disabled={balanceBusy} onChange={event=>void setSpendable(account.id,event.target.checked)}/></label>)}</div>
+          </article>
+          <article className="form-card" id="account-balances">
+            <h3>Add a current balance</h3>
+            <p className="guidance">Balances are explicit snapshots. Transactions are never used to invent a current balance.</p>
+            <div className="form-grid">
+              <label>Northstar account<select value={balanceForm.accountRef || ""} onChange={(e) => setBalanceForm({...balanceForm, accountRef:Number(e.target.value)})}><option value="">Choose an account…</option>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.type_label}</option>)}</select></label>
+              <label>Current balance<input type="number" min="0" step="0.01" value={balanceForm.balance} onChange={(e) => setBalanceForm({...balanceForm, balance:e.target.value})} /></label>
+              <label>As of<input type="date" value={balanceForm.asOfDate} onChange={(e) => setBalanceForm({...balanceForm, asOfDate:e.target.value})} /></label>
+              <label>Note (optional)<input value={balanceForm.note} onChange={(e) => setBalanceForm({...balanceForm, note:e.target.value})} /></label>
+            </div>
+            {!data.accounts.length && <p className="warning-text">Create or import into an account before adding a balance.</p>}
+            <button type="button" disabled={balanceBusy || !balanceForm.accountRef || !balanceForm.balance} onClick={() => void saveBalance()}>{balanceBusy ? "Saving…" : "Save balance snapshot"}</button>
+          </article>
+          </details></>}
+        </>
+      )}
+    </section>
+  );
+}
+export default InsightsView;

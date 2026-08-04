@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-money-focus"
+description = "Enables the clear_money_focus command without any pre-configured scope."
+commands.allow = ["clear_money_focus"]
+
+[[permission]]
+identifier = "deny-clear-money-focus"
+description = "Denies the clear_money_focus command without any pre-configured scope."
+commands.deny = ["clear_money_focus"]

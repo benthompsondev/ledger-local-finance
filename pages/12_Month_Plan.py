@@ -18,12 +18,13 @@ from datetime import date
 
 from utils.database import (
     init_db, get_connection,
-    upsert_monthly_plan, get_monthly_plan, list_monthly_plans,
-    replace_category_targets,
+    upsert_monthly_plan, get_monthly_plan, get_applicable_plan,
+    list_monthly_plans, replace_category_targets,
     insert_goal, get_goals, update_goal, delete_goal,
 )
 from utils.planner import (
-    PLAN_MODES, analysis_anchor, generate_starter_plan,
+    PLAN_MODES, STANCE_LABELS, analysis_anchor, generate_starter_plan,
+    plan_target_month, plan_confirm_proposal,
     forecast_month, bills_and_commitments, goal_progress,
 )
 from utils.ai_explainer import (
@@ -32,6 +33,7 @@ from utils.ai_explainer import (
 from utils.ai_cache import evidence_hash, get_cached, get_or_compute
 from utils.styles import inject_styles
 from utils.insights import money_runway, mission_deck
+from utils.checkin import safe_to_spend_summary
 
 st.set_page_config(page_title="Month Plan · Ledger", page_icon="🗓",
                    layout="wide")
@@ -105,7 +107,14 @@ def _format_targets_for_display(rows: list[dict]) -> "pd.DataFrame":
 
 conn = get_connection()
 anchor = analysis_anchor(conn=conn)
-existing = get_monthly_plan(anchor, conn=conn)
+# Planning targets the CALENDAR month; analysis follows the data.
+# Statements lag reality, so these are usually different — and "update
+# your plan" must always mean the month you are actually living in.
+plan_month = plan_target_month()
+current_plan = get_monthly_plan(plan_month, conn=conn)
+# The plan shown/managed below: this month's own plan, else the most
+# recently saved one (the user's standing intent during statement lag).
+existing = current_plan or get_applicable_plan(plan_month, conn=conn)
 fc = forecast_month(plan_month=anchor, conn=conn)
 
 # Surface statement completeness so partial current months do not silently
@@ -130,11 +139,16 @@ if _partial_now and _latest_complete:
 
 # ── Status strip ────────────────────────────────────────────────────
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Analysis month", anchor)
-m2.metric("Plan saved",     "Yes" if existing else "No",
-          delta=existing.get("mode") if existing else None)
+m1.metric("Plan month", plan_month,
+          help="New plans target the current calendar month, even when "
+               "statements haven't caught up to it yet.")
+m2.metric(f"{plan_month} plan", "Confirmed" if current_plan else "Not yet",
+          delta=(STANCE_LABELS.get(current_plan.get("mode"),
+                                   current_plan.get("mode"))
+                 if current_plan else None))
 m3.metric("Forecast risk",  fc["risk_level"].replace("_", " ").title())
-m4.metric("Anchor date",    fc["anchor_date"])
+m4.metric("Data through",   fc["anchor_date"],
+          help=f"Latest imported transaction. Analysis month: {anchor}.")
 
 if fc["risk_level"] == "insufficient_data":
     st.info(
@@ -142,15 +156,142 @@ if fc["risk_level"] == "insufficient_data":
         "latest statements, then come back."
     )
 
-# A practical planning card inspired by the best "spending plan" apps:
-# show the money left after bills and turn it into a daily guardrail.
-if existing and fc.get("safe_to_spend") is not None:
-    _safe_left = float(fc.get("safe_to_spend") or 0)
-    _days_left = max(1, int(fc.get("days_remaining") or 1))
-    _safe_day = _safe_left / _days_left
-    _bill_hold = float(fc.get("upcoming_bills_total") or 0)
+# ── One-minute confirm ──────────────────────────────────────────────
+# When the calendar month has no confirmed plan, confirming one is a
+# single decision: last month's plan (or a steady suggestion) carries
+# forward, the savings target is editable, one button saves it. This
+# is the page Home's "Confirm your plan" action lands on.
+_proposal = None
+if current_plan is None:
+    _stance_choice = st.session_state.get("plan_confirm_stance")
+    _proposal = plan_confirm_proposal(
+        plan_month, conn=conn,
+        stance=(_stance_choice if _stance_choice not in (None, "carry")
+                else None),
+    )
+    # Fresh/empty database: a $0/$0/$0 proposal is meaningless — don't
+    # offer to confirm it. Point at Import instead.
+    if (_proposal.get("insufficient_data")
+            and float(_proposal.get("income_target") or 0) <= 0
+            and _proposal.get("source") != "rollover"):
+        st.info(
+            "A plan needs at least one month of imported data to be "
+            "worth confirming. Import your first statements, then come "
+            "back — the plan will be pre-filled from what they show.",
+            icon="🗓",
+        )
+        _proposal = None
+
+if current_plan is None and _proposal is not None:
+    with st.container(border=True):
+        st.markdown(f"#### Confirm your {plan_month} plan")
+        st.caption(_proposal.get("source_label") or "")
+
+        _stance_options = (["carry"] if _proposal.get("source") == "rollover"
+                           or _stance_choice == "carry" else []) \
+            + ["normal", "tight", "reset"]
+        _STANCE_DISPLAY = {
+            "carry":  "Carry last plan forward",
+            "normal": "Steady — keep recent habits",
+            "tight":  "Tighter — cut flexible spending 20%",
+            "reset":  "Recovery — ease off after a rough month",
+        }
+        if len(_stance_options) > 1:
+            _default_idx = (_stance_options.index(_stance_choice)
+                            if _stance_choice in _stance_options else 0)
+            _picked = st.radio(
+                "Stance", _stance_options, index=_default_idx,
+                format_func=lambda k: _STANCE_DISPLAY.get(k, k),
+                horizontal=True, key="plan_confirm_stance_radio",
+            )
+            if _picked != _stance_choice:
+                st.session_state["plan_confirm_stance"] = _picked
+                st.rerun()
+
+        pc1, pc2, pc3 = st.columns(3)
+        pc1.metric("Expected income",
+                   f"${_proposal['income_target']:,.0f}")
+        pc2.metric("Spending target",
+                   f"${_proposal['spending_target']:,.0f}")
+        with pc3:
+            _savings_edit = st.number_input(
+                "Savings target ($)",
+                min_value=0.0, step=50.0,
+                value=float(_proposal["savings_target"]),
+                key="plan_confirm_savings",
+                help="A fixed dollar amount to keep this month. "
+                     "Editing this adjusts the spending target so the "
+                     "numbers stay consistent.",
+            )
+        _income_c = float(_proposal["income_target"])
+        _savings_c = float(_savings_edit)
+        _spending_c = max(0.0, _income_c - _savings_c)
+        if _income_c > 0:
+            # Escape '$' — st.caption is markdown and eats $...$ pairs.
+            st.caption(
+                f"That's a {(_savings_c / _income_c) * 100:.0f}% savings "
+                f"rate on \\${_income_c:,.0f} expected income — leaving "
+                f"\\${_spending_c:,.0f} for everything else."
+            )
+
+        cc1, cc2 = st.columns([1.6, 4])
+        with cc1:
+            if st.button(f"✓ Confirm {plan_month} plan", type="primary",
+                         use_container_width=True,
+                         key="plan_confirm_btn"):
+                _mode_c = (_proposal.get("mode") or "normal")
+                _pid = upsert_monthly_plan({
+                    "month":           plan_month,
+                    "mode":            _mode_c,
+                    "income_target":   _income_c,
+                    "spending_target": _spending_c,
+                    "savings_target":  _savings_c,
+                    "notes":           _proposal.get("win_condition") or "",
+                }, conn=conn)
+                replace_category_targets(
+                    _pid, _proposal.get("category_targets") or [],
+                    conn=conn)
+                conn.commit()
+                st.session_state.pop("plan_confirm_stance", None)
+                st.success(f"{plan_month} plan confirmed.")
+                st.rerun()
+        with cc2:
+            st.caption(
+                "One click is enough — category targets come along "
+                "automatically. Fine-tune anytime in the Plan tab below."
+            )
+elif current_plan is not None:
+    st.caption(
+        f"✅ {plan_month} is planned "
+        f"({STANCE_LABELS.get(current_plan.get('mode'), current_plan.get('mode'))}"
+        f" · income \\${float(current_plan.get('income_target') or 0):,.0f}"
+        f" · savings \\${float(current_plan.get('savings_target') or 0):,.0f})."
+        " Adjust it in the Plan tab below, or leave it alone — it rolls "
+        "forward automatically next month."
+    )
+
+# The canonical Safe to Spend — the SAME number Home and Dashboard
+# show. This card previously ran its own plan-based formula, which is
+# how the app ended up showing two different safe-to-spend answers at
+# the same time.
+_sts = safe_to_spend_summary(conn=conn)
+if existing and _sts.get("available"):
+    _bill_hold = (_sts["reserved"].get("bills_remaining", 0)
+                  + _sts["reserved"].get("subscriptions_remaining", 0))
     _goal = float(existing.get("savings_target") or 0)
     _risk = (fc.get("risk_level") or "unknown").replace("_", " ").title()
+    if _sts.get("period_ended") or _sts.get("daily_amount") is None:
+        if current_plan is not None:
+            # The next month is already planned — the only thing left
+            # is fresh data.
+            _headline = (f"{plan_month} is planned. Import your latest "
+                         f"statement to start tracking it.")
+        else:
+            _headline = ("This planning period has ended. "
+                         "Start or update your next plan.")
+    else:
+        _headline = (f"You can spend ~${float(_sts['daily_amount']):,.0f}"
+                     f"/day and keep the plan intact.")
     st.markdown(
         f"<div style='background:rgba(63,185,80,0.055);"
         f"border:1px solid rgba(63,185,80,0.20);"
@@ -160,13 +301,12 @@ if existing and fc.get("safe_to_spend") is not None:
         f"text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px'>"
         f"This month's job</div>"
         f"<div style='font-size:1.05rem;color:#e6edf3;font-weight:700;"
-        f"margin-bottom:5px'>You can spend ~${_safe_day:,.0f}/day and keep "
-        f"the plan intact.</div>"
+        f"margin-bottom:5px'>{_headline}</div>"
         f"<div style='font-size:0.86rem;color:#c9d1d9;line-height:1.5'>"
-        f"Safe-to-spend left: ${_safe_left:,.0f}. Bills reserved: "
+        f"Safe to Spend: ${_sts['amount']:,.0f}. Bills reserved: "
         f"${_bill_hold:,.0f}. Savings goal: ${_goal:,.0f}. "
         f"Forecast risk: {_risk}.</div>"
-        f"</div>".replace("$", r"\$"),
+        f"</div>",
         unsafe_allow_html=True,
     )
 else:
@@ -259,7 +399,7 @@ tab_plan, tab_forecast, tab_goals, tab_bills = st.tabs(
 # Plan tab
 # ══════════════════════════════════════════════════════════════════
 with tab_plan:
-    st.subheader("Choose a mode and generate a starter plan")
+    st.subheader(f"Adjust the {plan_month} plan")
     st.caption(
         "Targets are pulled from your last 3 months of imported data, "
         "then bent according to the mode. You always confirm before "
@@ -282,7 +422,10 @@ with tab_plan:
         "stabilize":       "Hold spending at recent average; no new commitments.",
     }
     mode_keys = list(PLAN_MODES.keys())
-    mode_labels = {k: v["label"] for k, v in PLAN_MODES.items()}
+    # Plain stance names on the primary path (Steady/Tighter/Recovery);
+    # advanced modes keep their descriptive labels.
+    mode_labels = {k: STANCE_LABELS.get(k, v["label"])
+                   for k, v in PLAN_MODES.items()}
     default_mode = (existing or {}).get("mode") or "normal"
     if default_mode not in mode_keys:
         default_mode = "normal"
@@ -329,7 +472,8 @@ with tab_plan:
         if _override and _override in mode_keys:
             mode = _override
 
-    proposal = generate_starter_plan(mode=mode, conn=conn)
+    proposal = generate_starter_plan(mode=mode, conn=conn,
+                                     plan_month=plan_month)
 
     if proposal["insufficient_data"]:
         st.warning(
@@ -536,9 +680,12 @@ with tab_forecast:
     f2.metric("MTD income",          f"${fc['mtd_income']:,.0f}")
     f3.metric("Projected net",       f"${fc['projected_net']:,.0f}",
               delta=f"{fc['projected_savings_rate']*100:.0f}% rate")
-    if fc["safe_to_spend"] is not None:
-        f4.metric("Safe to spend",   f"${fc['safe_to_spend']:,.0f}",
-                  help="spending_target − (MTD spending + upcoming bills)")
+    if _sts.get("available"):
+        f4.metric("Safe to Spend",   f"${_sts['amount']:,.0f}",
+                  help=("Canonical value — the same number Home and "
+                        "Dashboard show: expected income − spending so "
+                        "far − remaining bills/subscriptions − savings "
+                        "target − fee reserve − buffer."))
     else:
         f4.metric("Days remaining",  f"{fc['days_remaining']}")
 
@@ -616,122 +763,51 @@ with tab_forecast:
             )
             st.rerun()
     st.caption(
-        "Safe-to-spend = spending_target − (MTD spending + upcoming "
-        "bills). Tracks what you can spend without breaking the plan."
+        "Safe to Spend = expected income − spending so far − remaining "
+        "bills and subscriptions − savings target − fee reserve − "
+        "buffer. One shared calculation across Home, Dashboard, and "
+        "Plan."
     )
 
 # ══════════════════════════════════════════════════════════════════
 # Goals tab
 # ══════════════════════════════════════════════════════════════════
 with tab_goals:
-    st.subheader("Goals & milestones")
+    from utils.goals import goal_plan_summary, goal_progress
+
+    st.subheader("Goals & savings allocation")
+    st.caption(
+        "Goals now have one home. This tab shows how their planned monthly "
+        "contributions fit inside the savings target; create, edit, pause, "
+        "complete, and record progress on the Goals page."
+    )
     goals = get_goals(conn=conn, status="active") or []
-    if goals:
-        progressed = goal_progress(goals, conn=conn)
-        for g in progressed:
-            with st.container(border=True):
-                gc1, gc2 = st.columns([4, 1])
-                with gc1:
-                    st.markdown(
-                        f"**{g['name']}** "
-                        f"<span style='color:#8b949e;font-size:0.85rem'>"
-                        f"({g.get('type') or 'custom'})</span>",
-                        unsafe_allow_html=True,
-                    )
-                    pct = g.get("progress_pct") or 0
-                    cur = g.get("current_amount") or 0
-                    tgt = g.get("target_amount") or 0
-                    st.progress(min(1.0, max(0.0, pct)))
-                    st.caption(
-                        f"${cur:,.0f} / ${tgt:,.0f} "
-                        f"({pct*100:.0f}%) — "
-                        f"next milestone ${g.get('next_milestone',0):,.0f}"
-                    )
-                    if g.get("linked_metric"):
-                        st.caption(
-                            f"Auto-tracking from "
-                            f"`{g['linked_metric']}`"
-                        )
-                with gc2:
-                    if st.button("Done", key=f"goal_done_{g['id']}"):
-                        update_goal(g["id"], {"status": "done"},
-                                    conn=conn)
-                        conn.commit()
-                        st.rerun()
-                    if st.button("🗑", key=f"goal_del_{g['id']}"):
-                        delete_goal(g["id"], conn=conn)
-                        conn.commit()
-                        st.rerun()
-    else:
-        st.info("No active goals yet. Add one below.")
-
-    # ── Pass 22: Goal Progress Coach ───────────────────────────────
-    st.markdown('<p class="ledger-section-header">Goal progress coach</p>',
-                unsafe_allow_html=True)
-    _gp_for_coach = goal_progress(goals, conn=conn) if goals else []
-    _gp_ev = evidence_hash([
-        {"name": g.get("name"), "pct": g.get("progress_pct"),
-         "cur": g.get("current_amount"), "tgt": g.get("target_amount")}
-        for g in _gp_for_coach
-    ])
-    _gp_cached, _gp_hash = get_cached("coach_goals")
-    _gp_coach = (_gp_cached if _gp_hash == _gp_ev
-                  else coach_goals(_gp_for_coach))
-    st.markdown(f"**{_gp_coach.get('progress_summary','')}**")
-    if _gp_coach.get("next_milestone"):
-        st.caption(_gp_coach["next_milestone"])
-    if _gp_coach.get("suggested_action"):
-        st.markdown(f"**Suggested:** {_gp_coach['suggested_action']}")
-    if _gp_coach.get("caution"):
-        st.warning(_gp_coach["caution"])
-    if not _gp_coach.get("ai_active") and _gp_hash != _gp_ev and goals:
-        if st.button("✨ Generate AI goal summary", key="ai_goal_btn"):
-            get_or_compute(
-                "coach_goals", _gp_ev,
-                lambda: coach_goals(_gp_for_coach), force=True)
-            st.rerun()
-
-    st.markdown("---")
-    with st.form("add_goal"):
-        st.markdown("**New goal**")
-        gn1, gn2 = st.columns(2)
-        g_name = gn1.text_input("Name*",
-                                placeholder="e.g. 6-month emergency fund")
-        g_type = gn2.selectbox("Type", [
-            "emergency_fund", "cash_buffer", "net_worth",
-            "debt_reduction", "investment_contribution",
-            "savings_rate", "sub_reduction", "custom",
-        ])
-        gn3, gn4, gn5 = st.columns(3)
-        g_target = gn3.number_input("Target amount*", min_value=0.0,
-                                    step=100.0)
-        g_current = gn4.number_input("Current amount (manual)",
-                                     min_value=0.0, step=100.0)
-        g_link = gn5.selectbox(
-            "Auto-track from",
-            ["", "net_worth", "investments", "cash_balance"],
-            help=("If set, current amount is read from Ledger's "
-                  "computed value instead of the manual number."),
+    progressed = goal_progress(goals, conn=conn) if goals else []
+    _goal_plan = goal_plan_summary(
+        float((existing or {}).get("savings_target") or 0), conn=conn,
+    )
+    gp1, gp2, gp3 = st.columns(3)
+    gp1.metric("Active goals", len(progressed))
+    gp2.metric(
+        "Named allocations",
+        f"${_goal_plan['goal_allocations_total']:,.0f}/mo",
+    )
+    gp3.metric(
+        "Safe to Spend reserves",
+        f"${_goal_plan['effective_savings_target']:,.0f}/mo",
+        help="The larger of the plan target or named allocations, never both.",
+    )
+    for g in progressed[:3]:
+        st.markdown(
+            f"**{g['name']}** · ${g['current_amount']:,.0f} of "
+            f"${g['target_amount']:,.0f} · "
+            f"${g['planned_monthly_contribution']:,.0f}/mo planned"
         )
-        g_date = st.date_input("Target date (optional)",
-                               value=None, format="YYYY-MM-DD")
-        g_notes = st.text_input("Notes")
-        if st.form_submit_button("Create goal"):
-            if not g_name or g_target <= 0:
-                st.error("Name and target amount are required.")
-            else:
-                insert_goal({
-                    "name": g_name, "type": g_type,
-                    "target_amount": float(g_target),
-                    "current_amount": float(g_current),
-                    "target_date": g_date.isoformat() if g_date else None,
-                    "linked_metric": g_link or None,
-                    "status": "active",
-                    "notes": g_notes or None,
-                }, conn=conn)
-                conn.commit()
-                st.success("Goal created.")
-                st.rerun()
+        st.progress(float(g.get("progress_pct") or 0))
+    if not progressed:
+        st.info("No active goals yet.")
+    if st.button("Open Goals →", key="plan_open_goals"):
+        st.switch_page("pages/15_Goals.py")
 
 # ══════════════════════════════════════════════════════════════════
 # Bills tab

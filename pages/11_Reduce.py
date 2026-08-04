@@ -40,6 +40,24 @@ det          = subscription_detective(conn=conn)
 controllable = top_controllable_categories(conn=conn, limit=5)
 recurring    = recurring_merchants(min_months=3, conn=conn)
 
+# One target truth: category targets come from the shared resolver
+# (your saved plan first, a suggested 20% cut otherwise) — the same
+# numbers Home's watchlists and Money Moves use.
+from utils.planner import resolve_category_targets
+try:
+    _targets_map = resolve_category_targets(conn=conn) or {}
+except Exception:
+    _targets_map = {}
+
+
+def _target_for(cat: str, avg: float) -> tuple[float, str]:
+    """(monthly target, plain-language source note) for a category."""
+    rt = _targets_map.get(cat) or {}
+    tgt = float(rt.get("target") or round(avg * 0.80, 0))
+    note = ("from your plan" if rt.get("source") == "plan"
+            else "suggested 20% cut")
+    return tgt, note
+
 active_candidates = det.get("active_candidates") or []
 stale_candidates  = det.get("stale_candidates") or []
 active_subs       = det.get("active_subs") or []
@@ -129,13 +147,13 @@ def _this_weeks_plan():
         c = controllable[0]
         cat = c["category"]
         avg = float(c["monthly_avg"])
-        target = round(avg * 0.80, 0)
+        target, _tgt_note = _target_for(cat, avg)
         save_mo = max(0.0, avg - target)
         return {
             "kind":       "category",
-            "title":      f"Trim {cat} by ~20%",
+            "title":      f"Bring {cat} down to its target",
             "current":    f"${avg:,.0f}/mo",
-            "target":     f"${target:,.0f}/mo",
+            "target":     f"${target:,.0f}/mo ({_tgt_note})",
             "save_mo":    f"${save_mo:,.0f}/mo",
             "save_yr":    f"${save_mo*12:,.0f}/yr",
             "first":      _FIRST_ACTION.get(
@@ -154,7 +172,7 @@ if _plan:
         '<p class="ledger-section-header">This Week\'s Reduce Plan</p>',
         unsafe_allow_html=True,
     )
-    _safe_first = (_plan["first"] or "").replace("$", r"\$")
+    _safe_first = (_plan["first"] or "")
     st.markdown(
         f"<div style='background:rgba(63,185,80,0.06);"
         f"border:1px solid rgba(63,185,80,0.25);"
@@ -172,7 +190,7 @@ if _plan:
         f"</div>"
         f"<div style='font-size:0.85rem;color:#c9d1d9;line-height:1.55'>"
         f"<b>First action:</b> {_safe_first}</div>"
-        f"</div>".replace("$", r"\$"),
+        f"</div>",
         unsafe_allow_html=True,
     )
     if st.button(f"See {_plan['link_value']} transactions",
@@ -201,7 +219,7 @@ if _plan:
         f"Treat this like a score streak: do the first action, then keep "
         f"the saved money pointed at your Plan goal instead of letting it "
         f"leak into another category.</div>"
-        f"</div>".replace("$", r"\$"),
+        f"</div>",
         unsafe_allow_html=True,
     )
     st.divider()
@@ -321,7 +339,7 @@ else:
     def _render_target_row(c: dict, key_prefix: str = "main") -> None:
         cat = c["category"]
         m_avg = float(c["monthly_avg"])
-        target = round(m_avg * 0.80, 0)
+        target, _tgt_note = _target_for(cat, m_avg)
         save_mo = max(0.0, m_avg - target)
         save_yr = save_mo * 12
         difficulty = _DIFFICULTY_BY_CAT.get(cat, "moderate")
@@ -340,7 +358,9 @@ else:
             )
             r3.markdown(
                 f"<span style='font-variant-numeric:tabular-nums;color:#c9d1d9'>"
-                f"${target:,.0f}</span>",
+                f"${target:,.0f}</span>"
+                f"<span style='font-size:0.65rem;color:#8b949e;display:block'>"
+                f"{_tgt_note}</span>",
                 unsafe_allow_html=True,
             )
             r4.markdown(
@@ -359,7 +379,10 @@ else:
                 f"font-weight:700;text-transform:uppercase'>{difficulty}</span>",
                 unsafe_allow_html=True,
             )
-            st.caption(f"➤ **First action:** {first_action}")
+            # Escape literal '$' once — st.caption is a markdown context,
+            # and unescaped '$...$' pairs get eaten as LaTeX math.
+            st.caption("➤ **First action:** "
+                       + str(first_action).replace("$", r"\$"))
             link_col, _, _ = st.columns([2, 1, 4])
             if link_col.button(
                 f"See {cat} transactions",
@@ -395,15 +418,19 @@ else:
             for c in _rest:
                 _render_target_row(c, key_prefix="more")
 
-    total_save_yr = sum(max(0.0, c["monthly_avg"] * 0.20 * 12)
-                        for c in controllable)
+    total_save_yr = sum(
+        max(0.0, (float(c["monthly_avg"])
+                  - _target_for(c["category"],
+                                float(c["monthly_avg"]))[0]) * 12)
+        for c in controllable
+    )
     st.markdown(
         f"<div style='background:rgba(63,185,80,0.06);border:1px solid rgba(63,185,80,0.2);"
         f"border-radius:6px;padding:10px 14px;margin-top:6px;text-align:center'>"
         f"<span style='font-size:0.95rem;color:#e6edf3'>"
-        f"Hit every 20% target → <b style='color:#3fb950'>"
+        f"Hit every target above → <b style='color:#3fb950'>"
         f"~${total_save_yr:,.0f}/year</b> in additional savings.</span>"
-        f"</div>".replace("$", r"\$"),
+        f"</div>",
         unsafe_allow_html=True,
     )
 
@@ -621,18 +648,25 @@ _practical_cuts: list[dict] = [
     {
         "size":    "Big",
         "color":   "#f85149",
-        "label":   (f"Reduce {_top_cat_name} 20%"
+        "label":   (f"Bring {_top_cat_name} to target"
                     + (f" + cancel {_cancel_one_merchant_p30}"
                        if _cancel_one_merchant_p30 else "")),
-        "save_mo": (round(_top_cat_avg * 0.20, 0)
+        # The Big cut's cap is the SAME resolved target the table above
+        # and Money Moves show — one number everywhere.
+        "save_mo": (round(max(0.0, _top_cat_avg
+                              - _target_for(_top_cat_name,
+                                            _top_cat_avg)[0]), 0)
                     + (_cancel_one_amt if _cancel_one_merchant_p30 else 0)),
         "first_action": (
             f"Both moves at once: cancel "
             f"{_cancel_one_merchant_p30 or 'one subscription'} "
             f"and shift {_top_cat_name} spending to a $"
-            f"{(_top_cat_avg * 0.80):,.0f}/mo cap."
+            f"{_target_for(_top_cat_name, _top_cat_avg)[0]:,.0f}/mo cap "
+            f"({_target_for(_top_cat_name, _top_cat_avg)[1]})."
             if _cancel_one_merchant_p30 else
-            f"Cap {_top_cat_name} at ${(_top_cat_avg * 0.80):,.0f}/mo "
+            f"Cap {_top_cat_name} at "
+            f"${_target_for(_top_cat_name, _top_cat_avg)[0]:,.0f}/mo "
+            f"({_target_for(_top_cat_name, _top_cat_avg)[1]}) "
             f"and review {_second_cat_name} as well."
         ),
         "effort":  "High — a full month of discipline.",
@@ -665,7 +699,7 @@ for i, cut in enumerate(_practical_cuts):
             f"<b>First action.</b> {cut['first_action']}</div>"
             f"<div style='font-size:0.75rem;color:#8b949e'>"
             f"<b>Effort.</b> {cut['effort']}</div>"
-            f"</div>".replace("$", r"\$"),
+            f"</div>",
             unsafe_allow_html=True,
         )
         if st.button(f"Pick {cut['size']}",
@@ -805,7 +839,7 @@ if _scenario_picked and _redirect_amount > 0:
             f"Next milestone: ${_ms:,.0f}</div></div>"
             f"<div style='font-size:0.85rem;color:#c9d1d9;line-height:1.5'>"
             f"${_gap:,.0f} to next milestone. {_months_str}.</div></div>"
-            .replace("$", r"\$"),
+            ,
             unsafe_allow_html=True,
         )
     else:

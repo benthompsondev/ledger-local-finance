@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-net-worth-entry"
+description = "Enables the save_net_worth_entry command without any pre-configured scope."
+commands.allow = ["save_net_worth_entry"]
+
+[[permission]]
+identifier = "deny-save-net-worth-entry"
+description = "Denies the save_net_worth_entry command without any pre-configured scope."
+commands.deny = ["save_net_worth_entry"]

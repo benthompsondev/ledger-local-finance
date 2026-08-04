@@ -58,12 +58,16 @@ def compute_streaks(conn: Optional[sqlite3.Connection] = None) -> dict:
 
 def _compute_streaks_impl(conn: sqlite3.Connection) -> dict:
     today = date.today()
+    from utils.analysis_period import supported_latest_date
+
+    supported = supported_latest_date(conn=conn) or today
 
     # 1. Days since last cash advance
     row = conn.execute("""
         SELECT MAX(transaction_date) AS d FROM transactions
         WHERE category='Cash Advance' AND direction='debit'
-    """).fetchone()
+          AND transaction_date <= ?
+    """, (supported.isoformat(),)).fetchone()
     last_ca = row["d"] if row else None
     if last_ca:
         try:

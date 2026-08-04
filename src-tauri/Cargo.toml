@@ -1,0 +1,28 @@
+[package]
+name = "ledger-native"
+version = "2.5.5"
+description = "Northstar Ledger native desktop"
+authors = ["Ben Thompson"]
+homepage = "https://github.com/benthompsondev/ledger-local-finance"
+repository = "https://github.com/benthompsondev/ledger-local-finance"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+strip = true

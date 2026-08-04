@@ -1,3 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────
+# RETIRED. This Makefile drives the old Streamlit app, which is not the
+# product and has not been the product for several releases. Nothing here
+# builds, tests or runs Northstar Ledger.
+#
+# The shipping product is the native Windows desktop app. See README.md, or:
+#     .\.venv\Scripts\python.exe -m pytest -q      tests
+#     npm run desktop:dev                            run it
+#     powershell -File scripts/build_native_desktop.ps1   installer
+#
+# Kept only so old references resolve. Do not add targets here.
+# ─────────────────────────────────────────────────────────────────────────
+
 PYTHON ?= python3
 VENV ?= .venv
 VENV_PYTHON := $(VENV)/bin/python

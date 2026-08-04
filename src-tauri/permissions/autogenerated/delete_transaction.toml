@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-transaction"
+description = "Enables the delete_transaction command without any pre-configured scope."
+commands.allow = ["delete_transaction"]
+
+[[permission]]
+identifier = "deny-delete-transaction"
+description = "Denies the delete_transaction command without any pre-configured scope."
+commands.deny = ["delete_transaction"]

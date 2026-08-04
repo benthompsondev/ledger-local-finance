@@ -127,6 +127,41 @@ with tab_overview:
     if nw["missing"]:
         st.caption("Missing inputs: " + "; ".join(nw["missing"]))
 
+    # ── Computed account balances (from transactions) ────────────────
+    # Informational panel from the shared deterministic balance
+    # service. The manual balance entries under Cash / debts remain
+    # the source for snapshot history — this panel makes the computed
+    # per-account view visible without double-counting anything.
+    from utils.balances import all_account_balances
+    _bal = all_account_balances(conn=conn)
+    if _bal["balances"]:
+        st.markdown(
+            '<p class="ledger-section-header">Account balances '
+            '(computed from transactions)</p>',
+            unsafe_allow_html=True)
+        _bal_rows = [{
+            "Account": b["name"],
+            "Type": b["type"].replace("_", " "),
+            "Balance": f"${b['balance']:,.2f} {b['currency']}"
+            + (" owed" if b["is_liability"] else ""),
+            "Net-worth effect":
+                f"{'−' if b['is_liability'] else '+'}"
+                f"${abs(b['networth_contribution']):,.2f}",
+        } for b in _bal["balances"]]
+        st.dataframe(pd.DataFrame(_bal_rows),
+                     use_container_width=True, hide_index=True)
+        st.caption(
+            f"Computed net-worth contribution "
+            f"({_bal['base_currency']} accounts only): "
+            f"${_bal['networth_contribution']:,.2f} — opening balances "
+            f"plus all recorded activity. Snapshot history above still "
+            f"uses your manually entered balances; nothing is counted "
+            f"twice."
+            + (f" {len(_bal['foreign_accounts'])} non-"
+               f"{_bal['base_currency']} account(s) listed but not "
+               f"totalled." if _bal["foreign_accounts"] else "")
+        )
+
     # ══════════════════════════════════════════════════════════════════
     # Pass 31 — Net Worth flagship: chart + milestone card + collapsed
     # holdings. Users open this page to answer "am I building wealth or
@@ -260,7 +295,7 @@ with tab_overview:
             f"border-radius:4px;height:8px;overflow:hidden'>"
             f"<div style='background:{_bar_color};height:100%;"
             f"width:{max(0,min(100,_pct)):.0f}%'></div>"
-            f"</div></div>".replace("$", r"\$"),
+            f"</div></div>",
             unsafe_allow_html=True,
         )
     else:

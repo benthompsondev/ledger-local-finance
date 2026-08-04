@@ -1,16 +1,17 @@
 """
 Tangerine Chequing statement PDF parser.
 
-Real format (verified from actual PDFs):
+Layout verified against real statements. Every figure, name and account
+number below is invented; only the shape of the lines is real.
 
 Normal transaction (all on ONE line):
-  02 Jan 2026 Tangerine Credit Card Payment 2,500.00 4,501.59
-  02 Jan 2026 INTERAC e-Transfer From: TORIRIVARD 490.00 4,991.59
+  02 Jan 2026 Tangerine Credit Card Payment 1,000.00 2,000.00
+  02 Jan 2026 INTERAC e-Transfer From: INVENTED PERSON 100.00 2,100.00
 
 Multi-line savings deposit (3 lines total):
   Internet Deposit from Tangerine Savings Account -   ← description (no date)
-  02 Jan 2026 50.00 5,041.59                           ← date + amount + balance
-  3031472835                                           ← orphan account number (discard)
+  02 Jan 2026 50.00 2,150.00                           ← date + amount + balance
+  0000000000                                           ← orphan account number (discard)
 
 Pattern rules:
   - Standard:  line starts with "DD Mon YYYY", rest = description + amount + balance
@@ -168,12 +169,21 @@ def build_transaction(tx_date: str, description: str, amount: float, statement_p
         is_tr = 1
         direction = "transfer"
 
+    # PDF tables expose an unsigned amount plus a description-derived flow.
+    # Convert that explicit flow into the same account-relative signed model
+    # used by CSV imports. Categorization never changes this value later.
+    desc_upper = description.upper()
+    money_in = direction == "credit" or (
+        direction == "transfer" and "DEPOSIT FROM" in desc_upper
+    )
+    signed_amount = abs(amount) if money_in else -abs(amount)
+
     tx = {
         "account_type": "chequing",
         "transaction_date": tx_date,
         "posted_date": None,
         "raw_description": description,
-        "amount": amount,
+        "amount": signed_amount,
         "currency": "CAD",
         "direction": direction,
         "is_transfer": is_tr,

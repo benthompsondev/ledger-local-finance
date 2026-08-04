@@ -29,3 +29,14 @@ PRICE_INCREASE_MIN_AMOUNT = 10.0   # ignore sub-$10 noise
 
 # ── Budget status thresholds ──────────────────────────────────────
 BUDGET_NEAR_PCT = 80   # "near" budget warning at ≥80% used
+
+# ── Weekly check-in (Home) ────────────────────────────────────────
+# Findings below this dollar impact are treated as noise and never
+# surfaced on Home. One place to change it later.
+MATERIALITY_THRESHOLD = 25.0
+
+# Data-freshness classification, in days since the latest usable
+# transaction. <= FRESH_CURRENT_DAYS → "current";
+# <= FRESH_STALE_DAYS → "getting_stale"; beyond that → "stale".
+FRESH_CURRENT_DAYS = 7
+FRESH_STALE_DAYS   = 21

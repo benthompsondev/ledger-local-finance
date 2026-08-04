@@ -1,442 +1,275 @@
-# Ledger
+# Northstar Ledger
 
-[![Ledger validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
+[![Northstar Ledger validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/benthompsondev/ledger-local-finance)](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](requirements.txt)
-[![Local-first](https://img.shields.io/badge/local--first-privacy--focused-brightgreen.svg)](SECURITY.md)
+[![Local-first](https://img.shields.io/badge/local--first-no%20account%2C%20no%20server-brightgreen.svg)](SECURITY.md)
 
-Open-source local-first personal finance app built with Python, Streamlit,
-Plotly, SQLite, local run checks, screenshots, demo data, and GitHub Actions.
+A local-first personal finance app for Windows. Import your bank statements,
+clean up the transactions, see where the money actually went, and plan the
+month. Everything stays on your machine: no account, no sign-in, no server, no
+network calls for the finance math.
 
-Ledger is my work-in-progress local finance app. I am building it for people who want more control over their own financial data without subscriptions, cloud lock-in, or handing everything to a third-party service.
+I built it because the budgeting tools I tried were either too manual, too
+cloud-dependent, or too busy drawing charts to answer the question I actually
+had, which was some version of "am I okay, and what changed."
 
-The goal is to answer the weekly money questions that actually matter:
+**[Take the product tour](https://benthompsondev.github.io/ledger-local-finance/)** - current native screens with synthetic data ·
+**[Download the Windows beta](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - installer and SHA-256 checksum ·
+**[Read the setup guide](docs/GETTING_STARTED.md)**
 
-- Where am I financially right now?
-- Am I better or worse than last month?
-- What changed?
+![Northstar Ledger Home screen using synthetic demo data](docs/screenshots/native-home-2.5.5.png)
+
+The questions it is built to answer:
+
+- Where am I right now?
 - How much can I safely spend?
-- What should I cut first?
-- Am I building savings, reducing waste, and improving net worth?
+- What changed since last month?
+- What is coming that I have not set money aside for?
+- Am I actually making progress?
 
-It runs on your own computer, stores data in a local SQLite database, and does the actual finance math with normal Python/SQLite logic. Optional AI-assisted features can summarize and explain the numbers through a configured API key, but they are read-only and cannot edit financial data or invent figures.
+## Status
 
-> Privacy warning: Ledger is designed for local use. Do not deploy it publicly with real financial data. Streamlit is configured for localhost use, and share/export tools are built to exclude private database and config files.
+**Windows public beta.** It works, it is tested, and it is still a beta. A few
+things are worth knowing before you install it:
 
-Ledger is MIT licensed. I am building it to be customizable, understandable, and easy to run locally. It also works as a portfolio project for Python, Streamlit, SQLite, data import, privacy-safe local apps, GitHub Actions, and maintenance guardrails.
+- The installer is **unsigned**, so Windows SmartScreen will warn you the first
+  time. That is expected for an independent build.
+- There is **no automatic updater**. A new version means downloading the
+  installer again and installing over the previous one, which keeps your data.
+- **Your own statements remain the source of truth.** The math is covered by
+  tests, but check anything that matters against your bank.
+- Everything stays on your machine. The one exception is the optional AI
+  feature, which is off until you turn it on. See [Optional AI](#optional-ai).
 
-## Easiest Way To Try It
+Latest installer: [Northstar Ledger 2.5.5](https://github.com/benthompsondev/ledger-local-finance/releases/latest).
+The [browser product tour](https://benthompsondev.github.io/ledger-local-finance/)
+shows the current interface with generated data. It is deliberately a tour,
+not a browser copy of the finance engine. You can also build the desktop app
+yourself from source, described below.
 
-Start with demo mode. It creates a fake local database, opens the app on your computer, and keeps real financial data out of the first run.
+## What it is
 
-### Windows
+The shipping product is a native Windows desktop application: a Tauri 2 shell
+written in Rust, wrapping a React and TypeScript interface, talking to a
+packaged Python engine over stdin and stdout. Your data lives in a SQLite
+database at `%LOCALAPPDATA%\Ledger\finance.db`.
 
-Install [Python 3.12+](https://www.python.org/downloads/) first. During install, tick **Add Python to PATH** if Windows offers it.
+It never opens a browser and never exposes a localhost service.
 
-Then download the whole project folder with Git, or use **Code > Download ZIP** on GitHub and extract it. After extracting, open PowerShell in the Ledger folder, the one that contains `Ledger_Launcher.py`, `app.py`, `requirements.txt`, and `pages/`.
+There are six tabs:
 
-```powershell
-py Ledger_Launcher.py --demo
-```
+| Tab | What it is for |
+|---|---|
+| **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
+| **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
+| **Plan** | Turn recent spending into a monthly plan. Income, fixed costs, reserves for non-monthly bills, savings, buffer, and the flexible amount left over. |
+| **Insights** | Spending pace, category movement, income steadiness, net worth trend, cashflow. |
+| **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
+| **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
-If `py` is not available, try:
+**Settings** is the gear in the header rather than a tab. It holds backup and
+restore, preferences, categorization controls, data-safety tools and the
+optional AI configuration. Demo mode is not in there; it is the environment
+variable flow described below.
 
-```powershell
-python Ledger_Launcher.py --demo
-```
+There is no Goals tab. It was replaced by the **Money Focus** card on Home,
+which tracks one thing you are saving for and reads progress from months that
+have actually finished, rather than asking you to type it in and trusting that
+you remembered.
 
-The launcher creates the local Python environment, installs dependencies, builds fake demo data, and opens Ledger at:
+## Design rules
 
-```text
-http://127.0.0.1:8501
-```
+These are the rules the code is held to, and they are the reason some numbers
+look more cautious than other apps:
 
-You can also use the PowerShell helper:
+- **The math is the product.** A number is never shown more confidently than
+  the data supports. If an input is missing, the number degrades and says so
+  rather than hiding behind a gate or quietly guessing.
+- **Import fails closed.** A statement has one date format, one decimal
+  convention, one column layout. Those are detected once per file and shown to
+  you. A file with contradictory evidence is refused. Silently importing wrong
+  dates or hundredfold amounts is the worst thing this app could do.
+- **One canonical number per concept.** There is exactly one Safe to Spend, and
+  every screen reads it. When a second copy of a rule shows up, it gets deleted.
+- **Comparisons span equal periods.** A partial month is never measured against
+  a full one, and when the previous month ended earlier than today the app says
+  so instead of pretending the comparison is same-day.
 
-```powershell
-.\run_windows.ps1 -Demo
-```
+## Running it
 
-### Linux or macOS
+### Build the desktop app
 
-```bash
-git clone https://github.com/benthompsondev/ledger-local-finance.git
-cd ledger-local-finance
-make setup
-make demo
-```
-
-For more detail, use [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
-
-## If You Are Reviewing This Quickly
-
-- Use demo mode first so you can see the app without using real financial data.
-- Skim the screenshots below for the main workflow.
-- Open [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) if you want the step-by-step version.
-- Check the GitHub Actions badge above to see the validation run.
-- Run `python -m scripts.doctor` after setup if something feels off locally.
-
-The useful part of Ledger is not that it is a finished commercial finance product. It is a practical local app with imports, SQLite storage, deterministic calculations, demo data, screenshots, local checks, and privacy boundaries. Longer term, I want it to fit into local homelab and automation workflows while keeping finance data local.
-
-## Manual Demo Setup
-
-If you prefer to run each setup command yourself, this does the same thing as demo mode.
+You need [Rust](https://rustup.rs/), [Node 24+](https://nodejs.org/), and
+[Python 3.13+](https://www.python.org/downloads/). CI builds and tests on
+Node 24 and Python 3.14, which is the interpreter the installer bundles.
+Node 20 cannot run the frontend tests: they load TypeScript directly and
+only Node 23.6 and up strip types without a flag. Python 3.12 runs the app
+but has one failing month-end test that does not reproduce on 3.13 or 3.14.
 
 ```powershell
 git clone https://github.com/benthompsondev/ledger-local-finance.git
 cd ledger-local-finance
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m scripts.create_demo_data
-$env:LEDGER_DEMO_DB="1"
-.\.venv\Scripts\python.exe -m streamlit run app.py
+npm ci
+npm run desktop:dev
 ```
 
-Open `http://127.0.0.1:8501`.
+That runs the app in development mode with hot reload.
 
-After that, turn demo mode off in a new terminal and use the Import page with your own PDFs or CSVs:
+To build the Windows installer:
 
 ```powershell
-Remove-Item Env:\LEDGER_DEMO_DB -ErrorAction SilentlyContinue
-.\.venv\Scripts\python.exe -m streamlit run app.py
+powershell -File scripts/build_native_desktop.ps1
 ```
 
-On Linux or macOS, the repo also includes a small Makefile:
+The installer lands in `src-tauri/target/release/bundle/nsis/`.
 
-```bash
-git clone https://github.com/benthompsondev/ledger-local-finance.git
-cd ledger-local-finance
-make setup
-make demo
+### Try it with demo data first
+
+Demo mode is not a switch inside the app. It is two environment variables, so
+the app can never quietly point itself at generated data or at yours:
+
+```powershell
+$demoDir = Join-Path $env:TEMP "northstar-ledger-demo"
+New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
+.\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
+$env:LEDGER_DATA_DIR = $demoDir
+$env:LEDGER_DEMO_DB = "1"
+npm run desktop:dev
 ```
 
-## Why I Built This
+Everything runs out of that temp folder, so your real database is never opened.
+Clear both variables to go back to it:
 
-Most budgeting tools I tried were either too manual, too cloud-dependent, or too focused on charts instead of decisions. Ledger is my attempt at a practical local-first version: import statements, clean up transactions, understand what changed, make a month plan, reduce waste, and track progress.
+```powershell
+Remove-Item Env:LEDGER_DATA_DIR, Env:LEDGER_DEMO_DB
+```
 
-It is also a portfolio project because it shows:
+## Importing your own statements
 
-- Python application structure
-- Streamlit UI development
-- SQLite schema design and migrations
-- PDF and CSV parsing
-- deterministic finance calculations
-- privacy-safe exports
-- test runs and share-package safety checks
-- optional AI integration with strict read-only guardrails
-- GitHub Actions validation and contributor safety checks
+Add Data handles:
 
-## What It Does
-
-### Import
-
-- Tangerine Mastercard, Chequing, and Savings PDFs
-- generic bank CSV files
+- bank and credit card CSV exports
+- Tangerine Mastercard, Chequing and Savings PDFs
 - investment holdings CSV snapshots
-- import history with statement periods and removable batches
-- duplicate detection by file hash and transaction hash
 
-### Dashboard
+Every import is logged as a batch with its statement period, and batches can be
+removed. Duplicates are caught by file hash and by transaction fingerprint, so
+re-importing the same file does nothing rather than doubling your spending.
 
-- income, spending, net, and savings rate
-- Money Pulse score based on complete statement months
-- Money Runway safe-to-spend number after bills, subscriptions, goals, fees, and a buffer
-- Mission Deck with three practical weekly actions
-- Tiny Wins that make small savings opportunities visible without moving money automatically
-- top spending categories and merchants
-- statement-aware score explanations
-- optional local-data-grounded copilot summary
-- quick routes to Plan, Trends, Reduce, and Review
+If a file's shape cannot be determined confidently, the import stops and tells
+you what was ambiguous instead of guessing.
 
-### Money Pulse
+## Optional AI (Beta)
 
-Money Pulse is a 0-100 monthly score. It is not a credit score and not financial advice. It is a practical control score built from local transaction data:
+The app works completely without AI, and nothing in the finance math depends on
+it. Every figure on every screen is computed locally whether AI is on or off,
+and Coach still reports its deterministic findings with AI disabled.
 
-| Dimension | Default Weight | What It Measures |
-|---|---:|---|
-| Savings | 40 | Net cashflow / savings rate for the latest complete statement month |
-| Spending control | 30 | Controllable category concentration and trend vs the prior complete month |
-| Debt & fees | 15 | Exact statement interest and fees only |
-| Consistency | 15 | Recent complete months with positive net cashflow |
+This part is marked **Beta** for a reason worth stating plainly: provider
+compatibility varies. Northstar speaks the OpenAI chat format and Anthropic's
+Messages API, and a provider that claims compatibility may still differ in
+ways that surface as an error rather than an answer. If you configure a provider key, AI can summarize and explain the numbers
+the deterministic engine already produced.
 
-Mortgage, utilities, insurance, transfers, credit-card payments, and finance charges are excluded from Spending control because they should not be treated like everyday discretionary categories.
+**Be clear about what leaves your machine.** With an online provider enabled,
+the evidence packet for the question you asked is sent to that provider. That
+packet contains real figures from your ledger: totals, category names, merchant
+names and dates, depending on the feature. Your database file never leaves the
+machine, but the contents of a request do. If that is not a trade you want,
+leave AI off and everything still works.
 
-Debt & fees uses bank-provided statement summary fields when available. If a Mastercard summary is missing, Ledger does not guess from transaction rows.
+The guardrails:
 
-### Reduce
+- AI cannot write to the database. It cannot create or edit transactions,
+  budgets, goals or plans.
+- Every AI output has to be grounded in a deterministic local evidence packet.
+  Safe to Spend, the plan equation and the insight feed are computed first, in
+  Python, and then handed over for explanation.
+- Only the packet for the feature you invoked is sent. There is no background
+  syncing and no telemetry.
+- Your provider key is stored in the local database encrypted with Windows
+  DPAPI, which ties it to your Windows user account. It is not stored in plain
+  text and it is not committed anywhere.
+- Turning AI off, or never configuring it, changes none of the numbers.
 
-Reduce is the action workspace. It turns spending data into practical cut targets:
+## Privacy
 
-- weekly trim-spend challenge
-- active subscription candidates
-- controllable category targets
-- first-action suggestions
-- inactive recurring services separated from active savings opportunities
-- quick links into filtered transaction history
+The finance math is entirely local and deterministic. There is no telemetry, no
+analytics and no account. The only outbound traffic the app ever makes is an
+optional AI request you triggered, to a provider you configured, and that
+carries the evidence packet described above.
 
-The idea is to watch the few categories that matter instead of trying to micromanage everything.
+For contributors, the repository has guardrails so private data cannot be
+committed by accident:
 
-### Plan
+- `scripts/check_tracked_files.py` refuses any tracked path that looks like a
+  database, statement, export, log, or secret, and runs in CI on every push.
+- `scripts/doctor.py` runs the same check locally.
+- `scripts/make_share_zip.py` builds a share bundle that excludes the database,
+  configuration and exports.
 
-The Plan page turns recent spending into a monthly operating plan:
+Never commit real statements, exports, screenshots containing real data, or the
+database. Demo data exists so you never have to.
 
-- mode-based starter plans
-- weekly runway callout connected back to the Dashboard mission deck
-- income, spending, and savings targets
-- safe-to-spend after reserved bills
-- forecast risk
-- category targets
-- bills and recurring commitments
-- goals and net-worth progress
-
-The planning model uses the useful parts of zero-based budgeting: give the month a job, reserve true expenses, and make tradeoffs visible.
-
-### Reports
-
-Reports is the deeper analytics hub:
-
-- Spending
-- Income
-- Trends
-- Money Moves
-- Monthly Review
-- details on what changed and why
-
-Dashboard stays practical. Reports is where the deeper inspection lives.
-
-### Net Worth
-
-- cash and debt balance snapshots
-- investment holdings CSV imports
-- net-worth history
-- goal progress
-- mixed-currency warnings
-
-Ledger does not fetch market prices from the internet.
-
-### Optional AI
-
-Ledger works without AI. If configured, AI can summarize, explain, and coach using local evidence packets.
-
-Guardrails:
-
-- AI cannot mutate the database
-- AI cannot create transactions, budgets, goals, or recommendations by itself
-- AI outputs must be grounded in deterministic local data
-- Money Runway, Mission Deck, Found Money, and Money Pulse are deterministic packets first
-- API keys stay in `config.json`, which is excluded from share zips and git
-- OpenClaw exports are read-only unless future proposal files are explicitly reviewed
-
-## Screenshots
-
-These screenshots use generated demo data only. Real financial data should never be committed.
-
-| Dashboard | Import |
-|---|---|
-| ![Dashboard showing Money Pulse, runway, and weekly actions](docs/screenshots/dashboard.png) | ![Import page showing PDF and CSV upload workflow](docs/screenshots/import.png) |
-
-| Reduce | Plan |
-|---|---|
-| ![Reduce page showing subscription and trim-spend actions](docs/screenshots/reduce.png) | ![Plan page showing monthly planning and safe-to-spend workflow](docs/screenshots/plan.png) |
-
-| Net Worth | Reports |
-|---|---|
-| ![Net Worth page showing assets, liabilities, and trend line](docs/screenshots/net_worth.png) | ![Reports page showing monthly review and analytics routing](docs/screenshots/reports.png) |
-
-## Quick Start
-
-### Windows
-
-Use the launcher:
-
-```powershell
-python Ledger_Launcher.py
-```
-
-Or run the PowerShell helper:
-
-```powershell
-.\run_windows.ps1
-```
-
-The launcher creates a local virtual environment, installs dependencies, and starts Streamlit on `127.0.0.1`.
-
-To start with fake demo data instead of your own files:
-
-```powershell
-python Ledger_Launcher.py --demo
-```
-
-or:
-
-```powershell
-.\run_windows.ps1 -Demo
-```
-
-### Manual Run
-
-PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-Linux/macOS:
+## Development
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install -r requirements.txt
-./.venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
+.venv/Scripts/python.exe -m pytest -q      # the real test suite
+npm run build                              # tsc -b + vite build
+npm run test:charts                        # chart and preference tests
+cd src-tauri && cargo check && cargo test  # the native shell
 ```
 
-Open:
+CI runs all of these on every push, plus `npm audit --omit=dev` and the tracked
+file guard.
 
-```text
-http://127.0.0.1:8501
+Tests use disposable data only, through the `ledger_db` fixture or by pointing
+`LEDGER_DATA_DIR` at a temp directory. Nothing in the suite touches the real
+database.
+
+Architecture, conventions and the rules agents follow are in
+[AGENTS.md](AGENTS.md). Contributor setup is in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Project structure
+
+```
+desktop/src/            React interface. One view per screen.
+                        types.ts is the contract with the engine.
+                        charts.tsx holds every chart.
+desktop/engine/         The Python sidecar. One *_action per request.
+src-tauri/              The Tauri shell and its commands.
+utils/                  The finance engine.
+                          financial_semantics.py  amount, direction, type
+                          checkin.py              safe_to_spend_summary
+                          insights.py             aggregates, pace, runway
+                          planner.py              commitments and readiness
+                          analysis_period.py      how far the data reaches
+                          database.py             schema and migrations
+parsers/                Statement import.
+                          csv_dialect.py  decides a file's shape once
+                          csv_import.py   applies it
+tests/                  Engine-level tests asserting real financial outcomes.
+scripts/                Build, demo data, diagnostics, privacy guards.
 ```
 
-### Quick Local Check
+## Retired legacy code
 
-After installing dependencies, run:
+The original version of this app was a Streamlit interface (`app.py`, `pages/`,
+`components/`, `Ledger_Launcher.py`), along with `Makefile` and
+`.streamlit/secrets.toml.template`. **All of it is retired and none of it is
+the product.** Do not follow the Makefile targets or configure Streamlit
+secrets: they describe a way of running Northstar that no longer exists.
+It is still in the tree only because it has not been deleted yet. Do not build
+features there, and do not treat the Streamlit entry points as a supported way
+to run the app.
 
-```powershell
-.\.venv\Scripts\python.exe -m scripts.doctor
-```
-
-Or on Linux/macOS:
-
-```bash
-./.venv/bin/python -m scripts.doctor
-```
-
-The check verifies the main dependencies, required files, demo-data status, and whether private-looking files are tracked by git.
-
-## Demo Mode
-
-Use synthetic data for screenshots, demos, and portfolio review:
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.create_demo_data
-$env:LEDGER_DEMO_DB="1"
-.\.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-Never use real financial screenshots in a public portfolio.
-
-## Using Your Own Data
-
-Ledger stores your data locally in `data/finance.db`. That file is ignored by git.
-
-The Import page supports:
-
-- Tangerine Mastercard PDFs
-- Tangerine Chequing and Savings PDFs
-- generic transaction CSV files
-- holdings CSV snapshots for net worth tracking
-
-The app checks duplicate files and duplicate transactions, then lets you review the results. For a public demo, use demo mode. For real use, keep the project folder private and never upload `data/`, `config.json`, statement PDFs, exports, or screenshots with real accounts.
-
-## Verification
-
-Run these from the project virtual environment:
-
-```powershell
-$env:PYTHONIOENCODING="utf-8"
-.\.venv\Scripts\python.exe -m compileall -q app.py pages utils parsers scripts components
-.\.venv\Scripts\python.exe -m scripts.smoke_test
-.\.venv\Scripts\python.exe -m scripts.export_openclaw_context
-.\.venv\Scripts\python.exe -m scripts.make_share_zip
-```
-
-That fuller app check covers parser imports, database initialization, net-worth math, holdings CSV parsing, planning/forecast shapes, OpenClaw context safety, demo-data safety, statement-summary scoring, review-queue cleanup, and share-zip exclusions.
-
-## Contributing And Maintainer Workflow
-
-Ledger is open source under the MIT license. Contributions should preserve the
-local-first privacy model and the normal Python/SQLite calculations that produce the numbers.
-
-Start with:
-
-- `CONTRIBUTING.md` for setup, validation, and pull-request expectations
-- `SECURITY.md` for privacy and secret-handling rules
-- `docs/MAINTAINER_WORKFLOW.md` for maintainer notes
-- `docs/MAINTENANCE_GUARDRAILS.md` for the maintenance and privacy story behind this repo
-
-Automation and tooling can help inspect, test, document, and implement changes,
-but human review remains responsible for financial logic, privacy, and publishing.
-
-## Privacy And Share Safety
-
-Do not manually zip or share the project folder. Use:
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.make_share_zip
-```
-
-The share script excludes:
-
-- `.venv/`
-- `data/`
-- `exports/`
-- `dist/`
-- `.claude/`
-- `config.json`
-- `finance.db`
-- `finance.demo.db`
-- `launcher.log*`
-- `CLAUDE_HANDOFF.md`
-- `__pycache__/`
-
-It also scans included text files for common secret patterns.
-
-## Project Structure
-
-```text
-app.py                     Streamlit router
-pages/                     Streamlit pages
-components/                reusable Plotly chart builders
-parsers/                   Tangerine PDF, generic CSV, holdings CSV parsing
-utils/database.py          SQLite schema and persistence helpers
-utils/analytics.py         cashflow, spending, Money Pulse score
-utils/planner.py           plan, forecast, safe-to-spend, goals, bills
-utils/insights.py          recommendations, subscriptions, monthly review
-utils/agent_context.py     read-only OpenClaw context builder
-scripts/smoke_test.py      fuller app check suite
-scripts/doctor.py          quick local readiness check
-scripts/make_share_zip.py  privacy-safe share artifact builder
-scripts/export_openclaw_context.py
-openclaw/                  read-only OpenClaw prompt/contracts
-```
-
-## Technical Notes
-
-- Local SQLite is where the app stores its numbers.
-- Statement summaries are preferred over transaction guesses for Mastercard interest and fees.
-- Partial months remain visible but are excluded from monthly truth comparisons until complete.
-- Internal transfers and credit-card payments are excluded from spending totals.
-- AI can explain deterministic data but cannot mutate financial records.
-- Share artifacts are privacy-checked before distribution.
-
-## What I Would Add Next
-
-Near-term improvements:
-
-- importer examples for non-Tangerine CSV formats
-- stronger Plan page interaction
-- richer Reduce watchlists and weekly challenges
-- better recurring charge confirmation workflow
-- optional local-only backup/export wizard
-
-Longer-term ideas:
-
-- mobile-friendly layout
-- encrypted backup
-- explicit proposal-review workflow for external tools
-- multi-bank parser packs
-- cloud/web version with auth, encryption, export/delete-account flows, and privacy policy
+Anything in this README describing how to run Northstar Ledger refers to the
+native desktop application.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).

@@ -113,15 +113,15 @@ _xfer_note = (
 )
 st.caption(
     f"Period: **{start}** → **{end}**{_acct_note}. "
-    f"Spending = debits net of refund credits. "
+    f"Spending = exact purchases, bills, and fees. Refunds count as Income. "
     f"CC payments and savings ↔ chequing moves are always excluded. {_xfer_note}"
 )
 k1, k2, k3 = st.columns(3)
 k1.metric("Total Spending",        f"${cf['spending']:,.2f}",
-          help="Net of refund credits. Matches the Dashboard for the same period.")
-k2.metric("Gross (before refunds)", f"${cf['spending_gross']:,.2f}")
-k3.metric("Refund Offsets",         f"${cf['refund_offset']:,.2f}",
-          help="MC credits with negative amounts (returns, etc.) applied against spending.")
+          help="Exact purchases, bills, and fees. Matches the Dashboard for the same period.")
+k2.metric("Purchase Total",         f"${cf['spending_gross']:,.2f}")
+k3.metric("Refunds in Income",      f"${cf.get('refund_income', 0):,.2f}",
+          help="Returns, reimbursements, and rewards credits count as money in and never alter category amounts.")
 
 # ── Budget warnings ────────────────────────────────────────────────────
 over = [b for b in bva if b["over_budget"]]

@@ -4,6 +4,7 @@ Review Flagged — smart review queue with per-item Why Flagged / Context / Next
 import streamlit as st
 import pandas as pd
 from collections import Counter, defaultdict
+from datetime import datetime
 
 from utils.database import (
     init_db, get_connection, get_flagged_transactions, update_transaction,
@@ -23,6 +24,11 @@ from utils.ai_categorizer import (
     verify_for_transaction, provider_status,
 )
 from utils.ai_explainer import review_triage_summary
+from utils.categorization_service import (
+    apply_bulk_categorization, merchant_review_groups,
+    preview_bulk_categorization,
+)
+from utils.categorizer import normalize_merchant
 
 st.set_page_config(page_title="Review · Ledger", page_icon="⚑", layout="wide")
 inject_styles()
@@ -105,7 +111,8 @@ def _execute_save(
     """
     # 1. Defensive fresh read.
     fresh = conn.execute(
-        "SELECT id, merchant, category, subcategory FROM transactions WHERE id=?",
+        "SELECT id, merchant, merchant_normalized, raw_description, import_batch_id, "
+        "category, subcategory FROM transactions WHERE id=?",
         (int(tx_id),),
     ).fetchone()
     if fresh is None:
@@ -128,6 +135,9 @@ def _execute_save(
         return
 
     db_subcategory = fresh["subcategory"] or ""
+    db_matcher = fresh["merchant_normalized"] or normalize_merchant(
+        fresh["raw_description"] or db_merchant
+    )
 
     # 2. Compute target ID list per mode.
     if apply_mode == "self" or not db_merchant:
@@ -135,7 +145,16 @@ def _execute_save(
         # 'self' uses the simpler update_transaction path so the user can also
         # update notes (apply_category_by_ids ignores notes). We replicate the
         # explicit-IDs reporting shape so the banner is consistent.
-        upd = {"category": new_cat, "notes": new_note}
+        _now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        upd = {
+            "category": new_cat,
+            "notes": new_note,
+            "category_source": "user_edit",
+            "category_rule_id": None,
+            "category_explanation": "Category chosen manually by the user.",
+            "category_updated_at": _now,
+            "manually_edited_at": _now,
+        }
         if clear_flag:
             upd["is_flagged"]  = 0
             upd["flag_reason"] = "reviewed"
@@ -192,14 +211,20 @@ def _execute_save(
     teach_msg = ""
     teach_severity_warn = False
     if teach_rule and db_merchant:
-        upsert_learned_rule(db_merchant, new_cat, db_subcategory, conn=conn)
+        upsert_learned_rule(
+            db_matcher, new_cat, db_subcategory,
+            example_description=fresh["raw_description"],
+            source_transaction_id=int(tx_id),
+            source_import_batch_id=fresh["import_batch_id"],
+            conn=conn,
+        )
         # Verify the rule landed by re-reading. If not present, escalate.
-        rule = get_learned_rule(db_merchant, conn=conn)
+        rule = get_learned_rule(db_matcher, conn=conn)
         if rule and rule.get("category") == new_cat:
-            teach_msg = (f" · learned rule saved: **'{db_merchant}' → {new_cat}** "
+            teach_msg = (f" · learned rule saved: **'{db_matcher}' → {new_cat}** "
                          "(future imports will use it automatically)")
         else:
-            teach_msg = (f" · ⚠ Teach Ledger failed for '{db_merchant}' — rule "
+            teach_msg = (f" · ⚠ Teach Ledger failed for '{db_matcher}' — rule "
                          "did not appear in learned_rules. Try again.")
             teach_severity_warn = True
 
@@ -215,8 +240,9 @@ def _execute_save(
         # If sibling rows exist, tell the user what's still untouched so they
         # don't think force/safe didn't run.
         sibling_count = conn.execute(
-            "SELECT COUNT(*) FROM transactions WHERE merchant=? AND id != ?",
-            (db_merchant, int(tx_id)),
+            "SELECT COUNT(*) FROM transactions WHERE merchant_normalized=? "
+            "AND id != ? AND direction NOT IN ('payment','transfer','cancelled')",
+            (db_matcher, int(tx_id)),
         ).fetchone()[0] if db_merchant else 0
         if sibling_count > 0:
             detail = (f"Other '{db_merchant}' rows untouched ({sibling_count} sibling(s) "
@@ -228,8 +254,9 @@ def _execute_save(
         # In safe mode, total siblings = uncertain we touched + hand-categorized
         # we preserved. Show the preserved count for transparency.
         total_for_merchant = conn.execute(
-            "SELECT COUNT(*) FROM transactions WHERE merchant=?",
-            (db_merchant,),
+            "SELECT COUNT(*) FROM transactions WHERE merchant_normalized=? "
+            "AND direction NOT IN ('payment','transfer','cancelled')",
+            (db_matcher,),
         ).fetchone()[0]
         preserved = total_for_merchant - n_requested
         if preserved > 0:
@@ -273,6 +300,161 @@ conn = get_connection()
 # Persistent save banner (Pass 15) — shown immediately under the title so the
 # user always sees the result of their last save action even after st.rerun().
 _render_save_banner()
+
+# ── Repeated-merchant approval ─────────────────────────────────────────
+# If the user arrived from an import completion panel, stay scoped to that
+# import session. Otherwise show all repeated uncertainty, sorted by count and
+# value so the highest-touch cleanup is first.
+_requested_batch_ids = st.session_state.get("review_batch_ids") or None
+_review_batch_ids = None
+if _requested_batch_ids:
+    _batch_marks = ",".join("?" * len(_requested_batch_ids))
+    _review_batch_ids = [int(r["id"]) for r in conn.execute(
+        f"SELECT id FROM import_log WHERE id IN ({_batch_marks}) ORDER BY id",
+        [int(i) for i in _requested_batch_ids],
+    ).fetchall()]
+    if not _review_batch_ids:
+        # An import may have been undone after the user opened Review. Do not
+        # leave the page trapped in an invisible, stale batch filter.
+        st.session_state.pop("review_batch_ids", None)
+_merchant_groups = merchant_review_groups(batch_ids=_review_batch_ids, conn=conn)
+_repeated_groups = [g for g in _merchant_groups if g["count"] >= 2]
+
+if _review_batch_ids:
+    _scope_c1, _scope_c2 = st.columns([6, 1])
+    _scope_c1.info(
+        f"Reviewing the latest import session ({len(_review_batch_ids)} batch"
+        f"{'es' if len(_review_batch_ids) != 1 else ''})."
+    )
+    if _scope_c2.button("Show all", key="review_clear_batch_scope"):
+        st.session_state.pop("review_batch_ids", None)
+        st.rerun()
+
+if _repeated_groups:
+    st.subheader("Approve repeated merchants")
+    st.caption(
+        "Group noisy statement descriptions once. This changes only the "
+        "transactions you select; saving a future rule is a separate choice."
+    )
+    for _group in _repeated_groups:
+        _matcher = _group["merchant_normalized"]
+        _accts = _group.get("accounts") or []
+        _acct_bit = (f" · {len(_accts)} accounts" if len(_accts) > 1
+                     else "")
+        _label = (
+            f"{_matcher} · {_group['count']} transactions · "
+            f"${_group['total_amount']:,.2f} · "
+            f"{_group['first_date']} to {_group['last_date']}{_acct_bit}"
+        )
+        with st.expander(_label, expanded=len(_repeated_groups) == 1):
+            if len(_accts) > 1:
+                st.warning(
+                    "This merchant appears in more than one account: "
+                    + ", ".join(_accts) + ". Bulk changes apply to the "
+                    "exact rows you keep selected below — across all of "
+                    "these accounts.",
+                    icon="🏦",
+                )
+            st.markdown("**Sample statement descriptions**")
+            for _sample in _group["sample_descriptions"]:
+                st.caption(f"• {_sample}")
+
+            _row_map = {}
+            _marks = ",".join("?" * len(_group["transaction_ids"]))
+            for _row in conn.execute(
+                f"SELECT id, transaction_date, raw_description, amount, category "
+                f"FROM transactions WHERE id IN ({_marks}) ORDER BY transaction_date DESC",
+                _group["transaction_ids"],
+            ).fetchall():
+                _row_map[int(_row["id"])] = dict(_row)
+
+            _selected = st.multiselect(
+                "Transactions to update",
+                options=_group["transaction_ids"],
+                default=_group["transaction_ids"],
+                format_func=lambda i: (
+                    f"{_row_map[i]['transaction_date']} · "
+                    f"${abs(float(_row_map[i]['amount'] or 0)):,.2f} · "
+                    f"{(_row_map[i]['raw_description'] or '')[:45]}"
+                ),
+                key=f"bulk_ids_{_matcher}",
+            )
+            _default_cat = _group["suggested_category"]
+            _default_idx = (
+                CATEGORIES.index(_default_cat)
+                if _default_cat in CATEGORIES
+                and _default_cat not in ("Uncategorized", "Misc")
+                else None
+            )
+            _bc1, _bc2 = st.columns([2, 3])
+            _category = _bc1.selectbox(
+                "Category", CATEGORIES, index=_default_idx,
+                key=f"bulk_cat_{_matcher}",
+                placeholder="Choose a reviewed category",
+            )
+            _save_rule = _bc2.checkbox(
+                f"Also save a future rule for {_matcher}",
+                value=False, key=f"bulk_rule_{_matcher}",
+                help="Future matching imports will use this category. Current rows "
+                     "are updated whether or not you save the rule.",
+                disabled=not _category,
+            )
+            if _category:
+                _preview = preview_bulk_categorization(
+                    _selected, _category, conn=conn
+                )
+                st.caption(
+                    f"Preview: {_preview['selected_count']} selected · "
+                    f"{_preview['change_count']} category change"
+                    f"{'s' if _preview['change_count'] != 1 else ''} · "
+                    f"${_preview['total_amount']:,.2f} total value. "
+                    "Amounts do not change."
+                )
+            else:
+                _preview = preview_bulk_categorization(
+                    _selected, "", conn=conn
+                )
+                st.caption(
+                    f"{_preview['selected_count']} transaction(s) selected. "
+                    "Choose a reviewed category to continue."
+                )
+            if st.button(
+                f"Apply to {_preview['selected_count']} transaction"
+                f"{'s' if _preview['selected_count'] != 1 else ''}",
+                type="primary",
+                disabled=(_preview["selected_count"] == 0 or not _category),
+                key=f"bulk_apply_{_matcher}",
+            ):
+                try:
+                    _result = apply_bulk_categorization(
+                        _selected, _category, save_rule=_save_rule, conn=conn
+                    )
+                except Exception:
+                    st.session_state["review_save_banner"] = {
+                        "severity": "error",
+                        "message": (
+                            "Nothing was changed. The selected transactions "
+                            "changed or the database update failed. Refresh "
+                            "Review and try again."
+                        ),
+                    }
+                    st.rerun()
+                conn.commit()
+                _rule_text = " Future rule saved." if _result.get("rule_id") else ""
+                st.session_state["review_save_banner"] = {
+                    "severity": "success",
+                    "message": (
+                        f"Confirmed {_result['applied_count']} transaction(s) "
+                        f"for {_matcher}; {_result['changed_count']} category "
+                        f"value(s) changed.{_rule_text}"
+                    ),
+                    "detail": (
+                        f"Cleared {_result.get('flags_cleared', 0)} review flag(s). "
+                        "Transaction amounts were unchanged."
+                    ),
+                }
+                st.rerun()
+    st.divider()
 
 flagged = get_flagged_transactions(conn=conn)
 
@@ -626,15 +808,22 @@ def _render_row_editor(tx: dict, key_prefix: str, show_clear_flag: bool = True):
         st.caption(f"Account: {tx.get('account_type','')}")
         if tx.get("statement_period"):
             st.caption(f"Statement: {tx['statement_period']}")
+        if tx.get("category_explanation"):
+            st.caption(tx["category_explanation"])
 
     # Count sibling transactions sharing the same merchant (for apply-to-all)
     merchant = (tx.get("merchant") or "").strip()
+    merchant_matcher = tx.get("merchant_normalized") or normalize_merchant(
+        tx.get("raw_description") or merchant
+    )
     merchant_count = 0
     merchant_uncertain_count = 0
     if merchant:
         row = conn.execute(
-            "SELECT COUNT(*) AS n FROM transactions WHERE merchant=? AND id<>?",
-            (merchant, int(tx["id"])),
+            "SELECT COUNT(*) AS n FROM transactions "
+            "WHERE merchant_normalized=? AND id<>? "
+            "AND direction NOT IN ('payment','transfer','cancelled')",
+            (merchant_matcher, int(tx["id"])),
         ).fetchone()
         merchant_count = int(row["n"]) if row else 0
         # Count siblings that are "uncertain" (NULL/empty/Misc/low-confidence) —
@@ -642,11 +831,12 @@ def _render_row_editor(tx: dict, key_prefix: str, show_clear_flag: bool = True):
         urow = conn.execute(
             """
             SELECT COUNT(*) AS n FROM transactions
-            WHERE merchant=? AND id<>?
+            WHERE merchant_normalized=? AND id<>?
               AND (category IS NULL OR category='' OR category='Misc'
                    OR parse_confidence='low')
+              AND direction NOT IN ('payment','transfer','cancelled')
             """,
-            (merchant, int(tx["id"])),
+            (merchant_matcher, int(tx["id"])),
         ).fetchone()
         merchant_uncertain_count = int(urow["n"]) if urow else 0
 

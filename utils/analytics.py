@@ -2,20 +2,15 @@
 Analytics layer — cash flow, spending score, category summaries, trends.
 All functions accept an optional sqlite3.Connection to avoid repeated opens.
 
-Financial model (v8):
-  INCOME  = all credits (direction='credit') with amount > 0, excluding CC payments + cancelled
-            Includes: payroll (EFT), INTERAC e-Transfers IN, interest, any other deposits
-            Excludes: direction='transfer' (savings pullbacks — internal only),
-                      direction IN ('payment','cancelled')
-  SPENDING = all debits (direction='debit'), excluding CC payments + cancelled
-             Includes: MC purchases, mortgage, INTERAC e-Transfers OUT, fees, cash advances
-             Excludes: direction IN ('payment','cancelled','transfer')
-             Refund credits (direction='credit', amount<0) reduce spending total
-  NEVER excluded: category='Transfer' — INTERAC e-Transfers to/from people are real cashflow
+Financial model:
+  ``amount`` preserves the signed account-relative movement from the source.
+  ``transaction_type`` determines income, spending, and excluded plumbing.
+  Refund-like credits are income and never rewrite category spending.
 """
 from datetime import date, datetime, timedelta
 from typing import Optional
 import sqlite3
+from statistics import median
 
 from utils.database import get_connection, get_transactions, get_monthly_summary, get_category_totals
 from config.categories import NON_SPENDING_CATEGORIES, CASHFLOW_GROUPS
@@ -53,7 +48,7 @@ def monthly_cashflow(year: int, conn: Optional[sqlite3.Connection] = None) -> li
     rows = get_monthly_summary(year, conn=conn)
     result = []
     for r in rows:
-        net = r["income"] - r["spending"]
+        net = r.get("net", r["income"] - r["spending"])
         result.append({
             "month": r["month"],
             "income": round(r["income"], 2),
@@ -69,9 +64,19 @@ def monthly_cashflow(year: int, conn: Optional[sqlite3.Connection] = None) -> li
 #   direction='payment'   → CC payment from chequing / MC "PAYMENT - THANK YOU"
 #   direction='cancelled' → reversed/cancelled transactions
 #   direction='transfer'  → savings account pullbacks (internal, not from people)
-# NOTE: category='Transfer' (INTERAC e-Transfers) is NOT excluded — those are real cashflow
+# NOTE: Interac e-transfers are cash flow unless the canonical type records an
+# explicit internal transfer; category labels never decide totals by themselves.
 _ALWAYS_EXCLUDE_DIRECTIONS = ("payment", "cancelled", "transfer")
 _ALWAYS_EXCLUDE_CATEGORIES = ("Credit Card Payment", "Cancelled")
+
+REVIEWED_RECURRING_STATUSES = frozenset({
+    "confirmed", "recurring", "excluded", "not_recurring",
+})
+
+
+def recurring_status_is_reviewed(status: object) -> bool:
+    """Return whether a recurring decision is explicitly resolved."""
+    return str(status or "").strip().lower() in REVIEWED_RECURRING_STATUSES
 
 
 def compute_cashflow(
@@ -79,87 +84,38 @@ def compute_cashflow(
     end_date: str,
     exclude_transfers: bool = False,
     account_type: Optional[str] = None,
+    share_view: str = "personal",
     conn: Optional[sqlite3.Connection] = None,
 ) -> dict:
     """
     Single shared function used by Dashboard, Spending, and Income pages.
 
-    INCOME  = direction='credit' AND amount > 0
-              AND direction NOT IN ('payment','cancelled','transfer')
-              AND category NOT IN ('Credit Card Payment','Cancelled')
+    The canonical transaction type determines whether a row is income,
+    spending, refund income, or excluded financial plumbing. Stored amount
+    signs and user-facing category labels do not independently determine flow.
 
-    SPENDING = direction='debit'
-               AND direction NOT IN ('payment','cancelled','transfer')
-               AND category NOT IN ('Credit Card Payment','Cancelled')
-
-    REFUND OFFSET = direction='credit' AND amount < 0  (MC refunds)
-                    → subtracted from spending (not added to income)
-
-    exclude_transfers (default False):
-        When True, additionally exclude category IN ('Transfer','Transfer In','Transfer Out')
-        from both income and spending.  Default OFF = INTERAC e-Transfers count as real cashflow.
+    ``exclude_transfers`` remains for API compatibility. Canonical internal,
+    investment, card-payment, and personal-transfer types are always excluded.
     """
     close = False
     if conn is None:
         conn = get_connection()
         close = True
 
-    extra_cat_filter = ""
-    if exclude_transfers:
-        extra_cat_filter = " AND category NOT IN ('Transfer', 'Transfer In', 'Transfer Out')"
-
+    params: list = [start_date, end_date]
     acct_filter = ""
     if account_type and account_type != "all":
-        acct_filter = " AND account_type = '" + account_type.replace("'", "''") + "'"
-
-    row = conn.execute(f"""
-        SELECT
-            -- True income: credits with amount > 0 (not CC payments, not savings pullbacks)
-            SUM(CASE
-                WHEN direction = 'credit'
-                 AND amount > 0
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled')
-                 {extra_cat_filter}
-                THEN amount ELSE 0
-            END) AS income,
-
-            -- True spending: positive-amount debits only (guards against malformed rows)
-            -- category='Transfer' excluded: only self-transfers remain there (Benjamin->Benjamin)
-            SUM(CASE
-                WHEN direction = 'debit'
-                 AND amount > 0
-                 AND direction NOT IN ('payment','cancelled','transfer')
-                 AND category NOT IN ('Credit Card Payment','Cancelled','Transfer')
-                 {extra_cat_filter}
-                THEN amount ELSE 0
-            END) AS spending,
-
-            -- Refund offset: negative-amount credits (MC refunds) reduce spending
-            SUM(CASE
-                WHEN direction = 'credit'
-                 AND amount < 0
-                THEN ABS(amount) ELSE 0
-            END) AS refund_offset
-
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          {acct_filter}
-    """, (start_date, end_date)).fetchone()
-
-    income        = row["income"]        or 0.0
-    spending_raw  = row["spending"]      or 0.0
-    refund_offset = row["refund_offset"] or 0.0
-    spending      = max(0.0, spending_raw - refund_offset)
-
-    result = {
-        "income":         round(income, 2),
-        "spending":       round(spending, 2),
-        "spending_gross": round(spending_raw, 2),
-        "refund_offset":  round(refund_offset, 2),
-        "net":            round(income - spending, 2),
-        "savings_rate":   round((income - spending) / income * 100, 1) if income > 0 else 0.0,
-    }
+        acct_filter = " AND account_type = ?"
+        params.append(account_type)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + acct_filter, params,
+    ).fetchall()]
+    from utils.financial_semantics import cashflow_totals
+    from utils.shared_expenses import apply_shared_view
+    result = cashflow_totals(
+        apply_shared_view(rows, conn, share_view), view=share_view
+    )
     if close:
         conn.close()
     return result
@@ -173,6 +129,731 @@ def period_cashflow(start_date: str, end_date: str, conn: Optional[sqlite3.Conne
     return compute_cashflow(start_date, end_date, exclude_transfers=False, conn=conn)
 
 
+def _employment_income_months(
+    conn: sqlite3.Connection, *, exclude_month: str = "",
+) -> list[dict]:
+    """Aggregate payroll history without assuming legacy rows were migrated.
+
+    Older Northstar databases can have a blank ``transaction_type`` even when
+    the signed amount, description, category, and account type are intact. Use
+    the shared semantic classifier for those rows so an upgraded profile gets
+    the same payroll suggestion as a freshly imported profile.
+    """
+    from utils.financial_semantics import classify_transaction_type
+
+    rows = [dict(row) for row in conn.execute(
+        "SELECT transaction_date,merchant_normalized,merchant,raw_description,"
+        "account_type,direction,category,category_source,transaction_type,amount "
+        "FROM transactions WHERE amount > 0 ORDER BY transaction_date"
+    ).fetchall()]
+    grouped: dict[tuple[str, str], dict] = {}
+    user_sources = {"user_edit", "user_bulk", "user_rule", "user"}
+    for row in rows:
+        month = str(row.get("transaction_date") or "")[:7]
+        if not month or month == exclude_month:
+            continue
+        transaction_type = str(row.get("transaction_type") or "")
+        if not transaction_type:
+            transaction_type = classify_transaction_type(
+                str(row.get("raw_description") or ""),
+                str(row.get("account_type") or ""),
+                str(row.get("direction") or ""),
+                str(row.get("category") or ""),
+            )
+        if transaction_type != "employment_income":
+            continue
+        source_key = str(
+            row.get("merchant_normalized") or row.get("merchant")
+            or row.get("raw_description") or "PAYROLL"
+        )
+        key = (month, source_key)
+        aggregate = grouped.setdefault(key, {
+            "month": month,
+            "source_normalized": source_key,
+            "source": str(
+                row.get("merchant") or row.get("raw_description")
+                or "Payroll"
+            ),
+            "deposits": 0,
+            "total": 0.0,
+            "inferred_source": 0,
+        })
+        aggregate["deposits"] += 1
+        aggregate["total"] += abs(float(row.get("amount") or 0))
+        if str(row.get("category_source") or "") not in user_sources:
+            aggregate["inferred_source"] = 1
+    return sorted(grouped.values(), key=lambda row: str(row["month"]))
+
+
+def stable_income_summary(conn: Optional[sqlite3.Connection] = None) -> dict:
+    """Return a conservative monthly stable-income baseline.
+
+    Only recurring employment-income sources from completed calendar months
+    are considered. A saved plan is an intention, not evidence of income, and
+    must never redefine this historical baseline. Users can explicitly confirm
+    or exclude a recognized source in Settings.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    # The month in progress, which is excluded from "completed months".
+    # Read from the supported anchor so one far-future row cannot make every
+    # real month look historical.
+    from utils.analysis_period import supported_latest_date
+    latest = supported_latest_date(conn=conn)
+    current_month = latest.strftime("%Y-%m") if latest else ""
+    preferences = {
+        r["source_normalized"]: r["status"]
+        for r in conn.execute(
+            "SELECT source_normalized,status FROM income_source_preferences"
+        ).fetchall()
+    }
+    rows = _employment_income_months(conn, exclude_month=current_month)
+    by_source: dict[str, list[dict]] = {}
+    for row in rows:
+        by_source.setdefault(str(row["source_normalized"]), []).append(row)
+    recurring_counts = {
+        source_key: len(source_rows)
+        for source_key, source_rows in by_source.items()
+        if len(source_rows) >= 2
+    }
+    max_months = max(recurring_counts.values(), default=0)
+    automatic_stable = {
+        source_key for source_key, count in recurring_counts.items()
+        if count == max_months and count >= 3
+    }
+    eligible: dict[str, list[dict]] = {}
+    for source_key, source_rows in by_source.items():
+        preference = preferences.get(source_key, "")
+        if preference == "excluded":
+            continue
+        inferred = any(int(row.get("inferred_source") or 0) for row in source_rows)
+        if preference == "confirmed" or (
+            source_key in automatic_stable and not inferred
+        ):
+            eligible[source_key] = source_rows
+
+    month_totals: dict[str, float] = {}
+    source_items = []
+    for source_key, source_rows in eligible.items():
+        values = [float(row["total"] or 0) for row in source_rows]
+        for row in source_rows:
+            month_totals[str(row["month"])] = (
+                month_totals.get(str(row["month"]), 0.0)
+                + float(row["total"] or 0)
+            )
+        source_items.append({
+            "source": source_rows[0]["source"],
+            "source_normalized": source_key,
+            "monthly_amount": round(median(values), 2),
+            "months_used": len(values),
+            "status": preferences.get(source_key, "confirmed"),
+        })
+    totals = [value for _, value in sorted(month_totals.items()) if value > 0]
+    confirmed = len(totals) >= 2 or bool(source_items and any(
+        item["status"] == "confirmed" for item in source_items
+    ))
+    result = {
+        "monthly_amount": round(median(totals), 2) if totals else 0.0,
+        "basis": "payroll_history" if confirmed else "unavailable",
+        "label": "Confirmed recurring payroll" if confirmed else "Not confirmed yet",
+        "months_used": len(totals),
+        "confirmed": confirmed,
+        "sources": sorted(
+            source_items, key=lambda item: -float(item["monthly_amount"])
+        ),
+    }
+    if close:
+        conn.close()
+    return result
+
+
+def reliable_income_summary(conn: Optional[sqlite3.Connection] = None) -> dict:
+    """Return the conservative income floor used by the monthly plan.
+
+    This is intentionally broader than ``stable_income_summary``. Payroll is
+    still reported as payroll, while recurring interest and recurring
+    non-payroll deposits (including an incoming e-transfer that repeats
+    reliably) may also support the plan. Refunds, reimbursements, card
+    payments, investment movements, and one-off windfalls are never eligible.
+
+    Automatic sources need at least three complete historical months with
+    amounts within 35% of their median. A user-confirmed source can be used
+    after two complete months. Each source contributes its six-month median,
+    so an unusually large month cannot expand the spending plan.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        from utils.financial_semantics import (
+            classify_transaction_type, transaction_types_for_role,
+        )
+
+        from utils.analysis_period import supported_latest_date
+        _anchor = supported_latest_date(conn=conn)
+        current_month = _anchor.strftime("%Y-%m") if _anchor else ""
+        preferences = {
+            str(row["source_normalized"]): str(row["status"])
+            for row in conn.execute(
+                "SELECT source_normalized,status FROM income_source_preferences"
+            ).fetchall()
+        }
+        stable_payroll = stable_income_summary(conn=conn)
+        stable_payroll_keys = {
+            str(source.get("source_normalized") or "")
+            for source in stable_payroll.get("sources") or []
+        }
+        planning_types = set(transaction_types_for_role("planning_income"))
+        rows = [dict(row) for row in conn.execute(
+            "SELECT transaction_date,merchant_normalized,merchant,"
+            "raw_description,account_type,direction,category,"
+            "transaction_type,amount FROM transactions "
+            "WHERE amount > 0 ORDER BY transaction_date"
+        ).fetchall()]
+
+        grouped: dict[str, dict] = {}
+        from utils.insights import statement_coverage
+        historical_months = [
+            month for month in (
+                statement_coverage(conn=conn).get("complete_months") or []
+            )
+            if month != current_month
+        ][-6:]
+        allowed_months = set(historical_months)
+        for row in rows:
+            month = str(row.get("transaction_date") or "")[:7]
+            if month not in allowed_months:
+                continue
+            transaction_type = str(row.get("transaction_type") or "")
+            if not transaction_type:
+                transaction_type = classify_transaction_type(
+                    str(row.get("raw_description") or ""),
+                    str(row.get("account_type") or ""),
+                    str(row.get("direction") or ""),
+                    str(row.get("category") or ""),
+                )
+            if transaction_type not in planning_types:
+                continue
+            source_key = str(
+                row.get("merchant_normalized") or row.get("merchant")
+                or row.get("raw_description") or "INCOME"
+            )
+            source = grouped.setdefault(source_key, {
+                "source_normalized": source_key,
+                "source": str(
+                    row.get("merchant") or row.get("raw_description")
+                    or "Income"
+                ),
+                "transaction_type": transaction_type,
+                "months": {},
+            })
+            source["months"][month] = (
+                float(source["months"].get(month, 0.0))
+                + abs(float(row.get("amount") or 0))
+            )
+
+        sources = []
+        for source_key, source in grouped.items():
+            preference = preferences.get(source_key, "")
+            if preference == "excluded":
+                continue
+            values = [
+                float(value) for _month, value
+                in sorted(source["months"].items())
+            ]
+            if not values:
+                continue
+            midpoint = median(values)
+            consistent = bool(
+                midpoint > 0
+                and max(abs(value - midpoint) / midpoint for value in values)
+                <= 0.35
+            )
+            is_payroll = source["transaction_type"] == "employment_income"
+            automatic = (
+                source_key in stable_payroll_keys if is_payroll
+                else len(values) >= 3 and consistent
+            )
+            explicitly_confirmed = preference == "confirmed"
+            if not automatic and not (
+                explicitly_confirmed and len(values) >= 2
+            ):
+                continue
+            sources.append({
+                "source": source["source"],
+                "source_normalized": source_key,
+                "monthly_amount": round(midpoint, 2),
+                "months_used": len(values),
+                "status": "confirmed" if explicitly_confirmed else "automatic",
+                "kind": (
+                    "Payroll" if is_payroll
+                    else "Interest" if source["transaction_type"] == "interest_income"
+                    else "Recurring money in"
+                ),
+            })
+
+        amount = round(sum(
+            float(source["monthly_amount"]) for source in sources
+        ), 2)
+        return {
+            "monthly_amount": amount,
+            "basis": "median_recurring_income" if sources else "unavailable",
+            "label": (
+                "Reliable monthly income floor"
+                if sources else "Reliable income not confirmed yet"
+            ),
+            "months_used": max(
+                (int(source["months_used"]) for source in sources), default=0
+            ),
+            "confirmed": bool(sources),
+            "sources": sorted(
+                sources, key=lambda source: -float(source["monthly_amount"])
+            ),
+        }
+    finally:
+        if close:
+            conn.close()
+
+
+TYPICAL_INCOME_MAX_MONTHS = 6
+
+
+def _planning_income_deposits(conn) -> list[dict]:
+    """Every deposit that counts as planning income, oldest first.
+
+    One definition of "income worth planning around", shared by the
+    monthly baseline and the scheduled-arrival outlook below, so the two can
+    never disagree about what a payroll deposit is. Refunds, reimbursements,
+    card payments and transfers are excluded by the ``planning_income`` role;
+    recurring interest and incoming e-transfers are included, because for
+    many people they are real income.
+    """
+    from utils.financial_semantics import (
+        classify_transaction_type, transaction_types_for_role,
+    )
+
+    planning_types = set(transaction_types_for_role("planning_income"))
+    deposits: list[dict] = []
+    rows = conn.execute(
+        "SELECT transaction_date,raw_description,merchant,merchant_normalized,"
+        "account_type,direction,category,transaction_type,amount "
+        "FROM transactions WHERE amount > 0"
+    ).fetchall()
+    for row in rows:
+        day = str(row["transaction_date"] or "")[:10]
+        if not day:
+            continue
+        transaction_type = str(row["transaction_type"] or "")
+        if not transaction_type:
+            transaction_type = classify_transaction_type(
+                str(row["raw_description"] or ""),
+                str(row["account_type"] or ""),
+                str(row["direction"] or ""),
+                str(row["category"] or ""),
+            )
+        if transaction_type not in planning_types:
+            continue
+        source = str(
+            row["merchant_normalized"] or row["merchant"]
+            or row["raw_description"] or ""
+        ).strip().upper()
+        deposits.append({
+            "date": day,
+            "source": source or "UNKNOWN",
+            "label": str(row["merchant"] or row["raw_description"] or source),
+            "amount": abs(float(row["amount"] or 0)),
+        })
+    deposits.sort(key=lambda item: item["date"])
+    return deposits
+
+
+def _planning_income_by_month(conn) -> dict[str, float]:
+    """Planning income totalled per calendar month."""
+    totals: dict[str, float] = {}
+    for deposit in _planning_income_deposits(conn):
+        month = deposit["date"][:7]
+        totals[month] = totals.get(month, 0.0) + deposit["amount"]
+    return totals
+
+
+# How far past its usual date a deposit may drift before Plan stops counting
+# on it. Payroll slips for weekends and bank holidays; five days covers that
+# without pretending a deposit a fortnight late is merely running behind.
+INCOME_GRACE_DAYS = 5
+
+# A source has to have arrived this often before its rhythm is worth planning
+# around. Two deposits is a coincidence, not a payday.
+_MIN_INCOME_OCCURRENCES = 3
+
+
+def _income_schedule(deposits: list[dict], before: date) -> list[dict]:
+    """Sources paying on a recognisable rhythm, judged on history alone.
+
+    Reuses ``recurring_cadence.classify_gap`` — the same gap classifier the
+    bills side uses — rather than adding a second opinion about what counts
+    as regular. Anything irregular is left out entirely: a one-off inheritance
+    raises the monthly average, and treating that average as a payday means
+    telling someone money is coming when nobody ever promised it.
+    """
+    from utils.recurring_cadence import classify_gap
+
+    grouped: dict[str, list[dict]] = {}
+    for deposit in deposits:
+        if date.fromisoformat(deposit["date"]) >= before:
+            continue
+        grouped.setdefault(deposit["source"], []).append(deposit)
+
+    schedule: list[dict] = []
+    for source, rows in grouped.items():
+        if len(rows) < _MIN_INCOME_OCCURRENCES:
+            continue
+        days = [date.fromisoformat(row["date"]) for row in rows]
+        gaps = [
+            (days[i] - days[i - 1]).days for i in range(1, len(days))
+        ]
+        gaps = [gap for gap in gaps if gap > 0]
+        if not gaps:
+            continue
+        typical_gap = float(median(gaps))
+        cadence, period_months = classify_gap(typical_gap)
+        # Only rhythms that pay at least once a month can be placed inside a
+        # single month with any confidence. A quarterly bonus is real income
+        # but it is not a payday, so it never props up the outlook.
+        if cadence == "irregular" or period_months > 1:
+            continue
+        deviations = [abs(gap - typical_gap) for gap in gaps]
+        if median(deviations) > max(4.0, typical_gap * 0.35):
+            continue
+        amounts = [row["amount"] for row in rows[-6:]]
+        schedule.append({
+            "source": source,
+            "label": rows[-1]["label"],
+            "cadence": cadence,
+            "typical_gap_days": round(typical_gap, 1),
+            "amount": round(float(median(amounts)), 2),
+            "last_seen": rows[-1]["date"],
+            "day_of_month": int(median([day.day for day in days[-6:]])),
+            "occurrences": len(rows),
+        })
+    schedule.sort(key=lambda row: -row["amount"])
+    return schedule
+
+
+def _expected_dates(entry: dict, month: str) -> list[date]:
+    """When this source is expected to pay inside ``month``."""
+    import calendar as _cal
+
+    year, number = int(month[:4]), int(month[5:7])
+    last_day = _cal.monthrange(year, number)[1]
+    month_start, month_end = date(year, number, 1), date(year, number, last_day)
+
+    if entry["cadence"] == "monthly":
+        # A monthly salary keeps its day of the month; stepping forward by a
+        # 30-day gap would drift a day earlier every month until it fell out
+        # of the month entirely.
+        return [date(year, number, min(entry["day_of_month"], last_day))]
+
+    # Weekly, biweekly and twice-monthly rhythms have no fixed date, so walk
+    # forward from the last known deposit at the observed interval.
+    step = max(1, int(round(entry["typical_gap_days"])))
+    when = date.fromisoformat(entry["last_seen"])
+    dates: list[date] = []
+    while when < month_start:
+        when += timedelta(days=step)
+    while when <= month_end:
+        dates.append(when)
+        when += timedelta(days=step)
+    return dates
+
+
+def scheduled_income_outlook(
+    month: str,
+    *,
+    anchor: date,
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict:
+    """How much of this month's expected income has actually turned up.
+
+    Plan used to treat the whole historical monthly baseline as still coming,
+    however late in the month it was. A household whose second payroll never
+    arrived was told it was on track on the 28th, because the missing $2,500
+    was quietly counted as though it had been received. A budgeting app
+    telling someone they have money they do not have is the worst failure it
+    has available.
+
+    Returns received, the part still credibly ahead, and the part that was
+    due and did not arrive. Nothing here changes what Safe to Spend counts:
+    that stays balances minus confirmed reservations.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        deposits = _planning_income_deposits(conn)
+    finally:
+        if close:
+            conn.close()
+
+    month_start = date(int(month[:4]), int(month[5:7]), 1)
+    received = round(sum(
+        deposit["amount"] for deposit in deposits
+        if month_start <= date.fromisoformat(deposit["date"]) <= anchor
+    ), 2)
+
+    schedule = _income_schedule(deposits, before=month_start)
+    if not schedule:
+        return {
+            "received": received,
+            "scheduled_total": 0.0,
+            "due_by_now": 0.0,
+            "expected_remaining": 0.0,
+            "missed": 0.0,
+            "scheduled_detected": False,
+            "sources": [],
+            "note": "",
+        }
+
+    scheduled_total = 0.0
+    due_by_now = 0.0
+    overdue_labels: list[str] = []
+    detail: list[dict] = []
+    for entry in schedule:
+        when_dates = _expected_dates(entry, month)
+        scheduled_total += entry["amount"] * len(when_dates)
+        past_due = [
+            when for when in when_dates
+            if when + timedelta(days=INCOME_GRACE_DAYS) <= anchor
+        ]
+        due_by_now += entry["amount"] * len(past_due)
+        if past_due:
+            overdue_labels.append(entry["label"])
+        detail.append({
+            "source": entry["label"],
+            "cadence": entry["cadence"],
+            "amount": entry["amount"],
+            "expected_dates": [when.isoformat() for when in when_dates],
+            "due_by_now": round(entry["amount"] * len(past_due), 2),
+        })
+
+    # Reconciled in total rather than deposit by deposit, so an employer whose
+    # statement descriptor changes is not reported as a missed payday. What
+    # matters is whether as much money arrived as the rhythm says it should
+    # have by now.
+    missed = max(0.0, round(due_by_now - received, 2))
+    expected_remaining = max(
+        0.0, round(scheduled_total - max(received, due_by_now), 2)
+    )
+
+    note = ""
+    if missed > 0:
+        who = overdue_labels[0] if overdue_labels else "Expected income"
+        note = (
+            f"${missed:,.0f} that usually arrives by now has not been "
+            f"imported ({who}). It is not counted as income until it does."
+        )
+    elif expected_remaining > 0:
+        note = (
+            f"${expected_remaining:,.0f} of usual income is still expected "
+            f"before month end. It is not available to spend yet."
+        )
+
+    return {
+        "received": received,
+        "scheduled_total": round(scheduled_total, 2),
+        "due_by_now": round(due_by_now, 2),
+        "expected_remaining": expected_remaining,
+        "missed": missed,
+        "scheduled_detected": True,
+        "sources": detail,
+        "note": note,
+    }
+
+
+def complete_month_income(
+    conn: Optional[sqlite3.Connection] = None,
+) -> list[tuple[str, float]]:
+    """Planning income per complete month, oldest first.
+
+    Only whole months count, so a half-imported month cannot drag the figure
+    down. A complete month that happened to earn nothing is reported as zero
+    rather than omitted: for seasonal, contract and gig income the quiet
+    months are the whole point, and dropping them quotes a typical month that
+    only describes the good ones.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        from utils.insights import statement_coverage
+
+        complete = statement_coverage(conn=conn).get("complete_months") or []
+        totals = _planning_income_by_month(conn)
+        return [
+            (month, round(float(totals.get(month, 0.0)), 2))
+            for month in sorted(complete)
+        ]
+    finally:
+        if close:
+            conn.close()
+
+
+def _partial_month_income(conn) -> list[tuple[str, float]]:
+    """Fallback when no month is fully imported yet.
+
+    Uses every month except the one still in progress, so a half-finished
+    current month never sets the baseline. Worth less confidence than a
+    complete-month read, but far better than refusing to show a number.
+    """
+    from utils.insights import statement_coverage
+
+    totals = _planning_income_by_month(conn)
+    in_progress = str(
+        statement_coverage(conn=conn).get("latest_data_month") or ""
+    )
+    return [
+        (month, round(total, 2))
+        for month, total in sorted(totals.items())
+        if month != in_progress
+    ]
+
+
+def typical_monthly_income(
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict:
+    """The adaptive typical-income baseline behind the monthly plan.
+
+    This reads whole months, unlike ``reliable_income_summary``, which sums a
+    median per income source. That older shape counted a source arriving in
+    three months out of six as if it arrived every month, and dropped
+    automatically recognized payroll until the user confirmed it in Settings.
+    Reading complete-month totals removes both problems.
+
+    The window grows with the history available:
+
+      1 complete month     the month itself, low confidence
+      2 to 5 months        the average of all of them
+      6 or more            the average of the six most recent
+
+    The average of every complete month, including months that earned
+    nothing. The current partial month is never included, and the months
+    actually used are returned so a screen can show its work.
+    """
+    import calendar as _cal
+
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        months = complete_month_income(conn=conn)
+        partial_basis = False
+        if not months:
+            months = _partial_month_income(conn)
+            partial_basis = True
+    finally:
+        if close:
+            conn.close()
+    if not months:
+        return {
+            "amount": 0.0, "months_used": 0, "months": [], "first_month": "",
+            "last_month": "", "confidence": "none",
+            "basis_label": "Not enough months of history yet",
+        }
+    window = months[-TYPICAL_INCOME_MAX_MONTHS:]
+    values = [total for _month, total in window]
+    amount = round(sum(values) / len(values), 2)
+    first_month, last_month = window[0][0], window[-1][0]
+
+    def _name(month: str) -> str:
+        return _cal.month_name[int(month[5:7])]
+
+    count = len(window)
+    noun = "partly imported month" if partial_basis else "complete month"
+    if count == 1:
+        confidence = "low"
+        basis_label = f"Your only {noun}, {_name(first_month)}"
+    else:
+        confidence = (
+            "low" if partial_basis else "medium" if count < 3 else "high"
+        )
+        basis_label = (
+            f"Average of {count} {noun}s, "
+            f"{_name(first_month)} to {_name(last_month)}"
+        )
+    return {
+        "amount": amount,
+        "months_used": count,
+        # Exactly what was averaged, so a screen can show its work and a
+        # reviewer can reconcile the figure without re-deriving it.
+        "months": [
+            {"month": month, "income": income} for month, income in window
+        ],
+        "first_month": first_month,
+        "last_month": last_month,
+        "confidence": confidence,
+        "basis_label": basis_label,
+    }
+
+
+def income_confirmation_candidates(
+    conn: Optional[sqlite3.Connection] = None,
+) -> list[dict]:
+    """Stable inferred payroll patterns that need one explicit confirmation."""
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    preferences = {
+        row["source_normalized"]: row["status"]
+        for row in conn.execute(
+            "SELECT source_normalized,status FROM income_source_preferences"
+        ).fetchall()
+    }
+    from utils.analysis_period import supported_latest_date
+    _anchor = supported_latest_date(conn=conn)
+    rows = _employment_income_months(
+        conn, exclude_month=_anchor.strftime("%Y-%m") if _anchor else "")
+    for row in rows:
+        row["monthly_total"] = row["total"]
+    by_source: dict[str, list[dict]] = {}
+    for row in rows:
+        by_source.setdefault(str(row["source_normalized"]), []).append(row)
+    candidates = []
+    for source_key, source_rows in by_source.items():
+        if preferences.get(source_key) in {"confirmed", "excluded"}:
+            continue
+        if len(source_rows) < 3 or not any(
+            int(row.get("inferred_source") or 0) for row in source_rows
+        ):
+            continue
+        totals = [float(row.get("monthly_total") or 0) for row in source_rows]
+        midpoint = median(totals)
+        if midpoint <= 0 or max(abs(total - midpoint) / midpoint for total in totals) > 0.35:
+            continue
+        deposits = sum(int(row.get("deposits") or 0) for row in source_rows)
+        per_month = deposits / len(source_rows)
+        candidates.append({
+            "source_normalized": source_key,
+            "source": source_rows[-1].get("source") or "Payroll deposit",
+            "monthly_amount": round(midpoint, 2),
+            "months_seen": len(source_rows),
+            "deposits_seen": deposits,
+            "cadence": "about every two weeks" if per_month >= 1.5 else "monthly",
+            "reason": (
+                f"{deposits} similar deposits across {len(source_rows)} months; "
+                "confirm before Northstar uses this for planning."
+            ),
+        })
+    if close:
+        conn.close()
+    return sorted(candidates, key=lambda row: -float(row["monthly_amount"]))
+
+
 # ──────────────────────────────────────────────
 # Category breakdown
 # ──────────────────────────────────────────────
@@ -181,13 +862,17 @@ def spending_by_category(
     start_date: str,
     end_date: str,
     account_type: Optional[str] = None,
+    share_view: str = "personal",
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[dict]:
     """
     Returns [{category, total, tx_count, pct}] sorted by total descending.
     Only debits, no transfers.  account_type optional filter.
     """
-    rows = get_category_totals(start_date, end_date, account_type=account_type, conn=conn)
+    rows = get_category_totals(
+        start_date, end_date, account_type=account_type,
+        share_view=share_view, conn=conn,
+    )
     grand_total = sum(r["total"] for r in rows)
     result = []
     for r in rows:
@@ -205,6 +890,7 @@ def top_merchants(
     end_date: str,
     limit: int = 15,
     account_type: Optional[str] = None,
+    share_view: str = "personal",
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[dict]:
     close = False
@@ -217,22 +903,29 @@ def top_merchants(
     if account_type and account_type != "all":
         acct_clause = " AND account_type = ?"
         params.append(account_type)
-    params.append(limit)
-
-    rows = conn.execute(f"""
-        SELECT merchant, category, SUM(ABS(amount)) AS total, COUNT(*) AS visits
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'debit'
-          AND is_transfer = 0
-          AND category NOT IN ('Transfer', 'Transfer In', 'Transfer Out', 'Payment', 'Credit Card Payment', 'Savings', 'Cancelled')
-          {acct_clause}
-        GROUP BY merchant
-        ORDER BY total DESC
-        LIMIT ?
-    """, params).fetchall()
-
-    result = [dict(r) for r in rows]
+    from collections import defaultdict
+    from utils.financial_semantics import cashflow_role
+    from utils.shared_expenses import apply_shared_view
+    rows = [dict(row) for row in conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + acct_clause, params,
+    ).fetchall()]
+    grouped: dict[tuple[str, str], dict] = defaultdict(
+        lambda: {"total": 0.0, "visits": 0}
+    )
+    for tx in apply_shared_view(rows, conn, share_view):
+        if cashflow_role(tx) != "spending":
+            continue
+        key = (tx.get("merchant") or "Unknown", tx.get("category") or "Uncategorized")
+        grouped[key]["total"] += abs(float(tx.get("_cashflow_amount") or 0))
+        grouped[key]["visits"] += 1
+    result = [
+        {"merchant": merchant, "category": category,
+         "total": round(values["total"], 2), "visits": values["visits"]}
+        for (merchant, category), values in grouped.items()
+    ]
+    result.sort(key=lambda row: -row["total"])
+    result = result[:limit]
     if close:
         conn.close()
     return result
@@ -252,24 +945,98 @@ def find_recurring(conn: Optional[sqlite3.Connection] = None) -> list[dict]:
         conn = get_connection()
         close = True
 
-    rows = conn.execute("""
-        SELECT
-            merchant,
-            category,
-            AVG(ABS(amount))  AS avg_amount,
-            COUNT(DISTINCT strftime('%Y-%m', transaction_date)) AS months_seen,
-            SUM(ABS(amount))  AS total,
-            COUNT(*)          AS tx_count
-        FROM transactions
-        WHERE direction = 'debit'
-          AND is_transfer = 0
-          AND direction != 'cancelled'
-        GROUP BY merchant
-        HAVING months_seen >= 3
-        ORDER BY avg_amount DESC
-    """).fetchall()
+    from collections import defaultdict
+    from statistics import mean, median as series_median, pstdev
+    from utils.financial_semantics import SPENDING_TYPES, cashflow_role
 
-    result = [dict(r) for r in rows]
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    preference_rows = conn.execute(
+        "SELECT merchant_normalized,status,display_name,category "
+        "FROM recurring_preferences"
+    ).fetchall()
+    preferences = {r["merchant_normalized"]: dict(r) for r in preference_rows}
+    for row in conn.execute(
+        "SELECT * FROM transactions ORDER BY transaction_date"
+    ).fetchall():
+        tx = dict(row)
+        if cashflow_role(tx) != "spending":
+            continue
+        if tx.get("transaction_type") and tx["transaction_type"] not in SPENDING_TYPES:
+            continue
+        merchant = str(tx.get("merchant_normalized") or tx.get("merchant") or "").strip()
+        if merchant:
+            grouped[merchant].append(tx)
+    result = []
+    for merchant, items in grouped.items():
+        preference_row = preferences.get(merchant, {})
+        preference = preference_row.get("status", "")
+        if preference == "not_recurring":
+            continue
+        months = {str(i.get("transaction_date") or "")[:7] for i in items}
+        amounts = [abs(float(i.get("amount") or 0)) for i in items]
+        strong_recurring_terms = (
+            "SUBSCRIPTION", "HOSTING", "MORTGAGE", " INSURANCE",
+            "RENT", "UTILITY", "UTILITIES", "HYDRO", "INTERNET",
+            "MOBILE", "PHONE", "NETFLIX", "SPOTIFY", "DISNEY",
+            "OPENAI", "ANTHROPIC", "ROGERS",
+        )
+        fixed_like = (items[0].get("category") in {
+            "Housing / Mortgage", "Utilities / Bills", "Insurance",
+            "Subscriptions & Digital", "Fitness",
+        } or any(term in f" {merchant.upper()}" for term in strong_recurring_terms))
+        if preference != "recurring":
+            # Three observations remain the general rule. Two matching monthly
+            # observations are enough only for an already-recognized bill or
+            # subscription, where the category supplies useful prior evidence.
+            early_fixed_candidate = (
+                fixed_like and len(months) >= 2 and len(amounts) >= 2
+            )
+            if not early_fixed_candidate and (len(months) < 3 or len(amounts) < 3):
+                continue
+        avg = mean(amounts)
+        stability = 1.0 if len(amounts) == 1 or avg == 0 else max(0.0, 1 - pstdev(amounts) / avg)
+        dates = sorted(date.fromisoformat(str(i["transaction_date"])[:10]) for i in items)
+        gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
+        cadence_days = series_median(gaps) if gaps else 30
+        cadence = (
+            "weekly" if 5 <= cadence_days <= 10
+            else "biweekly" if 11 <= cadence_days <= 18
+            else "monthly" if 20 <= cadence_days <= 40
+            else "irregular"
+        )
+        # Automatic detection requires a plausible cadence and stable amount.
+        # A user confirmation may intentionally override those heuristics.
+        if preference != "recurring" and (
+            cadence == "irregular" or stability < (0.55 if fixed_like else 0.75)
+        ):
+            continue
+        if (preference != "recurring" and len(months) == 2
+                and (cadence != "monthly" or stability < 0.85)):
+            continue
+        result.append({
+            "merchant": (preference_row.get("display_name")
+                         or items[0].get("merchant") or merchant.title()),
+            "category": (preference_row.get("category")
+                         or items[0].get("category") or "Uncategorized"),
+            "avg_amount": round(avg, 2),
+            "months_seen": len(months),
+            "total": round(sum(amounts), 2),
+            "tx_count": len(items),
+            "confidence": round(stability, 2),
+            "cadence": cadence,
+            "last_seen": dates[-1].isoformat(),
+            "expected_next": (
+                (dates[-1] + timedelta(days=round(cadence_days))).isoformat()
+                if cadence != "irregular" else None
+            ),
+            "recurring_status": "confirmed" if preference == "recurring" else "automatic",
+            # Variable merchants remain available to the legacy watchlist,
+            # but native Recurring Costs only shows bill-like rows or an
+            # explicit user confirmation.
+            "planning_relevant": preference == "recurring" or fixed_like,
+            "merchant_normalized": merchant,
+        })
+    result.sort(key=lambda r: r["avg_amount"], reverse=True)
     if close:
         conn.close()
     return result
@@ -721,73 +1488,48 @@ def income_summary(start_date: str, end_date: str, account_type: Optional[str] =
     Returns total true income, source breakdown, and monthly trend
     for the given date range.
 
-    True income (v8) = all credits with amount > 0:
-      - direction = 'credit' AND amount > 0
-      - Excludes direction IN ('payment','cancelled','transfer')
-      - Excludes category IN ('Credit Card Payment','Cancelled')
-      - Includes: payroll (EFT), INTERAC e-Transfers IN, interest, any deposit
-
-    Pass 14 addition: `exclude_etransfer_in=True` also drops rows with
-    category = 'Transfer In'. Useful when received e-Transfers are personal /
-    pass-through movements rather than real income.
+    Canonical income types are included, including refunds, reimbursements,
+    and rewards credits. Transfers, payments, investments, and ambiguous
+    deposits stay out.
     """
     close = False
     if conn is None:
         conn = get_connection()
         close = True
 
-    _acct_filter = ""
+    from collections import defaultdict
+    from utils.financial_semantics import cashflow_role
+    params: list = [start_date, end_date]
+    clause = ""
     if account_type and account_type != "all":
-        _acct_filter = f" AND account_type = '{account_type}'"
-    _etxfer_filter = " AND category != 'Transfer In'" if exclude_etransfer_in else ""
-
-    # Total + count
-    row = conn.execute(f"""
-        SELECT
-            SUM(amount)        AS total,
-            COUNT(*)           AS tx_count,
-            COUNT(DISTINCT strftime('%Y-%m', transaction_date)) AS months_active
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'credit'
-          AND amount > 0
-          AND direction NOT IN ('payment','cancelled','transfer')
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-          {_acct_filter}
-          {_etxfer_filter}
-    """, (start_date, end_date)).fetchone()
-
-    total       = row["total"]        or 0.0
-    tx_count    = row["tx_count"]     or 0
-    months_active = row["months_active"] or 0
-
-    # Monthly trend
-    monthly = conn.execute(f"""
-        SELECT
-            strftime('%Y-%m', transaction_date) AS month,
-            SUM(amount) AS total,
-            COUNT(*) AS tx_count
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'credit'
-          AND amount > 0
-          AND direction NOT IN ('payment','cancelled','transfer')
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-          {_acct_filter}
-          {_etxfer_filter}
-        GROUP BY month
-        ORDER BY month
-    """, (start_date, end_date)).fetchall()
-
-    monthly_list = [dict(r) for r in monthly]
+        clause = " AND account_type=?"
+        params.append(account_type)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + clause, params,
+    ).fetchall()]
+    income_rows = [r for r in rows if cashflow_role(r) == "income"]
+    monthly_totals: dict[str, list[float]] = defaultdict(list)
+    for row in income_rows:
+        monthly_totals[str(row.get("transaction_date") or "")[:7]].append(
+            abs(float(row.get("amount") or 0))
+        )
+    monthly_list = [
+        {"month": month, "total": round(sum(values), 2),
+         "tx_count": len(values)}
+        for month, values in sorted(monthly_totals.items())
+    ]
+    total = sum(abs(float(r.get("amount") or 0)) for r in income_rows)
+    tx_count = len(income_rows)
+    months_active = len(monthly_list)
 
     # Stability: stddev proxy (max - min) / avg
     # With <2 months we cannot measure variance — report None so the UI can
     # render "Insufficient data" instead of a misleading 100%.
-    monthly_totals = [m["total"] for m in monthly_list]
-    if len(monthly_totals) >= 2:
-        avg_m = sum(monthly_totals) / len(monthly_totals)
-        variance = sum((x - avg_m) ** 2 for x in monthly_totals) / len(monthly_totals)
+    trend_totals = [m["total"] for m in monthly_list]
+    if len(trend_totals) >= 2:
+        avg_m = sum(trend_totals) / len(trend_totals)
+        variance = sum((x - avg_m) ** 2 for x in trend_totals) / len(trend_totals)
         stddev   = variance ** 0.5
         consistency_pct = max(0.0, round((1 - stddev / avg_m) * 100, 1)) if avg_m > 0 else 0.0
     else:
@@ -816,8 +1558,7 @@ def income_by_source(
     """
     Returns [{source, total, tx_count, pct, avg_amount}] sorted by total desc.
     Source = category (e.g. 'Income', 'Transfer In') then subcategory/merchant for detail.
-    v8: includes all true income credits — payroll, e-Transfers IN, interest, etc.
-    `exclude_etransfer_in=True` drops Transfer In rows (Pass 14).
+    Only canonical income rows are included, including refund-like credits.
     account_type: optional filter ('chequing', 'savings', 'mastercard', or None/all)
     """
     close = False
@@ -825,41 +1566,49 @@ def income_by_source(
         conn = get_connection()
         close = True
 
-    _acct_filter = ""
+    from collections import defaultdict
+    from utils.financial_semantics import cashflow_role
+    params: list = [start_date, end_date]
+    clause = ""
     if account_type and account_type != "all":
-        _acct_filter = f" AND account_type = '{account_type.replace(chr(39), chr(39)*2)}'"
-    _etxfer_filter = " AND category != 'Transfer In'" if exclude_etransfer_in else ""
-
-    rows = conn.execute(f"""
-        SELECT
-            COALESCE(NULLIF(subcategory,''), NULLIF(merchant,''), raw_description) AS source,
-            category,
-            SUM(amount)   AS total,
-            COUNT(*)      AS tx_count,
-            AVG(amount)   AS avg_amount
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'credit'
-          AND amount > 0
-          AND direction NOT IN ('payment','cancelled','transfer')
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-          {_acct_filter}
-          {_etxfer_filter}
-        GROUP BY source
-        ORDER BY total DESC
-    """, (start_date, end_date)).fetchall()
-
-    grand = sum(r["total"] for r in rows) or 1.0
+        clause = " AND account_type=?"
+        params.append(account_type)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + clause, params,
+    ).fetchall() if cashflow_role(dict(r)) == "income"]
+    grouped: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    for row in rows:
+        source = (row.get("merchant") or row.get("subcategory")
+                  or row.get("raw_description") or "Unknown")
+        source_key = str(
+            row.get("merchant_normalized") or source
+        )
+        grouped[(
+            source_key, source, row.get("category") or "Unknown"
+        )].append(
+            abs(float(row.get("amount") or 0))
+        )
+    preferences = {
+        str(row["source_normalized"]): str(row["status"])
+        for row in conn.execute(
+            "SELECT source_normalized,status FROM income_source_preferences"
+        ).fetchall()
+    }
+    grand = sum(sum(values) for values in grouped.values()) or 1.0
     result = []
-    for r in rows:
+    for (source_key, source, category), values in grouped.items():
+        total = sum(values)
         result.append({
-            "source":     r["source"] or "Unknown",
-            "category":   r["category"] or "Unknown",
-            "total":      round(r["total"], 2),
-            "tx_count":   r["tx_count"],
-            "avg_amount": round(r["avg_amount"], 2),
-            "pct":        round(r["total"] / grand * 100, 1),
+            "source": source,
+            "source_normalized": source_key,
+            "category": category,
+            "total": round(total, 2), "tx_count": len(values),
+            "avg_amount": round(total / len(values), 2),
+            "pct": round(total / grand * 100, 1),
+            "stable_status": preferences.get(source_key, "automatic"),
         })
+    result.sort(key=lambda item: item["total"], reverse=True)
 
     if close:
         conn.close()
@@ -875,8 +1624,7 @@ def income_monthly_by_source(
 ) -> dict:
     """
     Returns {source: [{month, total}]} for stacked area chart.
-    v8: same broad income definition as income_summary / income_by_source.
-    `exclude_etransfer_in=True` drops Transfer In rows (Pass 14).
+    Uses the same canonical genuine-income definition as income_summary.
     account_type: optional filter ('chequing', 'savings', 'mastercard', or None/all)
     """
     close = False
@@ -884,32 +1632,30 @@ def income_monthly_by_source(
         conn = get_connection()
         close = True
 
-    _acct_filter = ""
+    from collections import defaultdict
+    from utils.financial_semantics import cashflow_role
+    params: list = [start_date, end_date]
+    clause = ""
     if account_type and account_type != "all":
-        _acct_filter = f" AND account_type = '{account_type.replace(chr(39), chr(39)*2)}'"
-    _etxfer_filter = " AND category != 'Transfer In'" if exclude_etransfer_in else ""
-
-    rows = conn.execute(f"""
-        SELECT
-            COALESCE(NULLIF(subcategory,''), NULLIF(merchant,''), raw_description) AS source,
-            strftime('%Y-%m', transaction_date) AS month,
-            SUM(amount) AS total
-        FROM transactions
-        WHERE transaction_date BETWEEN ? AND ?
-          AND direction = 'credit'
-          AND amount > 0
-          AND direction NOT IN ('payment','cancelled','transfer')
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-          {_acct_filter}
-          {_etxfer_filter}
-        GROUP BY source, month
-        ORDER BY source, month
-    """, (start_date, end_date)).fetchall()
-
+        clause = " AND account_type=?"
+        params.append(account_type)
+    grouped: dict[tuple[str, str], float] = defaultdict(float)
+    for raw in conn.execute(
+        "SELECT * FROM transactions WHERE transaction_date BETWEEN ? AND ?"
+        + clause, params,
+    ).fetchall():
+        row = dict(raw)
+        if cashflow_role(row) != "income":
+            continue
+        source = (row.get("subcategory") or row.get("merchant")
+                  or row.get("raw_description") or "Unknown")
+        month = str(row.get("transaction_date") or "")[:7]
+        grouped[(source, month)] += abs(float(row.get("amount") or 0))
     result: dict[str, list[dict]] = {}
-    for r in rows:
-        src = r["source"] or "Unknown"
-        result.setdefault(src, []).append({"month": r["month"], "total": round(r["total"], 2)})
+    for (source, month), total in sorted(grouped.items()):
+        result.setdefault(source, []).append(
+            {"month": month, "total": round(total, 2)}
+        )
 
     if close:
         conn.close()

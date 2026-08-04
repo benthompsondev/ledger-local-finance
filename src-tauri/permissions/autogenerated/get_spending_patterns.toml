@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-spending-patterns"
+description = "Enables the get_spending_patterns command without any pre-configured scope."
+commands.allow = ["get_spending_patterns"]
+
+[[permission]]
+identifier = "deny-get-spending-patterns"
+description = "Denies the get_spending_patterns command without any pre-configured scope."
+commands.deny = ["get_spending_patterns"]

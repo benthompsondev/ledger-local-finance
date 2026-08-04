@@ -60,7 +60,7 @@ _ROOT = _HERE.parent
 EXCLUDE_DIRS = {
     ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     ".idea", ".vscode", ".git", "node_modules", "exports", "data",
-    "dist",
+    "dist", "build", "dist-desktop", "target", "binaries",
     # Editor and AI workspace metadata never go in a user share.
     ".claude",
 }
@@ -117,6 +117,7 @@ PLACEHOLDER_HINTS = (
     "your-password",
     "your_password",
     "example",
+    "invented",
     "placeholder",
     "<your",
     "changeme",

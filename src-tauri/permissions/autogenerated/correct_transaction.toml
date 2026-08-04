@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-correct-transaction"
+description = "Enables the correct_transaction command without any pre-configured scope."
+commands.allow = ["correct_transaction"]
+
+[[permission]]
+identifier = "deny-correct-transaction"
+description = "Denies the correct_transaction command without any pre-configured scope."
+commands.deny = ["correct_transaction"]

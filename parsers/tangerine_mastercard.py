@@ -255,12 +255,16 @@ def build_tx(tx_date, posted_date, desc_parts, statement_period, errors):
     if any(k in desc_up for k in ["CASH INTEREST", "PURCHASE INTEREST", "INTEREST CHARGE"]):
         direction = "debit"
 
+    signed_amount = (
+        -abs(amount) if direction == "debit" else abs(amount)
+    )
+
     tx = {
         "account_type":     "mastercard",
         "transaction_date": tx_date,
         "posted_date":      posted_date,
         "raw_description":  desc,
-        "amount":           abs(amount) if direction == "debit" else amount,
+        "amount":           signed_amount,
         "currency":         "CAD",
         "foreign_amount":   fx_amount,
         "foreign_currency": fx_currency,

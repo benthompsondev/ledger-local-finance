@@ -3,7 +3,7 @@ parsers/detect.py — auto-detect Tangerine statement type from PDF content.
 
 ROOT CAUSE OF v9 BUG (fixed here):
   Chequing PDFs contain "Tangerine Savings Account" inside transaction
-  descriptions ("Internet Deposit from Tangerine Savings Account - 3031472835").
+  descriptions ("Internet Deposit from Tangerine Savings Account - 0000000000").
   The old detector matched this as a savings fingerprint because it searched
   raw text and didn't distinguish header occurrences from body occurrences.
   Additionally, the chequing guard "chequing statement" never matched because
@@ -75,7 +75,7 @@ _MC_HEADERS   = [
 ]
 
 # ── Tier-1b: Account-at-a-Glance table entries ─────────────────────────────
-# The table line is e.g. "Tangerine Chequing Account 4010461272 5,036.16"
+# The table line is e.g. "Tangerine Chequing Account 0000000000 0,000.00"
 # This only appears for the *primary* account of the statement.
 # We detect it by matching "tangerine chequing account <digits>" pattern.
 _RE_CHQ_TABLE = re.compile(r"tangerine chequing account\s+\d{6,}", re.IGNORECASE)

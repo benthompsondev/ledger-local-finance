@@ -1,0 +1,29 @@
+{
+  "name": "ledger-native-desktop",
+  "private": true,
+  "version": "2.5.5",
+  "description": "Northstar Ledger native desktop",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "test:charts": "node --test desktop/src/chartScale.test.mjs desktop/src/preferences.test.mjs desktop/src/categoryComparison.test.mjs desktop/src/netWorthFormat.test.mjs desktop/src/netWorthForm.test.mjs",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "desktop:check": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "desktop:test": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.2"
+  }
+}

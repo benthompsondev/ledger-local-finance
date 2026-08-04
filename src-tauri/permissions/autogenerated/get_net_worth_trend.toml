@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-net-worth-trend"
+description = "Enables the get_net_worth_trend command without any pre-configured scope."
+commands.allow = ["get_net_worth_trend"]
+
+[[permission]]
+identifier = "deny-get-net-worth-trend"
+description = "Denies the get_net_worth_trend command without any pre-configured scope."
+commands.deny = ["get_net_worth_trend"]

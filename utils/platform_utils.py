@@ -14,17 +14,65 @@ from typing import Optional
 import contextlib
 
 
-# ── App root (always the finance-local/ folder) ────────────────────────
-APP_ROOT = Path(__file__).parent.parent.resolve()
+# ── App and user-data roots ────────────────────────────────────────────
+# PyInstaller exposes bundled assets under ``sys._MEIPASS``. In normal
+# development ``__file__`` still resolves to the repository root.
+APP_ROOT = Path(
+    getattr(sys, "_MEIPASS", Path(__file__).parent.parent)
+).resolve()
 
-# ── Data folder (finance-local/data/) ─────────────────────────────────
-DATA_DIR = APP_ROOT / "data"
+
+def _configured_data_root() -> Optional[Path]:
+    """Return the explicit persistent-data root, when configured.
+
+    Packaged Ledger sets LEDGER_DATA_DIR to ``%LOCALAPPDATA%\\Ledger``. The
+    variable is also useful for tests and portable troubleshooting. An empty
+    value means normal repository mode.
+    """
+    raw = os.environ.get("LEDGER_DATA_DIR", "").strip()
+    if not raw:
+        return None
+    return Path(os.path.expandvars(os.path.expanduser(raw))).resolve()
+
+
+def get_data_dir() -> Path:
+    """Directory containing Ledger's SQLite databases and watcher state."""
+    return _configured_data_root() or (APP_ROOT / "data")
+
+
+def get_config_path() -> Path:
+    """AI settings path, persistent across packaged-app upgrades."""
+    root = _configured_data_root()
+    return (root / "config.json") if root else (APP_ROOT / "config.json")
+
+
+def get_exports_dir() -> Path:
+    """Export root. Repo mode keeps the existing ``exports/`` behavior."""
+    root = _configured_data_root()
+    return (root / "exports") if root else (APP_ROOT / "exports")
+
+
+def get_logs_dir() -> Path:
+    """Launcher/runtime log root."""
+    root = _configured_data_root()
+    return (root / "logs") if root else APP_ROOT
+
+
+def get_backup_dir() -> Path:
+    """SQLite-safe backup destination for the active data root."""
+    return get_data_dir() / "backups"
+
+
+# Compatibility constant for existing imports. Environment configuration is
+# established before app modules load, so resolving once is intentional.
+DATA_DIR = get_data_dir()
 
 
 def ensure_data_dir() -> Path:
     """Create data/ directory if it doesn't exist. Returns the path."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return DATA_DIR
+    data_dir = get_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
 
 
 # ── Temp file helpers ──────────────────────────────────────────────────

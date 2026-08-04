@@ -147,8 +147,13 @@ VOLATILE_CATEGORIES = {
 _FIXED_COMMITMENT_CATEGORIES = {
     "Housing / Mortgage",
     "Utilities / Bills",
-    # Insurance / loan / phone / internet typically land in Utilities/
-    # Bills today. If the user later splits these out, add them here.
+    # Insurance is its own category in config/categories.py, and leaving it
+    # out meant a quarterly premium was excluded from the plan even after
+    # the user confirmed it as recurring.
+    "Insurance",
+    "Debt / Loan Payment",
+    "Childcare",
+    "Education",
 }
 
 # Variable retail / consumption — these can recur monthly without
@@ -204,30 +209,18 @@ def _classify_commitment(category: Optional[str]) -> str:
 def analysis_anchor(conn: Optional[sqlite3.Connection] = None) -> str:
     """Return 'YYYY-MM' to treat as the current analysis month.
 
-    Picks the LATEST month that has any imported transactions. If that
-    month is older than ~5 weeks behind today, falls back to the
-    calendar month so the forecast UI doesn't claim to be "current"
-    when it isn't. Returns today's month string when DB is empty.
+    The month of the last date the data genuinely reaches, falling back to
+    the calendar month when that is more than five weeks behind, so a stale
+    import is never described as "this month".
+
+    Reads the shared context rather than ``MAX(transaction_date)``: one
+    legacy row dated 2035 used to move Plan five hundred weeks into the
+    future while the pattern detectors, which already had this guard,
+    correctly stayed in the present.
     """
-    from utils.database import get_connection
-    close = conn is None
-    if close:
-        conn = get_connection()
-    row = conn.execute(
-        "SELECT MAX(transaction_date) AS last_d FROM transactions"
-    ).fetchone()
-    if close:
-        conn.close()
-    today = date.today()
-    if not row or not row["last_d"]:
-        return today.strftime("%Y-%m")
-    try:
-        last = date.fromisoformat(row["last_d"])
-    except Exception:
-        return today.strftime("%Y-%m")
-    if (today - last).days > 35:
-        return today.strftime("%Y-%m")
-    return last.strftime("%Y-%m")
+    from utils.analysis_period import analysis_month
+
+    return analysis_month(conn=conn)
 
 
 def _month_bounds(month: str) -> tuple[str, str, int]:
@@ -274,34 +267,39 @@ def recent_category_averages(months: int = 3, anchor_month: Optional[str] = None
         sm_y -= 1
     start_iso = f"{sm_y:04d}-{sm_m:02d}-01"
 
-    placeholders = ",".join("?" * len(NON_CONSUMPTION_CATEGORIES))
-    rows = conn.execute(f"""
-        SELECT
-            category,
-            COUNT(DISTINCT strftime('%Y-%m', transaction_date)) AS months_with_data,
-            SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE direction='debit' AND is_transfer=0
-          AND transaction_date BETWEEN ? AND ?
-          AND (category NOT IN ({placeholders}) OR category IS NULL)
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-        GROUP BY category
-        HAVING category IS NOT NULL AND category != ''
-        ORDER BY total DESC
-    """, [start_iso, end_iso, *NON_CONSUMPTION_CATEGORIES]).fetchall()
+    from collections import defaultdict
+    from utils.database import get_category_totals
+
+    totals: dict[str, float] = defaultdict(float)
+    months_seen: dict[str, int] = defaultdict(int)
+    cursor_y, cursor_m = sm_y, sm_m
+    for _ in range(months):
+        month_label = f"{cursor_y:04d}-{cursor_m:02d}"
+        month_end = calendar.monthrange(cursor_y, cursor_m)[1]
+        for row in get_category_totals(
+            f"{month_label}-01", f"{month_label}-{month_end:02d}", conn=conn
+        ):
+            category = row["category"]
+            if category in NON_CONSUMPTION_CATEGORIES:
+                continue
+            totals[category] += float(row["total"] or 0)
+            months_seen[category] += 1
+        cursor_m += 1
+        if cursor_m > 12:
+            cursor_m = 1
+            cursor_y += 1
 
     if close:
         conn.close()
 
     out = []
-    for r in rows:
-        d = dict(r)
-        m_with = max(int(d["months_with_data"] or 0), 1)
+    for category, total in sorted(totals.items(), key=lambda item: -item[1]):
+        m_with = max(months_seen[category], 1)
         out.append({
-            "category":         d["category"],
-            "total":            float(d["total"] or 0),
-            "months_with_data": int(d["months_with_data"] or 0),
-            "monthly_avg":      float((d["total"] or 0) / m_with),
+            "category":         category,
+            "total":            total,
+            "months_with_data": months_seen[category],
+            "monthly_avg":      total / m_with,
         })
     return out
 
@@ -386,6 +384,7 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         "active_subscriptions",
             "reason":        "Active subscription (subscription_detective).",
             "source":        "subscription_active",
+            "recurring_status": "automatic",
         })
 
     # 2. Stale subscriptions — never in forecast.
@@ -403,6 +402,7 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         "stale_or_inactive",
             "reason":        "Stale subscription (no recent charge).",
             "source":        "subscription_stale",
+            "recurring_status": "excluded",
         })
 
     # 3. Recurring merchants that aren't subscriptions. Classified by
@@ -433,10 +433,14 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             )
         _add({
             "merchant":      r.get("merchant"),
+            "merchant_normalized": r.get("merchant_normalized"),
             "category":      r.get("category"),
             "est_amount":    float(r.get("avg_amount") or 0),
             "frequency":     "monthly" if ms >= 3 else "irregular",
-            "last_seen":     "",
+            # Preserve the detector's latest observed charge. Safe to Spend
+            # uses this to avoid reserving a fixed bill a second time after it
+            # has already cleared in the current month.
+            "last_seen":     r.get("last_seen") or "",
             "expected_next": None,
             "confidence":    conf,
             "active":        True,
@@ -444,23 +448,118 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         group,
             "reason":        reason,
             "source":        "recurring_merchant",
+            # Authoritative user-review state from find_recurring(). Keep an
+            # explicit automatic value so missing data is never itself used
+            # as the definition of "unreviewed" downstream.
+            "recurring_status": r.get("recurring_status") or "automatic",
         })
 
-    items = sorted(seen.values(),
-                   key=lambda x: -float(x.get("est_amount") or 0))
+    # 4. Cadence. The monthly detector above groups by calendar month, so it
+    #    can only ever see monthly rhythms; anything billed quarterly or
+    #    annually was invisible to the whole app and nothing was reserved
+    #    for it. Reading the gaps between charges finds those, and gives
+    #    every commitment a real cadence instead of the None this used to
+    #    hand downstream.
+    from utils.recurring_cadence import merchant_cadences
+
+    for row in merchant_cadences(conn=conn):
+        key = (row.get("merchant") or "").upper()
+        cadence = row["cadence"]
+        existing = seen.get(key)
+        if not row.get("is_active", True):
+            # Cancelled, paid off, or moved elsewhere. Reserving for a bill
+            # that has stopped coming quietly locks away money the user
+            # could be spending, and nothing would ever release it.
+            if existing is not None:
+                existing["included_in_forecast"] = False
+                existing["group"] = "stale_or_inactive"
+                existing["monthly_setaside"] = 0.0
+                existing["cadence"] = cadence
+                existing["period_months"] = row["period_months"]
+                existing["reason"] = (
+                    f"No charge for {row['overdue_days']} days; not reserved."
+                )
+            continue
+        if existing is not None:
+            existing["cadence"] = cadence
+            existing["period_months"] = row["period_months"]
+            existing["monthly_setaside"] = row["monthly_setaside"]
+            existing["setaside_note"] = row["setaside_note"]
+            existing["price_change"] = row["price_change"]
+            existing["occurrences"] = row["occurrences"]
+            if not existing.get("expected_next"):
+                existing["expected_next"] = row["expected_next"]
+            # A price that has risen makes the running average an amount
+            # that was never actually charged. Plan for what it costs now.
+            if row["price_change"] or cadence != "monthly":
+                existing["est_amount"] = row["est_amount"]
+            continue
+
+        if cadence == "monthly":
+            continue  # the monthly detector already had its say
+        cls = _classify_commitment(row.get("category"))
+        if cls != "fixed":
+            continue  # a weekly coffee habit is not a bill
+        _add({
+            "merchant":      row["merchant"],
+            "merchant_normalized": row["merchant_normalized"],
+            "category":      row["category"],
+            "est_amount":    row["est_amount"],
+            "frequency":     cadence,
+            "cadence":       cadence,
+            "period_months": row["period_months"],
+            "monthly_setaside": row["monthly_setaside"],
+            "setaside_note": row["setaside_note"],
+            "price_change":  row["price_change"],
+            "occurrences":   row["occurrences"],
+            "last_seen":     row["last_seen"],
+            "expected_next": row["expected_next"],
+            "confidence":    row["confidence"],
+            "active":        True,
+            "included_in_forecast": True,
+            "group":         "nonmonthly_commitments",
+            "reason":        row["setaside_note"],
+            "source":        "cadence",
+            "recurring_status": "automatic",
+        })
+
+    # Anything the cadence pass did not reach still needs the fields its
+    # callers now read, rather than a None that quietly breaks arithmetic.
+    for item in seen.values():
+        item.setdefault("cadence", "monthly")
+        item.setdefault("period_months", 1)
+        item.setdefault(
+            "monthly_setaside", float(item.get("est_amount") or 0),
+        )
+        item.setdefault("price_change", None)
+        item.setdefault("setaside_note", "")
+
+    from utils.shared_expenses import apply_commitment_share
+    items = [apply_commitment_share(item, conn) for item in seen.values()]
+    items.sort(key=lambda x: -float(x.get("monthly_setaside") or 0))
 
     # Group splits.
     fixed_commitments = [i for i in items
                          if i["group"] == "fixed_commitments"]
     active_subs       = [i for i in items
                          if i["group"] == "active_subscriptions"]
+    nonmonthly        = [i for i in items
+                         if i["group"] == "nonmonthly_commitments"]
     variable_watch    = [i for i in items
                          if i["group"] == "recurring_variable_merchants"]
     stale_inactive    = [i for i in items
                          if i["group"] == "stale_or_inactive"]
 
-    commitment_total = sum(float(i.get("est_amount") or 0)
-                           for i in fixed_commitments + active_subs)
+    # Reserve the monthly share, not the amount on the invoice. A $540 bill
+    # every three months costs $180 a month; charging the plan $540 every
+    # month would be as wrong as charging it nothing.
+    commitment_total = sum(
+        float(i.get("monthly_setaside") or i.get("est_amount") or 0)
+        for i in fixed_commitments + active_subs + nonmonthly
+    )
+    nonmonthly_total = sum(
+        float(i.get("monthly_setaside") or 0) for i in nonmonthly
+    )
     variable_total   = sum(float(i.get("est_amount") or 0)
                            for i in variable_watch)
 
@@ -476,22 +575,183 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
         # Pass 23 grouped fields.
         "fixed_commitments":            fixed_commitments,
         "active_subscriptions":         active_subs,
+        "nonmonthly_commitments":       nonmonthly,
         "recurring_variable_merchants": variable_watch,
         "stale_or_inactive":            stale_inactive,
         "commitment_monthly_estimate":  float(commitment_total),
+        "nonmonthly_monthly_reserve":   round(float(nonmonthly_total), 2),
+        "nonmonthly_annual_total":      round(sum(
+            float(i.get("monthly_setaside") or 0) * 12 for i in nonmonthly
+        ), 2),
         "variable_monthly_watch":       float(variable_total),
-        "commitment_count":             len(fixed_commitments) + len(active_subs),
+        "commitment_count":             (
+            len(fixed_commitments) + len(active_subs) + len(nonmonthly)
+        ),
+        "nonmonthly_count":             len(nonmonthly),
         "variable_count":               len(variable_watch),
+        "price_changes": [
+            {"merchant": i.get("merchant"), **(i.get("price_change") or {})}
+            for i in items if i.get("price_change")
+        ],
+    }
+
+
+def regular_monthly_fixed_total(bills: dict) -> float:
+    """Monthly fixed costs that recur every month, excluding nonmonthly bills.
+
+    Plan subtracts nonmonthly commitments through `nonmonthly_monthly_reserve`,
+    which spreads a quarterly or annual invoice across the months it covers.
+    Summing every commitment's `est_amount` into fixed costs and then also
+    subtracting the reserve charged the plan twice for the same bill: a $300
+    quarterly invoice with a $100 reserve removed $400 a month instead of $100.
+
+    This is the one basis for "regular monthly fixed costs". The reserve stays
+    separate and is added by the equation.
+    """
+    return round(sum(
+        float(item.get("monthly_setaside") or item.get("est_amount") or 0)
+        for item in bills.get("items", [])
+        if item.get("included_in_forecast")
+        and item.get("group") != "nonmonthly_commitments"
+    ), 2)
+
+
+# Cadences that bill at least once a month. If one of these has not been seen
+# yet this month it is probably still coming, which is all the monthly rule
+# ever needed to know.
+_MONTHLY_CADENCES = {"weekly", "biweekly", "monthly"}
+
+
+def commitment_placement(item: dict, plan_month: str) -> str:
+    """Where a reviewed commitment sits relative to ``plan_month``.
+
+    One of 'paid', 'due', 'overdue' or 'other_month'.
+
+    The forecast used to ask only whether a merchant had been seen since the
+    1st. That reads a monthly bill correctly and reads every slower bill
+    wrongly: an annual $2,400 property-tax invoice due in November had not
+    been seen this month in January either, so it was charged in full against
+    January, and February, and every other month of the year. A quarterly
+    premium did the same thing nine months out of twelve. Both inflated
+    projected spending badly enough to turn an ordinary month into a danger
+    verdict.
+
+    A slow bill is therefore placed by the occurrence the cadence detector
+    expects, not by silence.
+    """
+    month_start = f"{plan_month}-01"
+    last_seen = str(item.get("last_seen") or "")[:10]
+    if last_seen and last_seen >= month_start:
+        # Already cleared inside the forecast month. Counting it again would
+        # charge the same rent twice.
+        return "paid"
+
+    cadence = str(item.get("cadence") or "monthly")
+    try:
+        period_months = float(item.get("period_months") or 1)
+    except (TypeError, ValueError):
+        period_months = 1.0
+    if cadence in _MONTHLY_CADENCES and period_months <= 1:
+        return "due"
+
+    expected_month = str(item.get("expected_next") or "")[:7]
+    if not expected_month:
+        # A slow bill nobody can place in time cannot be charged to this
+        # month. Guessing costs the user real money in eleven months out
+        # of twelve.
+        return "other_month"
+    if expected_month == plan_month:
+        return "due"
+    if expected_month < plan_month:
+        return "overdue"
+    return "other_month"
+
+
+def plan_commitment_agreement(
+    plan: Optional[dict],
+    *,
+    bills: Optional[dict] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict:
+    """Compare saved fixed costs with the currently reviewed commitments.
+
+    A deliberate override is durable only while the detected commitment
+    baseline has not changed. New or removed recurring costs therefore reopen
+    review without silently erasing the user's chosen amount or explanation.
+    """
+    bills = bills or bills_and_commitments(conn=conn)
+    # Same basis the plan equation uses, so agreement and drift are measured
+    # against the number actually shown as fixed costs.
+    detected = regular_monthly_fixed_total(bills)
+    if not plan:
+        return {
+            "agreed": False,
+            "needs_review": True,
+            "detected": detected,
+            "saved": 0.0,
+            "difference": detected,
+            "override_active": False,
+            "override_reason": "",
+            "detected_at_save": None,
+            "reason": "Save a monthly plan after reviewing commitments.",
+        }
+    saved = round(float(plan.get("fixed_obligations") or 0), 2)
+    difference = round(saved - detected, 2)
+    override_reason = str(plan.get("fixed_override_reason") or "").strip()
+    raw_baseline = plan.get("detected_commitments_at_save")
+    baseline = (
+        round(float(raw_baseline), 2) if raw_baseline is not None else None
+    )
+    matches = abs(difference) < 0.01
+    override_active = bool(
+        not matches
+        and override_reason
+        and baseline is not None
+        and abs(baseline - detected) < 0.01
+    )
+    agreed = matches or override_active
+    if matches:
+        reason = "Saved fixed costs match reviewed commitments."
+    elif override_active:
+        reason = f"Deliberate override: {override_reason}"
+    elif baseline is None:
+        reason = (
+            "This plan predates commitment reconciliation. Review the "
+            "detected fixed costs once."
+        )
+    else:
+        reason = "Detected commitments changed since this plan was reviewed."
+    return {
+        "agreed": agreed,
+        "needs_review": not agreed,
+        "detected": detected,
+        "saved": saved,
+        "difference": difference,
+        "override_active": override_active,
+        "override_reason": override_reason,
+        "detected_at_save": baseline,
+        "reason": reason,
     }
 
 
 # ── Starter plan ────────────────────────────────────────────────────
 
 def generate_starter_plan(mode: str = "normal",
-                          conn: Optional[sqlite3.Connection] = None) -> dict:
-    """Build a deterministic plan proposal. Never persists."""
+                          conn: Optional[sqlite3.Connection] = None,
+                          plan_month: Optional[str] = None) -> dict:
+    """Build a deterministic plan proposal. Never persists.
+
+    `plan_month` is the month the plan TARGETS (defaults to the analysis
+    anchor for backwards compatibility). Baselines always come from the
+    imported data regardless of the target month — statements lag the
+    calendar, and a July plan built from April-June data is exactly what
+    a real user needs.
+    """
     from utils.database import get_connection
     from utils.analytics import compute_cashflow
+    from utils.financial_semantics import (
+        sql_type_placeholders, transaction_types_for_role,
+    )
 
     close = conn is None
     if close:
@@ -499,6 +759,7 @@ def generate_starter_plan(mode: str = "normal",
 
     spec = PLAN_MODES.get(mode, PLAN_MODES["normal"])
     anchor = analysis_anchor(conn=conn)
+    target_month = plan_month or anchor
 
     # 3-month average for income + spending baseline (preferring data,
     # gracefully degrading to whatever exists).
@@ -519,9 +780,31 @@ def generate_starter_plan(mode: str = "normal",
         f"{em_y:04d}-{em_m:02d}-{end_last_day:02d}",
         conn=conn,
     )
-    income_avg   = float(cf.get("income", 0)) / 3 if cf else 0
-    spending_avg = float(cf.get("spending", 0)) / 3 if cf else 0
+    active_months = conn.execute("""
+        SELECT COUNT(DISTINCT substr(transaction_date,1,7))
+        FROM transactions
+        WHERE transaction_date BETWEEN ? AND ?
+    """, (f"{sm_y:04d}-{sm_m:02d}-01",
+          f"{em_y:04d}-{em_m:02d}-{end_last_day:02d}")).fetchone()[0]
+    divisor = max(1, min(3, int(active_months or 0)))
+    # Refunds belong in Money In for cash-flow reporting, but a one-off return
+    # is not dependable future income. Plan proposals remain based on earned
+    # and ordinary confirmed income only.
+    planning_types = transaction_types_for_role("planning_income")
+    planning_income = float(conn.execute(
+        "SELECT COALESCE(SUM(ABS(amount)),0) FROM transactions "
+        "WHERE transaction_type IN ("
+        + sql_type_placeholders(planning_types) + ") "
+        "AND transaction_date BETWEEN ? AND ?",
+        (*planning_types, f"{sm_y:04d}-{sm_m:02d}-01",
+         f"{em_y:04d}-{em_m:02d}-{end_last_day:02d}"),
+    ).fetchone()[0] or 0)
+    income_avg   = planning_income / divisor
+    spending_avg = float(cf.get("spending", 0)) / divisor if cf else 0
 
+    # A last transaction date is account activity, not statement coverage.
+    # Quiet savings and cash accounts often have no recent rows even when the
+    # user's imports are current, so they cannot make a proposal insufficient.
     insufficient = months_used < 1 or income_avg <= 0
 
     # Category targets — apply the mode's controllable cut, except for
@@ -550,10 +833,24 @@ def generate_starter_plan(mode: str = "normal",
             "difficulty":    difficulty,
         })
 
-    spending_target = sum(t["target_amount"] for t in targets) or spending_avg
+    historical_spending_target = (
+        sum(t["target_amount"] for t in targets) or spending_avg
+    )
     target_rate     = float(spec["target_savings_rate"])
-    income_target   = income_avg
-    savings_target  = max(0.0, income_target - spending_target)
+    income_target   = round(income_avg, 2)
+    safety_buffer = round(
+        max(25.0, min(250.0, income_target * 0.05)) if income_target else 0.0,
+        2,
+    )
+    spending_capacity = max(0.0, income_target - safety_buffer)
+    spending_target = round(
+        min(historical_spending_target, spending_capacity), 2
+    )
+    if historical_spending_target > spending_capacity:
+        insufficient = True
+    savings_target  = round(
+        max(0.0, income_target - spending_target - safety_buffer), 2
+    )
     if income_target > 0:
         proposed_rate = savings_target / income_target
     else:
@@ -601,12 +898,13 @@ def generate_starter_plan(mode: str = "normal",
         conn.close()
 
     return {
-        "month":             anchor,
+        "month":             target_month,
         "mode":              mode,
         "mode_label":        spec["label"],
         "income_target":     round(income_target, 2),
         "spending_target":   round(spending_target, 2),
         "savings_target":    round(savings_target, 2),
+        "safety_buffer":     round(safety_buffer, 2),
         "proposed_savings_rate": round(proposed_rate, 4),
         "target_savings_rate":  target_rate,
         "category_targets":  targets,
@@ -618,29 +916,210 @@ def generate_starter_plan(mode: str = "normal",
             "lookback_months_used": months_used,
             "income_avg":           round(income_avg, 2),
             "spending_avg":         round(spending_avg, 2),
+            "source": "canonical transaction types",
+            # Compatibility field for older desktop clients. Real coverage
+            # needs explicit statement-period metadata, not MAX(tx date).
+            "coverage_mismatch": False,
+            "history_spending_above_income": (
+                historical_spending_target > spending_capacity
+            ),
         },
         "insufficient_data": insufficient,
     }
 
 
+# ── One-minute plan confirm (rollover) ──────────────────────────────
+
+# Plain-language names for the three stances that cover most months.
+# The other PLAN_MODES stay reachable under Advanced; these are the
+# primary-path vocabulary.
+STANCE_LABELS = {
+    "normal": "Steady",
+    "tight":  "Tighter",
+    "reset":  "Recovery",
+}
+
+
+def plan_target_month(today=None) -> str:
+    """The month a NEW plan should target: the current calendar month.
+
+    Planning is deliberately decoupled from analysis_anchor() — the
+    anchor follows the imported data, which usually lags the calendar,
+    and 'update your plan' must always be able to mean *this* month.
+    """
+    if isinstance(today, str) and today:
+        today = date.fromisoformat(today)
+    if not isinstance(today, date):
+        today = date.today()
+    return today.strftime("%Y-%m")
+
+
+def plan_confirm_proposal(plan_month: Optional[str] = None,
+                          conn: Optional[sqlite3.Connection] = None,
+                          today=None,
+                          stance: Optional[str] = None) -> dict:
+    """The one-decision proposal for confirming `plan_month`'s plan.
+
+    Rollover-first (the pattern that makes monthly budgeting low-
+    maintenance in Monarch/YNAB): if a previous saved plan exists and
+    no stance override is given, carry its numbers forward. Otherwise
+    generate a steady starter plan from recent data.
+
+    Returns the same shape as generate_starter_plan plus:
+      source        'rollover' | 'generated'
+      source_label  plain-language provenance for the UI
+    """
+    from utils.database import get_connection, get_applicable_plan
+
+    close = conn is None
+    if close:
+        conn = get_connection()
+    try:
+        month = plan_month or plan_target_month(today)
+        previous = get_applicable_plan(month, conn=conn)
+        rollover_ok = (
+            previous is not None
+            and previous.get("month") != month   # not already confirmed
+            and stance is None
+        )
+        if rollover_ok:
+            proposal = generate_starter_plan(
+                mode=previous.get("mode") or "normal",
+                conn=conn, plan_month=month,
+            )
+            # Carry the agreed headline numbers forward verbatim; the
+            # regenerated category targets stay as fresh suggestions.
+            for k in ("income_target", "spending_target", "savings_target"):
+                if previous.get(k) is not None:
+                    proposal[k] = float(previous[k])
+            proposal["source"] = "rollover"
+            proposal["source_label"] = (
+                f"Carried forward from your {previous.get('month')} plan "
+                f"({STANCE_LABELS.get(previous.get('mode'), previous.get('mode'))})."
+            )
+            return proposal
+
+        proposal = generate_starter_plan(
+            mode=stance or "normal", conn=conn, plan_month=month,
+        )
+        proposal["source"] = "generated"
+        proposal["source_label"] = (
+            "Suggested from your recent months of imported data."
+        )
+        return proposal
+    finally:
+        if close:
+            conn.close()
+
+
+# ── One category-target truth ───────────────────────────────────────
+
+def resolve_category_targets(conn: Optional[sqlite3.Connection] = None,
+                             plan_month: Optional[str] = None,
+                             today=None) -> dict:
+    """The single source for 'what should category X be per month?'.
+
+    Priority per category:
+      1. the applicable saved plan's target      (source='plan')
+      2. 90-day average minus a 20% cut          (source='suggested')
+
+    Reduce, the recommendation engine, and runway watchlists must all
+    read from here — this is what ended the era of three different
+    Groceries targets on three pages.
+
+    Returns {category: {target, source, monthly_avg}}.
+    """
+    from utils.database import get_connection, get_applicable_plan
+
+    close = conn is None
+    if close:
+        conn = get_connection()
+    try:
+        month = plan_month or plan_target_month(today)
+        plan = get_applicable_plan(month, conn=conn) or {}
+        plan_targets = {
+            t.get("category"): float(t.get("target_amount") or 0)
+            for t in (plan.get("category_targets") or [])
+            if t.get("category") and float(t.get("target_amount") or 0) > 0
+        }
+
+        # 90-day per-category monthly average (same frame Reduce used).
+        from utils.financial_semantics import (
+            sql_type_placeholders, transaction_types_for_role,
+        )
+        spending_types = transaction_types_for_role("spending")
+        # Ninety days back from where the data genuinely reaches, not from
+        # MAX(transaction_date): a single row dated years ahead would slide
+        # this window past everything real and report near-zero averages.
+        from utils.analysis_period import supported_latest_date
+        anchor = supported_latest_date(conn=conn)
+        rows = conn.execute(
+            f"""
+            SELECT category, SUM(ABS(amount)) / 3.0 AS monthly_avg
+            FROM transactions
+            WHERE transaction_date >= date(?, '-90 days')
+              AND transaction_date <= ?
+              AND transaction_type IN ({sql_type_placeholders(spending_types)})
+            GROUP BY category
+            """,
+            [anchor.isoformat() if anchor else date.today().isoformat(),
+             anchor.isoformat() if anchor else date.today().isoformat(),
+             *spending_types],
+        ).fetchall()
+
+        out: dict = {}
+        for r in rows:
+            cat = r["category"] or "Uncategorized"
+            avg = float(r["monthly_avg"] or 0)
+            if cat in plan_targets:
+                out[cat] = {
+                    "target": round(plan_targets[cat], 2),
+                    "source": "plan",
+                    "monthly_avg": round(avg, 2),
+                }
+            else:
+                out[cat] = {
+                    "target": round(avg * 0.80, 2),
+                    "source": "suggested",
+                    "monthly_avg": round(avg, 2),
+                }
+        # Plan targets for categories with no recent spending still count.
+        for cat, tgt in plan_targets.items():
+            out.setdefault(cat, {
+                "target": round(tgt, 2), "source": "plan",
+                "monthly_avg": 0.0,
+            })
+        return out
+    finally:
+        if close:
+            conn.close()
+
+
 # ── Forecast ────────────────────────────────────────────────────────
 
 def forecast_month(plan_month: Optional[str] = None,
-                   conn: Optional[sqlite3.Connection] = None) -> dict:
+                   conn: Optional[sqlite3.Connection] = None,
+                   today=None) -> dict:
     """Project month-end income/spending/net for `plan_month`.
 
     Strategy:
       - MTD figures from compute_cashflow on (month_start, anchor_date).
       - "Anchor date" = min(today, last imported tx date in this month).
-      - Pace projection: spending_pace = mtd_spending * days_in_month
-        / max(days_elapsed, 1). Same for income.
-      - Add upcoming-bill estimate: bills not yet seen this month based
-        on last_seen prior to anchor.
+      - Spending is counted once per kind: fixed already paid, commitments
+        due this month, flexible so far, and the only projected term,
+        remaining flexible spending.
+      - Commitments are placed by the occurrence their cadence expects, so a
+        quarterly or annual invoice is charged to the month it falls due and
+        to no other.
+      - Expected income covers deposits whose date is still ahead. Money that
+        was due and did not arrive is dropped rather than assumed.
       - Risk levels by margin between projected_net and savings_target
         if a plan exists, else by absolute projected_net.
     """
-    from utils.database import get_connection, get_monthly_plan
-    from utils.analytics import compute_cashflow
+    from utils.database import get_connection, get_applicable_plan
+    from utils.analytics import (
+        compute_cashflow, scheduled_income_outlook, typical_monthly_income,
+    )
 
     close = conn is None
     if close:
@@ -651,26 +1130,34 @@ def forecast_month(plan_month: Optional[str] = None,
     start_iso, end_iso, days_in_month = _month_bounds(plan_month)
 
     # Anchor for "how much of the month have we seen". Latest tx date
-    # within the month if it lags today; otherwise today.
-    today = date.today()
+    # within the month if it lags today; otherwise today. `today` is
+    # injectable so the forecast and weekly check-in share one clock.
+    if isinstance(today, str) and today:
+        today_dt = date.fromisoformat(today)
+    elif isinstance(today, date):
+        today_dt = today
+    else:
+        today_dt = date.today()
     last_in_month_row = conn.execute(
         "SELECT MAX(transaction_date) FROM transactions "
         "WHERE transaction_date BETWEEN ? AND ?",
         (start_iso, end_iso),
     ).fetchone()
     last_in_month = last_in_month_row[0] if last_in_month_row else None
-
     if last_in_month:
         try:
             anchor_dt = date.fromisoformat(last_in_month)
         except Exception:
-            anchor_dt = today
+            anchor_dt = today_dt
     else:
-        anchor_dt = today
+        anchor_dt = today_dt
+
+    month_start = date.fromisoformat(start_iso)
+    month_end = date.fromisoformat(end_iso)
+    if month_start <= today_dt <= month_end:
+        anchor_dt = min(anchor_dt, today_dt)
 
     # Clamp anchor inside the plan month.
-    month_start = date.fromisoformat(start_iso)
-    month_end   = date.fromisoformat(end_iso)
     if anchor_dt < month_start:
         anchor_dt = month_start
     elif anchor_dt > month_end:
@@ -683,43 +1170,183 @@ def forecast_month(plan_month: Optional[str] = None,
     mtd_income   = float(cf.get("income",   0))
     mtd_spending = float(cf.get("spending", 0))
 
-    # Upcoming bills not yet hit this month.
+    # Reviewed commitments still to land this month, placed by the occurrence
+    # the cadence detector expects rather than by mere silence. A quarterly or
+    # annual invoice belongs to one month a year, not to every month.
+    #
+    # The full invoice is charged in the month it falls due. The monthly
+    # set-aside Plan keeps for the same bill is a different question — how to
+    # save up for it — and lives in the plan equation, so neither figure is
+    # counted twice inside the other.
     bills = bills_and_commitments(conn=conn)
     upcoming_bills_total = 0.0
     upcoming_bills_count = 0
+    overdue_bills_total = 0.0
+    overdue_bills_count = 0
+    upcoming_bills: list[dict] = []
     for item in bills["items"]:
         if not item.get("included_in_forecast"):
             continue
-        ls = item.get("last_seen") or ""
-        try:
-            last_dt = date.fromisoformat(ls) if ls else None
-        except Exception:
-            last_dt = None
-        # If we haven't seen this merchant this month yet, treat as
-        # likely-upcoming.
-        if not last_dt or last_dt < month_start:
-            upcoming_bills_total += float(item.get("est_amount") or 0)
+        placement = commitment_placement(item, plan_month)
+        if placement in ("paid", "other_month"):
+            continue
+        amount = float(item.get("est_amount") or 0)
+        if placement == "overdue":
+            overdue_bills_total += amount
+            overdue_bills_count += 1
+        else:
+            upcoming_bills_total += amount
             upcoming_bills_count += 1
+        upcoming_bills.append({
+            "merchant": item.get("merchant"),
+            "amount": round(amount, 2),
+            "cadence": item.get("cadence"),
+            "expected_next": item.get("expected_next"),
+            "status": placement,
+        })
 
-    # Pace projection from month-to-date numbers.
-    pace_factor = days_in_month / max(days_elapsed, 1)
-    projected_spending_pace = mtd_spending * pace_factor
-    # Take whichever is larger: pure pace OR mtd + remaining bills.
-    projected_spending = max(projected_spending_pace,
-                             mtd_spending + upcoming_bills_total)
-    projected_income = mtd_income * pace_factor
+    # An occurrence whose date has passed unseen is still likely to be paid,
+    # so the money stays in projected spending. It is reported apart from the
+    # ordinary upcoming bills, because calling it "expected on the 16th" three
+    # weeks after the 16th is not a description of anything.
+    committed_bills_total = upcoming_bills_total + overdue_bills_total
+    overdue_bills_note = ""
+    if overdue_bills_count:
+        overdue_bills_note = (
+            f"{overdue_bills_count} commitment(s) worth "
+            f"${overdue_bills_total:,.0f} were expected before this month and "
+            f"have not been imported. Still allowed for, not confirmed."
+        )
+
+    # Project only the spending that behaves like a rate.
+    #
+    # This used to be mtd_spending * days_in_month / days_elapsed. Rent lands
+    # on the 1st, so on day one that multiplied the month's largest
+    # commitment by the number of days in the month: $1,800 of rent became a
+    # projected $55,800 and a "danger" verdict, and the alarm persisted for
+    # about three weeks every month until the arithmetic caught up. A bill is
+    # an event, not a rate.
+    #
+    # Each kind of money is now counted exactly once:
+    #
+    #     fixed already paid
+    #   + reviewed fixed commitments due this month (committed_bills_total)
+    #   + flexible spending so far
+    #   + projected remaining flexible spending     (the only projected term)
+    from utils.insights import _flexible_spending_so_far, statement_coverage
+
+    flexible_mtd = _flexible_spending_so_far(
+        start_iso, anchor_dt.isoformat(), bills["items"], conn,
+    )
+    fixed_mtd = max(0.0, mtd_spending - flexible_mtd)
+
+    # What this household actually spent over the same stretch of days in
+    # comparable complete months. Real history beats extrapolating a handful
+    # of early days, and it carries the shape of a month with it.
+    remainders: list[float] = []
+    if days_remaining > 0:
+        coverage = statement_coverage(conn=conn) or {}
+        for past_month in (coverage.get("complete_months") or [])[-6:]:
+            if past_month >= plan_month:
+                continue
+            past_year, past_number = int(past_month[:4]), int(past_month[5:7])
+            past_days = calendar.monthrange(past_year, past_number)[1]
+            if days_elapsed >= past_days:
+                continue
+            remainders.append(_flexible_spending_so_far(
+                f"{past_month}-{days_elapsed + 1:02d}",
+                f"{past_month}-{past_days:02d}",
+                bills["items"], conn,
+            ))
+
+    if days_remaining <= 0:
+        projected_remaining_flexible = 0.0
+        forecast_confidence = "normal"
+    elif len(remainders) >= 2:
+        projected_remaining_flexible = sum(remainders) / len(remainders)
+        forecast_confidence = "normal"
+    else:
+        # No comparable history, so the only option is the daily rate of the
+        # flexible spending seen so far. Early in a month that is a handful
+        # of days deciding a whole month, which is worth saying rather than
+        # dressing up as a verdict.
+        daily_flexible = flexible_mtd / max(days_elapsed, 1)
+        projected_remaining_flexible = daily_flexible * days_remaining
+        forecast_confidence = "low" if days_elapsed >= 5 else "insufficient"
+
+    projected_spending = (
+        fixed_mtd + committed_bills_total
+        + flexible_mtd + projected_remaining_flexible
+    )
+    plan = get_applicable_plan(plan_month, conn=conn)
+    current_income_baseline = typical_monthly_income(conn=conn)
+    planned_income = float(
+        current_income_baseline.get("amount")
+        or (plan or {}).get("income_target")
+        or 0
+    )
+    # The authoritative risk result uses money received, never planned or
+    # pace-inferred income. Expected future payroll remains useful context, but
+    # it is a separate forecast and cannot make a danger result look on track.
+    projected_income = mtd_income
+    projected_income_source = "received_only"
+
+    # Only income with a date still ahead of it can support the outlook.
+    #
+    # This used to be max(mtd_income, planned_income): the whole historical
+    # baseline, counted as though it were still coming however late in the
+    # month it was. A household whose second payroll never arrived was told it
+    # was on track on the 28th, because the missing $2,500 was folded in as if
+    # received. Money that was due and did not arrive is now dropped, and the
+    # verdict it was propping up is dropped with it.
+    income_outlook = scheduled_income_outlook(
+        plan_month, anchor=anchor_dt, conn=conn,
+    )
+    missed_income = float(income_outlook["missed"])
+    if income_outlook["scheduled_detected"]:
+        expected_income_remaining = float(income_outlook["expected_remaining"])
+        expected_income_basis = "scheduled_arrivals"
+    else:
+        # No detectable rhythm, so there is no payday to point at. The
+        # baseline may still be broadly right, but its claim on the month
+        # decays as the month runs out: by the last week, income that has
+        # not arrived and cannot be dated is not a forecast, it is a hope.
+        remaining_share = max(0, days_remaining) / float(days_in_month or 1)
+        expected_income_remaining = round(max(
+            0.0, (planned_income - mtd_income) * remaining_share,
+        ), 2)
+        expected_income_basis = (
+            "prorated_baseline" if planned_income > 0 else "received_only"
+        )
+    expected_income_forecast = round(mtd_income + expected_income_remaining, 2)
     projected_net = projected_income - projected_spending
+    expected_projected_net = expected_income_forecast - projected_spending
     projected_rate = (
         projected_net / projected_income if projected_income > 0 else 0.0
     )
 
-    # Risk classification.
-    plan = get_monthly_plan(plan_month, conn=conn)
+    # Risk classification. A verdict is only as good as the projection it
+    # rests on, so an unsupported early month says so rather than declaring
+    # a disaster on the strength of three days.
     if mtd_income == 0 and mtd_spending == 0:
         risk = "insufficient_data"
+    elif forecast_confidence == "insufficient":
+        risk = "insufficient_data"
     else:
+        # The verdict is about how the month is likely to END, so it reads
+        # the outlook figure, which counts income the baseline says is still
+        # coming. Reading received-only income made every month before the
+        # second payroll look like a disaster: on day two the household had
+        # paid a full month of rent and received half a month of pay, so the
+        # net was negative and the screen said danger about a month that was
+        # entirely on course.
+        #
+        # projected_net stays received-only and stays authoritative for cash
+        # questions. Safe to Spend never reads this branch.
+        outlook_net = expected_projected_net
+        outlook_income = max(expected_income_forecast, 1.0)
         if plan and plan.get("savings_target"):
-            margin = projected_net - float(plan["savings_target"])
+            margin = outlook_net - float(plan["savings_target"])
             if margin >= 0:
                 risk = "on_track"
             elif margin >= -0.10 * float(plan["savings_target"] or 1):
@@ -727,30 +1354,39 @@ def forecast_month(plan_month: Optional[str] = None,
             else:
                 risk = "danger"
         else:
-            if projected_net >= 0.10 * max(projected_income, 1):
+            if outlook_net >= 0.10 * outlook_income:
                 risk = "on_track"
-            elif projected_net >= 0:
+            elif outlook_net >= 0:
                 risk = "watch"
             else:
                 risk = "danger"
 
+    # A payday that came and went without the money is the one thing that
+    # must never read as on track. The arithmetic above no longer counts the
+    # missing deposit, so it usually lands on watch by itself; this makes it
+    # a rule rather than a coincidence, and lowers the confidence with it so
+    # nothing about the month is stated more firmly than the data supports.
+    if missed_income > 0:
+        if risk == "on_track":
+            risk = "watch"
+        if forecast_confidence == "normal":
+            forecast_confidence = "low"
+
     # Top forecast drivers — three biggest spending categories MTD.
-    driver_rows = conn.execute("""
-        SELECT category, SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE direction='debit' AND is_transfer=0
-          AND transaction_date BETWEEN ? AND ?
-          AND category NOT IN ('Credit Card Payment','Cancelled')
-        GROUP BY category
-        ORDER BY total DESC
-        LIMIT 3
-    """, (start_iso, anchor_dt.isoformat())).fetchall()
-    drivers = [{"category": r[0], "total": float(r[1] or 0)} for r in driver_rows]
+    from config.categories import SPENDING_CATEGORIES
+    from utils.database import get_category_totals
+    drivers = [
+        {"category": row["category"], "total": float(row["total"] or 0)}
+        for row in get_category_totals(
+            start_iso, anchor_dt.isoformat(), share_view="personal", conn=conn
+        )
+        if row["category"] in SPENDING_CATEGORIES
+    ][:3]
 
     safe_to_spend_val = None
     if plan and plan.get("spending_target"):
         # spending_target − projected_already_committed.
-        already = mtd_spending + upcoming_bills_total
+        already = mtd_spending + committed_bills_total
         safe_to_spend_val = max(0.0, float(plan["spending_target"]) - already)
 
     if close:
@@ -767,6 +1403,14 @@ def forecast_month(plan_month: Optional[str] = None,
         "mtd_net":            round(mtd_income - mtd_spending, 2),
         "upcoming_bills_total": round(upcoming_bills_total, 2),
         "upcoming_bills_count": upcoming_bills_count,
+        # An occurrence whose expected date has already passed unseen. Kept
+        # apart from the ordinary upcoming bills so no screen can describe it
+        # as merely "expected" long after the date it was expected on.
+        "overdue_bills_total": round(overdue_bills_total, 2),
+        "overdue_bills_count": overdue_bills_count,
+        "overdue_bills_note": overdue_bills_note,
+        "committed_bills_total": round(committed_bills_total, 2),
+        "upcoming_bills": upcoming_bills,
         # Pass 23: variable retail watched separately. NOT added to
         # projected_spending or safe_to_spend math — surfaced so the
         # UI can show "you ALSO spend ~$X/mo on recurring variable
@@ -776,28 +1420,54 @@ def forecast_month(plan_month: Optional[str] = None,
         "recurring_variable_watch_count":
             int(bills.get("variable_count") or 0),
         "projected_income":   round(projected_income, 2),
+        "projected_income_source": projected_income_source,
+        "expected_income_forecast": round(expected_income_forecast, 2),
+        "expected_income_remaining": round(expected_income_remaining, 2),
+        "expected_projected_net": round(expected_projected_net, 2),
+        # How the expectation was arrived at, and what was due and did not
+        # turn up. Received and expected stay visibly separate figures.
+        "expected_income_basis": expected_income_basis,
+        "missed_income_total": round(missed_income, 2),
+        "income_note": str(income_outlook.get("note") or ""),
         "projected_spending": round(projected_spending, 2),
         "projected_net":      round(projected_net, 2),
         "projected_savings_rate": round(projected_rate, 4),
         "drivers":            drivers,
         "risk_level":         risk,
-        "safe_to_spend":      (round(safe_to_spend_val, 2)
-                               if safe_to_spend_val is not None else None),
+        # remaining_spending_cap used to sit here: a second Safe to Spend,
+        # computed differently from safe_to_spend_summary and read by
+        # nothing. Two ways to answer one question is how they drift apart.
         "has_plan":           bool(plan),
+        # Compatibility fields. Different last-transaction dates cannot prove
+        # that any statement is missing, so they do not lower confidence.
+        "cutoff_gap_days":    0,
+        "coverage_warning":   "",
+        "confidence":         forecast_confidence,
+        # The components, so a screen can show its working and nobody has to
+        # reverse-engineer which part was projected.
+        "fixed_paid_so_far":  round(fixed_mtd, 2),
+        "flexible_so_far":    round(flexible_mtd, 2),
+        "projected_remaining_flexible":
+            round(projected_remaining_flexible, 2),
+        "flexible_basis": (
+            "comparable_months" if len(remainders) >= 2 else "recent_days"
+        ),
     }
 
 
 def safe_to_spend(plan: dict, conn: Optional[sqlite3.Connection] = None) -> dict:
-    """Wrap forecast_month with the plan's spending_target.
+    """Return the canonical current-balance Safe to Spend result.
 
-    Returns {amount, basis, anchor_date}. Amount may be None if the
-    plan has no spending_target.
+    ``plan`` remains accepted for compatibility, but the result is never
+    derived from a planned spending cap or unreceived income.
     """
-    fc = forecast_month(plan_month=plan.get("month"), conn=conn)
+    from utils.checkin import safe_to_spend_summary
+
+    result = safe_to_spend_summary(conn=conn)
     return {
-        "amount":      fc.get("safe_to_spend"),
-        "anchor_date": fc.get("anchor_date"),
-        "basis":       "spending_target − (MTD spending + upcoming bills)",
+        **result,
+        "anchor_date": result.get("period_end") or "",
+        "basis": "available balances minus confirmed reservations",
     }
 
 
@@ -817,61 +1487,6 @@ def _next_milestone(value: float) -> float:
 
 def goal_progress(goals: list[dict],
                   conn: Optional[sqlite3.Connection] = None) -> list[dict]:
-    """Compute progress for each goal. Auto-derives current_amount when
-    `linked_metric` is set.
-
-    Linked metrics:
-      'net_worth'      → compute_net_worth_now().net_worth
-      'investments'    → latest investment snapshot total_market_value
-      'cash_balance'   → sum of latest balances where account_kind in
-                         {cash, chequing, savings}
-    """
-    from utils.database import (
-        get_connection, compute_net_worth_now,
-        get_latest_investment_snapshot, get_account_balances,
-        ASSET_KINDS,
-    )
-    close = conn is None
-    if close:
-        conn = get_connection()
-
-    nw = compute_net_worth_now(conn=conn)
-    snap = get_latest_investment_snapshot(conn=conn)
-    bals = get_account_balances(conn=conn, latest_only=True)
-    cash_total = sum(
-        float(b.get("balance") or 0)
-        for b in bals
-        if (b.get("account_kind") or "") in {"cash", "chequing", "savings"}
-    )
-
-    out = []
-    for g in goals:
-        g_out = dict(g)
-        link = (g.get("linked_metric") or "").lower()
-        if link == "net_worth":
-            g_out["current_amount"] = float(nw.get("net_worth") or 0)
-        elif link == "investments":
-            g_out["current_amount"] = float(
-                snap.get("total_market_value_native") if snap else 0
-            )
-        elif link == "cash_balance":
-            g_out["current_amount"] = float(cash_total)
-        else:
-            g_out["current_amount"] = float(g.get("current_amount") or 0)
-
-        target = float(g.get("target_amount") or 0)
-        cur    = float(g_out["current_amount"] or 0)
-        if target > 0:
-            pct = max(0.0, min(1.0, cur / target))
-        else:
-            pct = 0.0
-        g_out["progress_pct"] = round(pct, 4)
-        g_out["gap"] = round(max(0.0, target - cur), 2)
-        g_out["next_milestone"] = (
-            round(_next_milestone(cur), 2) if cur >= 0 else None
-        )
-        out.append(g_out)
-
-    if close:
-        conn.close()
-    return out
+    """Backward-compatible wrapper for the unified goals service."""
+    from utils.goals import goal_progress as _goal_progress
+    return _goal_progress(goals, conn=conn)

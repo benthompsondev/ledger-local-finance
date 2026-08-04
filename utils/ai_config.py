@@ -20,10 +20,10 @@ Shape:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Optional
+from utils.platform_utils import get_config_path
 
-CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+CONFIG_PATH = get_config_path()
 
 SUPPORTED_PROVIDERS = ("minimax", "anthropic", "openai")
 
