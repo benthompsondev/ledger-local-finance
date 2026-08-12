@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Any, Callable, TextIO
 MAX_IMPORT_FILES = 12
 PREVIEW_SAMPLE_ROWS = 12
 DEFAULT_TX_LIMIT = 250
+MAX_PLAN_AMOUNT = 1_000_000_000.0
 
 
 def _data_root() -> Path:
@@ -2334,15 +2336,39 @@ def _plan_impossible_message(equation: dict[str, Any]) -> str:
     )
 
 
+def _plan_amount(value: Any, label: str) -> float:
+    """Return one safe, user-entered planning amount.
+
+    JSON normally carries finite numbers, but the Python sidecar is still a
+    public trust boundary: non-standard JSON and direct callers can supply
+    NaN or infinity. Letting either reach SQLite makes every later comparison
+    and total unreliable.
+    """
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} must be a number.") from None
+    if not math.isfinite(amount):
+        raise ValueError(f"{label} must be a real number.")
+    if amount < 0:
+        raise ValueError("Plan amounts cannot be negative.")
+    if amount > MAX_PLAN_AMOUNT:
+        raise ValueError(
+            f"{label} looks like a typo at ${amount:,.2f}. "
+            "Check the figure before saving."
+        )
+    return round(amount, 2)
+
+
 def _plan_equation(params: dict[str, Any]) -> dict[str, Any]:
     """Return the authoritative monthly plan equation for the UI."""
-    income = round(max(0.0, float(params.get("income_target") or 0)), 2)
-    fixed = round(max(0.0, float(params.get("fixed_obligations") or 0)), 2)
-    savings = round(max(0.0, float(params.get("savings_target") or 0)), 2)
-    nonmonthly = round(
-        max(0.0, float(params.get("nonmonthly_reserves") or 0)), 2
+    income = _plan_amount(params.get("income_target"), "Expected income")
+    fixed = _plan_amount(params.get("fixed_obligations"), "Fixed costs")
+    savings = _plan_amount(params.get("savings_target"), "Savings target")
+    nonmonthly = _plan_amount(
+        params.get("nonmonthly_reserves"), "Nonmonthly reserves"
     )
-    buffer = round(max(0.0, float(params.get("safety_buffer") or 0)), 2)
+    buffer = _plan_amount(params.get("safety_buffer"), "Safety buffer")
     flexible = round(income - fixed - nonmonthly - savings - buffer, 2)
     equation = {
         "income": income,
@@ -2409,6 +2435,13 @@ def preview_plan_action(params: dict[str, Any]) -> dict[str, Any]:
     from utils.planner import bills_and_commitments
 
     values = dict(params)
+    for key, label in (
+        ("income_target", "Expected income"),
+        ("fixed_obligations", "Fixed costs"),
+        ("savings_target", "Savings target"),
+        ("safety_buffer", "Safety buffer"),
+    ):
+        values[key] = _plan_amount(params.get(key), label)
     # Read the reserve here rather than trusting the caller to send it, so a
     # preview can never show more flexible room than a save would allow.
     conn = _connection()
@@ -2419,7 +2452,7 @@ def preview_plan_action(params: dict[str, Any]) -> dict[str, Any]:
     finally:
         conn.close()
     if params.get("apply_preset"):
-        income = max(0.0, float(params.get("income_target") or 0))
+        income = values["income_target"]
         mode = str(params.get("mode") or "normal")
         savings_rate, buffer_rate = {
             "normal": (0.15, 0.05),
@@ -2429,14 +2462,14 @@ def preview_plan_action(params: dict[str, Any]) -> dict[str, Any]:
         values["savings_target"] = round(income * savings_rate, 2)
         values["safety_buffer"] = round(min(500.0, income * buffer_rate), 2)
     elif params.get("apply_preference"):
-        preference_value = max(
-            0.0, float(params.get("savings_preference_value") or 0)
+        preference_value = _plan_amount(
+            params.get("savings_preference_value"), "Savings preference"
         )
         if params.get("savings_preference_style") == "amount":
             values["savings_target"] = preference_value
         else:
             values["savings_target"] = round(
-                float(params.get("income_target") or 0)
+                values["income_target"]
                 * preference_value / 100.0, 2
             )
     equation = _plan_equation(values)
@@ -2475,16 +2508,17 @@ def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
     if mode not in PLAN_MODES:
         raise ValueError("Choose a valid planning stance.")
     values = {
-        key: float(params.get(key) or 0)
-        for key in (
-            "income_target", "fixed_obligations", "flexible_allowance",
-            "savings_target", "safety_buffer",
+        key: _plan_amount(params.get(key), label)
+        for key, label in (
+            ("income_target", "Expected income"),
+            ("fixed_obligations", "Fixed costs"),
+            ("flexible_allowance", "Flexible spending"),
+            ("savings_target", "Savings target"),
+            ("safety_buffer", "Safety buffer"),
         )
     }
     if values["income_target"] <= 0:
         raise ValueError("Expected income must be greater than zero.")
-    if any(value < 0 for value in values.values()):
-        raise ValueError("Plan amounts cannot be negative.")
     # The reserve is derived from real commitments, never sent by the client,
     # so a saved plan reserves the same amount the preview showed.
     reserve_conn = _connection()

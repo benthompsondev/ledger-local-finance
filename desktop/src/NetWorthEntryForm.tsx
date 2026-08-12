@@ -84,7 +84,8 @@ export function NetWorthEntryForm({
     <div className="nw-entry-form">
       <div className="form-grid">
         <label>Month
-          <input type="month" value={fields.month} onChange={set("month")} />
+          <input type="month" value={fields.month} max={prefill.month}
+            onChange={set("month")} />
           <small>Saving a month twice corrects it. It never doubles up.</small>
         </label>
         <label>Cash

@@ -694,7 +694,7 @@ def monthly_progress(conn: Optional[sqlite3.Connection] = None,
     calendar_month = t.strftime("%Y-%m")
     c, opened = _conn(conn)
     try:
-        month = analysis_anchor(conn=c)
+        month = analysis_anchor(conn=c, today=t)
         plan = get_applicable_plan(month, conn=c)
         has_current_plan = get_monthly_plan(calendar_month, conn=c) is not None
         fc = forecast_month(plan_month=month, conn=c, today=t) or {}

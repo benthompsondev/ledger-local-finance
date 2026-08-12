@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import Optional
 
 # \Z, not $. In Python $ also matches just before a trailing newline, so
@@ -225,13 +226,23 @@ def _clean_amount(value, field: str) -> float:
 
 
 def save_entry(month: str, *, cash=0, investments=0, other_assets=0,
-               liabilities=0, note: str = "", conn=None) -> dict:
+               liabilities=0, note: str = "", conn=None, today=None) -> dict:
     """Record or correct one month. The month is the key, so this is a
     correction whenever that month already exists."""
     c, opened = _conn(conn)
     try:
         _ensure_table(c)
         month = _valid_month(month)
+        current_month = (
+            today.strftime("%Y-%m") if isinstance(today, date)
+            else str(today)[:7] if today
+            else date.today().strftime("%Y-%m")
+        )
+        if month > current_month:
+            raise ValueError(
+                "Net worth can only be recorded for this month or an earlier "
+                "month. Future values would be a projection, not a reading."
+            )
         values = {
             "cash": _clean_amount(cash, "cash"),
             "investments": _clean_amount(investments, "investments"),

@@ -206,7 +206,8 @@ def _classify_commitment(category: Optional[str]) -> str:
 
 # ── Anchor / window helpers ────────────────────────────────────────
 
-def analysis_anchor(conn: Optional[sqlite3.Connection] = None) -> str:
+def analysis_anchor(conn: Optional[sqlite3.Connection] = None,
+                    today=None) -> str:
     """Return 'YYYY-MM' to treat as the current analysis month.
 
     The month of the last date the data genuinely reaches, falling back to
@@ -220,7 +221,7 @@ def analysis_anchor(conn: Optional[sqlite3.Connection] = None) -> str:
     """
     from utils.analysis_period import analysis_month
 
-    return analysis_month(conn=conn)
+    return analysis_month(conn=conn, today=today)
 
 
 def _month_bounds(month: str) -> tuple[str, str, int]:
@@ -758,7 +759,15 @@ def generate_starter_plan(mode: str = "normal",
         conn = get_connection()
 
     spec = PLAN_MODES.get(mode, PLAN_MODES["normal"])
-    anchor = analysis_anchor(conn=conn)
+    # Planning baselines follow the latest supported DATA month, even when
+    # the import is old enough that user-facing screens correctly switch to
+    # the calendar month and call the data stale. Using that calendar fallback
+    # here shifted the three-month window into empty months and understated a
+    # steady income history (for example, $2,000 became $1,333.33).
+    from utils.analysis_period import analysis_context
+
+    context = analysis_context(conn=conn)
+    anchor = context.get("data_month") or context["analysis_month"]
     target_month = plan_month or anchor
 
     # 3-month average for income + spending baseline (preferring data,

@@ -176,9 +176,9 @@ def test_saving_another_month_does_not_rerun_the_migration(ledger) -> None:
     list_entries()
     delete_entry("2026-02")
 
-    save_entry("2026-09", cash=500.0)
+    save_entry("2026-08", cash=500.0)
 
-    assert [e["month"] for e in list_entries()] == ["2026-09"]
+    assert [e["month"] for e in list_entries()] == ["2026-08"]
 
 
 # ── it interacts correctly with the destructive paths ────────────────────

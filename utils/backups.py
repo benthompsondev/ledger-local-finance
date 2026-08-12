@@ -14,6 +14,14 @@ from typing import Optional
 DEFAULT_RETENTION = 20
 _LOCK = threading.RLock()
 _REQUIRED_TABLES = {"transactions", "import_log", "goal_targets"}
+_REQUIRED_COLUMNS = {
+    "transactions": {
+        "id", "account_type", "transaction_date", "raw_description",
+        "amount", "direction", "dedup_hash",
+    },
+    "import_log": {"id", "filename", "file_hash", "rows_inserted"},
+    "goal_targets": {"id", "name", "target_amount", "current_amount", "status"},
+}
 _LEGACY_TABLES = _REQUIRED_TABLES | {
     "budgets", "profiles", "learned_rules", "recommendations_log"
 }
@@ -68,6 +76,58 @@ def validate_database(path: Path, *, allow_legacy: bool = False) -> dict:
                 "This is not a Ledger backup. Missing tables: "
                 + ", ".join(missing)
             )
+        if not allow_legacy:
+            for table, required in _REQUIRED_COLUMNS.items():
+                columns = {
+                    row[1] for row in conn.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                }
+                missing_columns = sorted(required - columns)
+                if missing_columns:
+                    raise BackupValidationError(
+                        "This backup is missing required Ledger fields in "
+                        f"{table}: {', '.join(missing_columns)}"
+                    )
+            dedup_is_unique = False
+            for index in conn.execute(
+                "PRAGMA index_list(transactions)"
+            ).fetchall():
+                if not index[2]:
+                    continue
+                indexed = {
+                    row[2] for row in conn.execute(
+                        f"PRAGMA index_info({index[1]})"
+                    ).fetchall()
+                }
+                if indexed == {"dedup_hash"}:
+                    dedup_is_unique = True
+                    break
+            if not dedup_is_unique:
+                raise BackupValidationError(
+                    "This backup is missing Ledger's transaction duplicate "
+                    "protection. It was not restored."
+                )
+            invalid = conn.execute(
+                """
+                SELECT id FROM transactions
+                WHERE transaction_date IS NULL
+                   OR strftime('%Y-%m-%d', transaction_date) IS NULL
+                   OR strftime('%Y-%m-%d', transaction_date) != transaction_date
+                   OR amount IS NULL
+                   OR typeof(amount) NOT IN ('integer', 'real')
+                   OR NOT (amount < 1e308 AND amount > -1e308)
+                   OR direction NOT IN (
+                       'credit', 'debit', 'payment', 'transfer', 'cancelled'
+                   )
+                LIMIT 1
+                """
+            ).fetchone()
+            if invalid is not None:
+                raise BackupValidationError(
+                    "This backup contains a malformed transaction and was "
+                    "not restored."
+                )
         tx_count = int(conn.execute(
             "SELECT COUNT(*) FROM transactions"
         ).fetchone()[0]) if "transactions" in tables else 0

@@ -238,7 +238,7 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
           )}
 
           <article className="metric-card safe-secondary-card">
-            <span className="eyebrow">{packet.safe_to_spend.available && packet.safe_to_spend.reserved.basis === "flow" ? "Estimated left for everyday spending" : "Safe to Spend · balance-checked"}</span>
+            <span className="eyebrow">{!packet.safe_to_spend.available ? "Safe to spend now" : packet.safe_to_spend.reserved.basis === "flow" ? "Estimated left for everyday spending" : "Safe to Spend · balance-checked"}</span>
             <strong>{packet.safe_to_spend.available ? money(packet.safe_to_spend.amount) : "Not available"}</strong>
             <p>{packet.safe_to_spend.available ? (packet.safe_to_spend.reserved.basis === "flow" ? `Not balance-checked · ${packet.safe_to_spend.reserved.income_basis_label||"estimated from your history"}` : `${packet.safe_to_spend.confidence} confidence · cash available now after confirmed reservations`) : packet.safe_to_spend.reason}</p>
             {!packet.safe_to_spend.available && packet.safe_to_spend.setup_screen && <button className="ghost-button" type="button" onClick={()=>onNavigate(packet.safe_to_spend.setup_screen!)}>Finish setup</button>}

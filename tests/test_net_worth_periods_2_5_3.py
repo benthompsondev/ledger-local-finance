@@ -36,7 +36,7 @@ def ledger(monkeypatch, tmp_path):
 
 def _readings(pairs: list[tuple[str, float]]) -> None:
     for month, cash in pairs:
-        save_entry(month, cash=cash)
+        save_entry(month, cash=cash, today="2099-12-31")
 
 
 SPARSE = [("2026-01", 100.0), ("2026-02", 200.0),

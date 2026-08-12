@@ -309,6 +309,33 @@ def test_separate_activity_preview_and_confirm_agree(
     assert preview["duplicate_count"] == saved["skipped"] == 0
 
 
+def test_confirm_recalculates_when_the_database_changes_after_preview(
+    tmp_path, account,
+) -> None:
+    """Preview is guidance, not a stale write plan.
+
+    Another sidecar may import the file while the confirmation screen is
+    still open. Confirm must use the database as it exists at that moment and
+    calmly skip the rows, never replay the preview's earlier insert count.
+    """
+    statement = _write(tmp_path, "preview-race.csv", [
+        ("2026-05-02", "INVENTED GROCER", "-42.10"),
+        ("2026-05-03", "INVENTED PAYROLL", "1500.00"),
+    ])
+
+    preview = _engine("preview_import", files=[{
+        "path": statement, "account_id": account,
+    }])["data"]["files"][0]
+    assert preview["new_transaction_count"] == 2
+
+    concurrent = _import(statement, account)
+    confirmed = _import(statement, account)
+
+    assert concurrent == {"inserted": 2, "skipped": 0, "flagged": 0}
+    assert confirmed == {"inserted": 0, "skipped": 2, "flagged": 0}
+    assert len(_rows()) == 2
+
+
 def test_multi_file_preview_uses_selected_file_order_without_saving(
     tmp_path, account,
 ) -> None:

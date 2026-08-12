@@ -69,6 +69,7 @@ def _record(month: str, cash=0, investments=0, other_assets=0, liabilities=0):
     return save_entry(
         month, cash=cash, investments=investments,
         other_assets=other_assets, liabilities=liabilities,
+        today="2099-12-31",
     )
 
 
