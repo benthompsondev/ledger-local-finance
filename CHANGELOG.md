@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.6.2 - 2026-08-12
+
+A trust-boundary release. No new features.
+
+### What changed
+
+- Plan now refuses non-finite and implausibly large amounts before they can
+  reach SQLite or any forecast.
+- Restore checks the core Ledger schema, duplicate constraint and transaction
+  rows before a selected database can replace the working one.
+- Historical calculations now respect their supplied date instead of quietly
+  reading the computer's current month.
+- A stale import no longer shifts the starter-plan baseline into empty recent
+  months and understates typical income.
+- Net worth refuses future-month entries because those are projections, not
+  recorded readings.
+- An unavailable Safe to Spend result no longer labels itself balance-checked.
+- Added regression coverage for import preview races and backups taken while a
+  WAL writer has an uncommitted row.
+
 ## 2.6.1 - 2026-08-04
 
 A stabilization release. No new features.

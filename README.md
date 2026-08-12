@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.6.1_x64-setup.exe
+NorthstarLedger_2.6.2_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,10 +58,10 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.6.1. Windows public beta.** It works, it is tested, and it
-is still a beta. This release fixes the intermittent database-lock error that
-could appear when several screens loaded at once, along with a stale Plan
-preview race.
+**Current release: 2.6.2. Windows public beta.** It works, it is tested, and it
+is still a beta. This release tightens Plan input validation, refuses damaged
+backup files before they can replace a working database, and fixes two date
+edge cases that could distort a plan built from older imports.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.

@@ -1,7 +1,7 @@
 {
   "name": "ledger-native-desktop",
   "private": true,
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Northstar Ledger native desktop",
   "type": "module",
   "scripts": {
