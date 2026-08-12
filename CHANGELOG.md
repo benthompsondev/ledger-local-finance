@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.6.3 - 2026-08-12
+
+An Insights comparison fix. No new features.
+
+### What changed
+
+- Finished months remain complete when normal statement exports are split
+  across legitimate account files or contain quiet days.
+- Truly partial or stitched-together coverage remains excluded from finished
+  month comparisons.
+- Prior-month comparisons and rolling averages now disclose and use the months
+  that actually qualify.
+- The best finished month keeps its real sign when every finished month is
+  negative.
+
 ## 2.6.2 - 2026-08-12
 
 A trust-boundary release. No new features.
