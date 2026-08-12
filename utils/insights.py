@@ -112,6 +112,7 @@ _MR_MIN_END_OF_MONTH_LAG = 7
 _MR_MIN_START_OF_MONTH_LAG = 10
 _MR_MIN_COMPLETE_DAYS = 3
 _MR_MIN_SPAN_DAYS = 14
+_MR_MAX_COMPOSITE_GAP_DAYS = 14
 
 
 def statement_coverage(conn=None) -> dict:
@@ -151,6 +152,8 @@ def statement_coverage(conn=None) -> dict:
     first_supported, last_supported = supported_date_bounds(conn=c)
     rows = []
     per_statement: dict[str, list] = {}
+    per_account: dict[str, list] = {}
+    statement_summaries: list = []
     if first_supported is not None and last_supported is not None:
         rows = c.execute(
             """
@@ -190,6 +193,46 @@ def statement_coverage(conn=None) -> dict:
             (first_supported.isoformat(), last_supported.isoformat()),
         ).fetchall():
             per_statement.setdefault(row["month"] or "", []).append(row)
+        # CSV exports do not normally contain a statement start/end date. In
+        # that case the strongest boundary available is one account's combined
+        # imports. Keep this separate from the household aggregate so an early
+        # chequing fragment and a late card fragment can never form a month.
+        for row in c.execute(
+            """
+            SELECT
+                strftime('%Y-%m', transaction_date) AS month,
+                COALESCE(account_ref, -1) AS account,
+                COUNT(DISTINCT date(transaction_date)) AS distinct_days,
+                MIN(transaction_date) AS first_day,
+                MAX(transaction_date) AS last_day
+            FROM transactions
+            WHERE direction != 'cancelled'
+              AND import_batch_id IS NOT NULL
+              AND transaction_date BETWEEN ? AND ?
+            GROUP BY month, account
+            """,
+            (first_supported.isoformat(), last_supported.isoformat()),
+        ).fetchall():
+            per_account.setdefault(row["month"] or "", []).append(row)
+        # Some PDF statements carry the bank's explicit coverage dates. Those
+        # are stronger evidence than transaction activity: a quiet statement
+        # still covers every day in the period printed by the bank.
+        try:
+            statement_summaries = c.execute(
+                """
+                SELECT ss.import_batch_id, ss.statement_start_date,
+                       ss.statement_end_date,
+                       MIN(t.account_ref) AS account
+                FROM statement_summaries ss
+                LEFT JOIN transactions t
+                  ON t.import_batch_id = ss.import_batch_id
+                WHERE ss.statement_start_date IS NOT NULL
+                  AND ss.statement_end_date IS NOT NULL
+                GROUP BY ss.id
+                """
+            ).fetchall()
+        except sqlite3.OperationalError:
+            statement_summaries = []
     _close(c, opened)
 
     def _covers_the_month(first_day_str: str, last_day_str: str,
@@ -211,6 +254,105 @@ def statement_coverage(conn=None) -> dict:
             and distinct_days >= _MR_MIN_COMPLETE_DAYS
         )
 
+    def _authoritative_dates_cover(month_start: date, month_end: date) -> bool:
+        """Whether bank-supplied statement dates cover the calendar month."""
+        by_account: dict[int, list[tuple[date, date]]] = {}
+        for summary in statement_summaries:
+            try:
+                start = date.fromisoformat(summary["statement_start_date"])
+                end = date.fromisoformat(summary["statement_end_date"])
+            except (TypeError, ValueError):
+                continue
+            if end < month_start or start > month_end:
+                continue
+            account = summary["account"]
+            if account is None:
+                # Without an account identity, only one explicit statement
+                # covering the whole month is strong enough. Never join two
+                # unknown accounts into the same coverage chain.
+                if start <= month_start and end >= month_end:
+                    return True
+                continue
+            by_account.setdefault(int(account), []).append((start, end))
+
+        for intervals in by_account.values():
+            clipped = sorted(
+                (max(start, month_start), min(end, month_end))
+                for start, end in intervals
+            )
+            if not clipped or clipped[0][0] > month_start:
+                continue
+            covered_until = clipped[0][1]
+            for start, end in clipped[1:]:
+                if start > covered_until + timedelta(days=1):
+                    break
+                covered_until = max(covered_until, end)
+            if covered_until >= month_end:
+                return True
+        return False
+
+    def _account_imports_cover(month: str, days_in_month: int) -> bool:
+        """Whether one account has credible coverage across several CSVs.
+
+        A single covering batch remains the clearest CSV evidence. When an
+        account was imported incrementally, accept an ordered chain only when
+        at least two batches each contain meaningful activity. Three singleton
+        edge rows are still fragments, not a statement.
+        """
+        batches = per_statement.get(month, [])
+        for account_row in per_account.get(month, []):
+            account = int(account_row["account"])
+            if not _covers_the_month(
+                account_row["first_day"] or "",
+                account_row["last_day"] or "",
+                days_in_month,
+                int(account_row["distinct_days"] or 0),
+            ):
+                continue
+            account_batches = [
+                row for row in batches if int(row["account"]) == account
+            ]
+            if any(
+                _covers_the_month(
+                    row["first_day"] or "", row["last_day"] or "",
+                    days_in_month, int(row["distinct_days"] or 0),
+                )
+                for row in account_batches
+            ):
+                return True
+
+            substantial = []
+            for row in account_batches:
+                try:
+                    first = date.fromisoformat(row["first_day"])
+                    last = date.fromisoformat(row["last_day"])
+                except (TypeError, ValueError):
+                    continue
+                if (
+                    int(row["distinct_days"] or 0) >= 2
+                    and (last - first).days >= 3
+                ):
+                    substantial.append((first, last))
+            substantial.sort()
+            if len(substantial) < 2:
+                continue
+            first_day = substantial[0][0].day
+            covered_until = substantial[0][1]
+            connected = True
+            for start, end in substantial[1:]:
+                if (start - covered_until).days > _MR_MAX_COMPOSITE_GAP_DAYS:
+                    connected = False
+                    break
+                covered_until = max(covered_until, end)
+            if (
+                connected
+                and first_day <= _MR_MIN_START_OF_MONTH_LAG
+                and days_in_month - covered_until.day
+                <= _MR_MIN_END_OF_MONTH_LAG
+            ):
+                return True
+        return False
+
     by_month: dict[str, dict] = {}
     complete_months: list[str] = []
     partial_months:  list[str] = []
@@ -223,6 +365,8 @@ def statement_coverage(conn=None) -> dict:
         last_data_month = month
         y, m = int(month[:4]), int(month[5:7])
         days_in_month = _cal.monthrange(y, m)[1]
+        month_start = date(y, m, 1)
+        month_end = date(y, m, days_in_month)
         last_day_str = r["last_day"] or f"{month}-01"
         try:
             last_day = int(last_day_str[8:10])
@@ -238,6 +382,18 @@ def statement_coverage(conn=None) -> dict:
         span_days = max(0, last_day - first_day)
 
         reasons: list[str] = []
+        authoritative_coverage = _authoritative_dates_cover(
+            month_start, month_end,
+        )
+        account_coverage = (
+            False if authoritative_coverage
+            else _account_imports_cover(month, days_in_month)
+        )
+        coverage_basis = (
+            "statement_dates" if authoritative_coverage
+            else "account_imports" if account_coverage
+            else "none"
+        )
         # A month still running is not complete, however much of it has been
         # imported. The end-of-month tolerance below exists because statements
         # often stop a few days early, and it cannot tell "the statement ended
@@ -245,42 +401,50 @@ def statement_coverage(conn=None) -> dict:
         # the current month look finished, so its part-month income averaged
         # into the typical-income baseline and its part-month total was
         # charted against genuinely finished months.
-        if date(y, m, days_in_month) >= date.today():
+        if month_end >= date.today():
             reasons.append(f"{month} has not finished yet")
-        if days_until_eom > _MR_MIN_END_OF_MONTH_LAG:
+        if (
+            not authoritative_coverage
+            and days_until_eom > _MR_MIN_END_OF_MONTH_LAG
+        ):
             reasons.append(
                 f"latest imported day is {last_day_str} "
                 f"({days_until_eom} day(s) before month end)"
             )
-        if first_day > _MR_MIN_START_OF_MONTH_LAG:
+        if (
+            not authoritative_coverage
+            and first_day > _MR_MIN_START_OF_MONTH_LAG
+        ):
             reasons.append(
                 f"earliest imported day is {first_day_str} "
                 f"(nothing in the first {first_day - 1} day(s))"
             )
         # A handful of rows bunched into one week is not a month, however
         # close to month end the last of them falls.
-        if distinct_days < _MR_MIN_COMPLETE_DAYS or span_days < _MR_MIN_SPAN_DAYS:
+        if (
+            not authoritative_coverage
+            and (
+                distinct_days < _MR_MIN_COMPLETE_DAYS
+                or span_days < _MR_MIN_SPAN_DAYS
+            )
+        ):
             reasons.append(
                 f"only {distinct_days} day(s) of activity spanning "
                 f"{span_days} day(s)"
             )
-        # At least one imported statement has to have covered the month on its
-        # own. This prevents both cross-account mosaics and several fragments
-        # of one account from being assembled into a trusted month.
+        # Coverage needs one trustworthy boundary: explicit dates printed by
+        # the bank, one import spanning the month, or a guarded chain of
+        # substantial imports from the same account. Household-wide first/last
+        # activity is never enough, so cross-account mosaics stay partial.
         #
-        # A quiet account is not asked to prove anything: it only has to be
-        # true of *some* account, so a savings account with one transaction
+        # A quiet account is not asked to prove anything: the evidence only has
+        # to exist for *some* account, so a savings account with one transaction
         # all month cannot make the month partial.
         statements = per_statement.get(month, [])
-        if statements and not any(
-            _covers_the_month(
-                a["first_day"] or "", a["last_day"] or "", days_in_month,
-                int(a["distinct_days"] or 0),
-            )
-            for a in statements
-        ):
+        if statements and not authoritative_coverage and not account_coverage:
             reasons.append(
-                f"no single imported statement covers {month} end to end; "
+                f"no single imported statement covers {month} end to end, "
+                f"and no credible same-account import chain does; "
                 f"separate fragments only overlap to look complete"
             )
         complete = not reasons
@@ -293,6 +457,7 @@ def statement_coverage(conn=None) -> dict:
             "last_day":       last_day_str,
             "days_until_eom": days_until_eom,
             "tx_count":       int(r["tx_count"] or 0),
+            "coverage_basis": coverage_basis,
             "reason":         reason,
         }
         if complete:

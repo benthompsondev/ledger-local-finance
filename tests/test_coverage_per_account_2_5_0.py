@@ -1,4 +1,4 @@
-"""Month completeness is a property of a statement, not of a pile of them.
+"""Month completeness needs one account's credible coverage, not a household pile.
 
 All rows are invented. `statement_coverage` aggregated every account
 together, so it read the earliest and latest imported day across the whole
@@ -11,8 +11,8 @@ problem.
 
 The other half of the requirement pulls the opposite way: a savings account
 with one transaction all month is quiet, not missing, and must not be able
-to make the month partial. So the rule asks that *some* account covered the
-month end to end, never that every account did.
+to make the month partial. So the rule asks that *some* account has credible
+coverage, never that every account did.
 """
 from __future__ import annotations
 

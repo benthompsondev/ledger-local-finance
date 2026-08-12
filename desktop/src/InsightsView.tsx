@@ -10,6 +10,7 @@ import {
   IncomeSteadiness, KeptChart, NetWorthTrendChart, PaceChart, paceComparisonNote,
   SpendingCalendar,
 } from "./charts";
+import { rollingAverageLabel } from "./insightComparison";
 import { money, moneyCents } from "./money";
 import {
   readAnalysisPeriod, readChartPeriod, readShowNetWorth, saveAnalysisPeriod, saveChartPeriod,
@@ -131,13 +132,13 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
             <article className="chart-card">
               <div className="chart-card-head">
                 <div>
-                  <h3>Where your money went in {insightMonthLabel} vs {baseline === "average" ? "your 3-month same-day average" : "the prior month"}</h3>
+                  <h3>Where your money went in {insightMonthLabel} vs {baseline === "average" ? `your ${rollingAverageLabel(data.category_pace.average_month_count)}` : "the prior month"}</h3>
                   <p className="chart-explainer">{paceComparisonNote(data.category_pace)}</p>
                 </div>
                 {data.category_pace.has_average && (
                   <div className="segmented-control" aria-label="Comparison baseline">
                     <button className={baseline === "last" ? "selected" : ""} onClick={() => { setBaseline("last"); saveCompareBaseline("last"); }}>vs last month</button>
-                    <button className={baseline === "average" ? "selected" : ""} onClick={() => { setBaseline("average"); saveCompareBaseline("average"); }}>vs 3-month avg</button>
+                    <button className={baseline === "average" ? "selected" : ""} onClick={() => { setBaseline("average"); saveCompareBaseline("average"); }}>vs {rollingAverageLabel(data.category_pace.average_month_count, true)}</button>
                   </div>
                 )}
               </div>
@@ -147,6 +148,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
                 previousMonth={data.category_pace.previous_month}
                 comparisonAvailable={data.category_pace.comparison_available}
                 baseline={baseline}
+                averageMonthCount={data.category_pace.average_month_count}
                 periodLabel={`${insightMonthLabel} through day ${data.category_pace.through_day}`}
                   onDrill={(category) => {const item=data.category_pace.items.find(row=>row.category===category);onDrill({ category, cashflowRole: "spending", startDate: categoryStart, endDate: categoryEnd, categoryComparison:item&&item.previous!=null&&item.delta!=null?{category,current:item.amount,previous:item.previous,delta:item.delta,throughDay:data.category_pace.through_day,previousMonth:data.category_pace.previous_month}:undefined });}}
               />

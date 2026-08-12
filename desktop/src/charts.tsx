@@ -16,7 +16,9 @@ import { useState, type MouseEvent } from "react";
 import {
   baselineOf, canCompare, categoryCaption, differenceOf,
 } from "./categoryComparison";
+import { cashflowExtremes, rollingAverageLabel } from "./insightComparison";
 import { money, moneyCents } from "./money";
+import { signedAmount } from "./netWorthFormat";
 import type {
   CalendarDay, CashflowMonth, CategoryPaceItem, DayOfWeekRow, IncomeSourceItem,
   NetWorthOverview, PacePoint, SpendingPace, SpendingPatterns,
@@ -210,8 +212,7 @@ function CashflowReading({ months, latestComplete }: {
   const kept = complete.map((m) => m.net);
   const typicalKept = median(kept);
   const typicalRate = median(complete.map((m) => m.savings_rate));
-  const best = complete.reduce((a, b) => (b.net > a.net ? b : a));
-  const weakest = complete.reduce((a, b) => (b.net < a.net ? b : a));
+  const { best, weakest } = cashflowExtremes(complete);
   const incomes = complete.map((m) => m.income);
   const incomeHigh = Math.max(...incomes);
   const incomeLow = Math.min(...incomes);
@@ -242,7 +243,9 @@ function CashflowReading({ months, latestComplete }: {
         </div>
         <div>
           <span>Best</span>
-          <strong className="good-text">+{money(Math.max(0, best.net))}</strong>
+          <strong className={best.net >= 0 ? "good-text" : ""}>
+            {signedAmount(best.net, money)}
+          </strong>
           <small>{best.month} · {best.savings_rate.toFixed(0)}% kept</small>
         </div>
         <div>
@@ -276,7 +279,7 @@ function CashflowReading({ months, latestComplete }: {
   );
 }
 
-/** Cumulative spending this month vs the previous month and 3-month baseline,
+/** Cumulative spending this month vs the previous month and up-to-3-month baseline,
  * always compared through the SAME day-of-month. The current month is the
  * dominant solid line; comparisons are muted, dashed reference lines. The
  * x-axis spans only the days actually shown, so the lines use the full width
@@ -323,6 +326,10 @@ export function PaceChart({
   }
   const hasPrev = pace.previous.length > 0 && pace.previous_total_same_day != null;
   const hasAvg = !!pace.average_90_day?.length && pace.average_90_day_total != null;
+  const averageLabel = rollingAverageLabel(pace.average_90_day_month_count);
+  const compactAverageLabel = rollingAverageLabel(
+    pace.average_90_day_month_count, true,
+  );
   // Axis spans the displayed same-day data, never the whole calendar month.
   const maxDay = Math.max(
     pace.day, pace.current.length, pace.previous.length,
@@ -356,7 +363,7 @@ export function PaceChart({
   const tags = [
     { key: "cur", label: "This mo", color: VIZ.accent, v: pace.current_total, bold: true },
     ...(hasPrev ? [{ key: "prev", label: shortMonth(pace.previous_month), color: VIZ.previous, v: pace.previous_total_same_day as number, bold: false }] : []),
-    ...(hasAvg ? [{ key: "avg", label: "3-mo avg", color: AVG_COLOR, v: pace.average_90_day_total as number, bold: false }] : []),
+    ...(hasAvg ? [{ key: "avg", label: compactAverageLabel, color: AVG_COLOR, v: pace.average_90_day_total as number, bold: false }] : []),
   ].map((t) => ({ ...t, ty: y(t.v) })).sort((a, b) => a.ty - b.ty);
   for (let i = 1; i < tags.length; i += 1) {
     if (tags[i].ty - tags[i - 1].ty < 13) tags[i].ty = tags[i - 1].ty + 13;
@@ -385,7 +392,7 @@ export function PaceChart({
           {vsPrev != null && <em className={vsPrev > 0 ? "pace-up" : "pace-down"}>{vsPrev > 0 ? "▲" : "▼"} {money(Math.abs(vsPrev))}</em>}
         </div>
         <div className="pace-stat">
-          <span>3-month same-day average</span>
+          <span>{averageLabel}</span>
           <strong>{hasAvg ? money(pace.average_90_day_total as number) : "—"}</strong>
           {vsAvg != null && <em className={vsAvg > 0 ? "pace-up" : "pace-down"}>{vsAvg > 0 ? "▲" : "▼"} {money(Math.abs(vsAvg))}</em>}
         </div>
@@ -396,7 +403,7 @@ export function PaceChart({
       <div className="viz-legend pace-legend">
           <span><i style={{ background: VIZ.accent }} /> {currentLabel}</span>
         {hasPrev && <span><i className="dash" style={{ background: VIZ.previous }} /> {shortMonth(pace.previous_month)}</span>}
-        {hasAvg && <span><i className="dot" style={{ background: AVG_COLOR }} /> 3-month same-day average</span>}
+        {hasAvg && <span><i className="dot" style={{ background: AVG_COLOR }} /> {averageLabel}</span>}
       </div>
       <div className="pace-plot">
         <svg
@@ -439,7 +446,7 @@ export function PaceChart({
             <strong>Day {hoverDay}</strong>
             <span><i style={{ background: VIZ.accent }} />{currentLabel} {money(hCur)}</span>
             {hPrev != null && <span><i style={{ background: VIZ.previous }} />{shortMonth(pace.previous_month)} {money(hPrev)}</span>}
-            {hAvg != null && <span><i style={{ background: AVG_COLOR }} />3-mo avg {money(hAvg)}</span>}
+            {hAvg != null && <span><i style={{ background: AVG_COLOR }} />{compactAverageLabel} {money(hAvg)}</span>}
           </div>
         )}
       </div>
@@ -451,7 +458,7 @@ export function PaceChart({
             : `You've spent ${money(Math.abs(vsPrev))} less than by this point in ${pace.previous_month}`
           : `No comparable data for ${pace.previous_month} yet`}
         {vsAvg != null
-          ? `, and ${vsAvg > 0 ? `${money(Math.abs(vsAvg))} above` : `${money(Math.abs(vsAvg))} below`} your 3-month same-day average.`
+          ? `, and ${vsAvg > 0 ? `${money(Math.abs(vsAvg))} above` : `${money(Math.abs(vsAvg))} below`} your ${averageLabel}.`
           : "."}
       </p>
     </div>
@@ -469,6 +476,7 @@ export function CategoryBars({
   previousMonth,
   comparisonAvailable = true,
   baseline = "last",
+  averageMonthCount,
   periodLabel,
   onDrill,
 }: {
@@ -478,6 +486,7 @@ export function CategoryBars({
   /** Whether the previous month was imported far enough to compare against. */
   comparisonAvailable?: boolean;
   baseline?: "last" | "average";
+  averageMonthCount?: number;
   periodLabel?: string;
   onDrill?: (category: string) => void;
 }) {
@@ -491,7 +500,9 @@ export function CategoryBars({
   const compareOf = (item: CategoryPaceItem): number | null =>
     baselineOf(item, baseline);
   const refLabel = baseline === "average" ? "your recent average" : "the same point last month";
-  const markerLabel = baseline === "average" ? "3-month avg" : previousMonth ? shortMonth(previousMonth) : "last month";
+  const markerLabel = baseline === "average"
+    ? rollingAverageLabel(averageMonthCount, true)
+    : previousMonth ? shortMonth(previousMonth) : "last month";
   // Whether there is a baseline at all is decided in categoryComparison.ts,
   // where it can be tested. Some callers (a plain proportional breakdown)
   // pass none, and an uncomparable previous month sends null deltas.
