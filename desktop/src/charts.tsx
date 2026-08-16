@@ -21,7 +21,7 @@ import { money, moneyCents } from "./money";
 import { signedAmount } from "./netWorthFormat";
 import type {
   CalendarDay, CashflowMonth, CategoryPaceItem, DayOfWeekRow, IncomeSourceItem,
-  NetWorthOverview, PacePoint, SpendingPace, SpendingPatterns,
+  NetWorthOverview, PacePoint, ReplayMonth, SpendingPace, SpendingPatterns,
 } from "./types";
 import { niceMax } from "./chartScale";
 import { readWeekStart } from "./preferences";
@@ -1187,6 +1187,60 @@ cash ${moneyCents(p.cash)} · investments ${moneyCents(p.investments)} · other 
         {points.length} recorded month{points.length === 1 ? "" : "s"}, {shortMonth(points[0].month)} to {shortMonth(points[points.length - 1].month)}.
         {" "}Every point is a reading you entered; nothing here is estimated.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Replay chart — every finished month, with one month shown twice.
+ *
+ * The replayed month keeps its real bar and gains a lighter segment for the
+ * amount the change would have freed, so the difference is a length rather
+ * than a number to compare. Every figure is supplied by the engine; this
+ * turns them into pixels and nothing else.
+ */
+export function ReplayChart({ months }: { months: ReplayMonth[] }) {
+  if (!months.length) {
+    return <p className="guidance">No finished months to compare yet.</p>;
+  }
+  const scale = Math.max(
+    1,
+    ...months.map((m) => Math.abs(m.net)),
+    ...months.map((m) => Math.abs(m.replayed_net)),
+  );
+  return (
+    <div className="replay-chart">
+      {months.map((m) => {
+        const gained = m.is_replayed && m.replayed_net > m.net;
+        const actualPct = (Math.abs(m.net) / scale) * 100;
+        const replayedPct = (Math.abs(m.replayed_net) / scale) * 100;
+        return (
+          <div
+            className={m.is_replayed ? "replay-bar replay-bar-active" : "replay-bar"}
+            key={m.month}
+            title={m.is_replayed
+              ? `${m.label}: kept ${moneyCents(m.net)}, would have kept ${moneyCents(m.replayed_net)}`
+              : `${m.label}: kept ${moneyCents(m.net)}`}
+          >
+            <div className="replay-bar-track">
+              {gained && (
+                <i
+                  className="replay-bar-gain"
+                  style={{ height: `${Math.max(2, replayedPct)}%` }}
+                />
+              )}
+              <i
+                className="replay-bar-actual"
+                style={{
+                  height: `${Math.max(2, actualPct)}%`,
+                  background: m.net >= 0 ? VIZ.income : VIZ.spending,
+                }}
+              />
+            </div>
+            <small>{m.label.slice(0, 3)}</small>
+          </div>
+        );
+      })}
     </div>
   );
 }

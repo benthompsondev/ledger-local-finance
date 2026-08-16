@@ -56,6 +56,7 @@
     "allow-ai-coaching-summary",
     "allow-get-insight-feed",
     "allow-get-spending-patterns",
+    "allow-get-counterfactual-replay",
     "allow-explain-insight",
     "allow-get-net-worth-trend",
     "allow-save-net-worth-entry",

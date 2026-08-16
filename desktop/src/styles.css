@@ -1155,3 +1155,49 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 }
 .ai-columns > div { min-width: 0; }
 @media (max-width: 1050px) { .ai-columns { grid-template-columns: 1fr; } }
+
+/* ── what-if replay ─────────────────────────────────────────────────── */
+.replay-card .chart-card-head { align-items: flex-start; gap: 1rem; }
+.replay-picker { display: grid; gap: .45rem; margin: .9rem 0 .2rem; }
+.replay-picker .eyebrow { margin-top: .35rem; }
+.replay-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.replay-chip {
+  display: flex; align-items: baseline; gap: .45rem;
+  padding: .4rem .7rem; border: 1px solid var(--border);
+  border-radius: .65rem; background: var(--panel-soft);
+  color: var(--text); font-size: .85rem; cursor: pointer;
+}
+.replay-chip:hover:not(:disabled) { border-color: var(--accent); }
+.replay-chip small { color: var(--text-muted); font-size: .76rem; }
+.replay-chip-on {
+  background: var(--accent); border-color: var(--accent); color: #04150e;
+}
+.replay-chip-on small { color: #04150e; opacity: .75; }
+.replay-prompt { margin-top: .9rem; }
+.replay-result { display: grid; gap: .9rem; margin-top: 1rem; }
+.replay-dial { justify-self: start; }
+.replay-headline { font-size: 1.05rem; line-height: 1.5; margin: 0; }
+.replay-rank { color: var(--text-muted); line-height: 1.55; margin: 0; }
+.replay-caveat { margin: 0; }
+.replay-evidence { display: grid; gap: .3rem; }
+.replay-evidence strong small { color: var(--text-muted); font-weight: 400; }
+
+.replay-chart {
+  display: flex; align-items: flex-end; gap: .5rem;
+  height: 132px; padding-top: .4rem;
+}
+.replay-bar { flex: 1; display: grid; gap: .3rem; height: 100%; }
+.replay-bar-track {
+  position: relative; display: flex; align-items: flex-end; height: 100%;
+}
+.replay-bar-track i {
+  position: absolute; bottom: 0; width: 100%; border-radius: 3px 3px 0 0;
+}
+.replay-bar-gain {
+  background: var(--accent); opacity: .34;
+  outline: 1px dashed var(--accent); outline-offset: -1px;
+}
+.replay-bar small {
+  text-align: center; font-size: .63rem; color: var(--muted);
+}
+.replay-bar-active small { color: var(--accent); font-weight: 600; }

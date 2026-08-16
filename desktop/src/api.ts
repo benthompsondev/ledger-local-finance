@@ -36,6 +36,7 @@ import type {
   MoneyFocus,
   NetWorthOverview,
   SpendingPatterns,
+  CounterfactualPayload,
 } from "./types";
 
 export async function loadHomeSummary(periodDays: 30 | 90): Promise<HomePacket> {
@@ -234,6 +235,18 @@ export const loadInsightFeed = () =>
   invoke<InsightFeed>("get_insight_feed");
 export const loadSpendingPatterns = (months?: number) =>
   invoke<SpendingPatterns>("get_spending_patterns", { months });
+export const loadCounterfactual = (spec?: {
+  month?: string;
+  targetKind?: string;
+  targetKey?: string;
+  reductionPct?: number;
+}) =>
+  invoke<CounterfactualPayload>("get_counterfactual_replay", {
+    month: spec?.month ?? null,
+    targetKind: spec?.targetKind ?? null,
+    targetKey: spec?.targetKey ?? null,
+    reductionPct: spec?.reductionPct ?? null,
+  });
 export const explainInsight = (findingId: string) =>
   invoke<{ explanation: InsightExplanation; finding: Insight }>(
     "explain_insight", { findingId },

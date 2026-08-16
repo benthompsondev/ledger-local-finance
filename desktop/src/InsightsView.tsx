@@ -10,6 +10,7 @@ import {
   IncomeSteadiness, KeptChart, NetWorthTrendChart, PaceChart, paceComparisonNote,
   SpendingCalendar,
 } from "./charts";
+import CounterfactualCard from "./CounterfactualCard";
 import { rollingAverageLabel } from "./insightComparison";
 import { money, moneyCents } from "./money";
 import {
@@ -201,6 +202,9 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusA
                   well-covered year behind it. It returns when that is true. */}
             </div>
           </>}
+
+          <h3 className="insight-section">What if</h3>
+          <CounterfactualCard refreshToken={refreshToken} />
 
           <h3 className="insight-section">Trends</h3>
           <div className="insight-grid home-detail-grid">

@@ -624,6 +624,73 @@ export interface CalendarDay {
   month: string;
 }
 
+/** Counterfactual replay — a finished month with one spending change. */
+export interface ReplayTarget {
+  kind: "category" | "merchant";
+  key: string;
+  label: string;
+  amount: number;
+  tx_count: number;
+}
+
+export interface ReplayTotals {
+  income: number;
+  spending: number;
+  net: number;
+  savings_rate: number;
+}
+
+export interface ReplayMonth {
+  month: string;
+  label: string;
+  income: number;
+  spending: number;
+  net: number;
+  replayed_net: number;
+  is_replayed: boolean;
+}
+
+export interface ReplayEvidenceRow {
+  date: string;
+  description: string;
+  category: string;
+  amount: number;
+  replayed_amount: number;
+}
+
+export interface ReplayResult {
+  available: boolean;
+  reason: string;
+  target?: ReplayTarget;
+  reduction_pct?: number;
+  removed_entirely?: boolean;
+  actual?: ReplayTotals;
+  counterfactual?: ReplayTotals;
+  freed?: number;
+  net_delta?: number;
+  savings_rate_delta?: number;
+  matched_count?: number;
+  rank?: {
+    actual: number;
+    counterfactual: number;
+    total: number;
+    improved: boolean;
+  };
+  transactions?: ReplayEvidenceRow[];
+  evidence_truncated?: boolean;
+  months?: ReplayMonth[];
+}
+
+export interface CounterfactualPayload {
+  available: boolean;
+  reason: string;
+  months: { month: string; label: string; income: number; spending: number; net: number }[];
+  month: string;
+  month_label: string;
+  targets: ReplayTarget[];
+  replay: ReplayResult | null;
+}
+
 export interface SpendingPatterns {
   calendar: {
     available: boolean;

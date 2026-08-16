@@ -3065,6 +3065,28 @@ def spending_patterns_action(params: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+def counterfactual_replay_action(params: dict[str, Any]) -> dict[str, Any]:
+    """Replay one finished month with one spending change applied.
+
+    Called with no target it returns only what can be replayed, so the month
+    picker, the target list and the result all come from one round trip.
+    """
+    from utils.counterfactual import counterfactual_packet
+
+    conn = _connection()
+    try:
+        return counterfactual_packet(
+            month=str(params.get("month") or ""),
+            target_kind=str(params.get("target_kind") or ""),
+            target_key=str(params.get("target_key") or ""),
+            reduction_pct=params.get("reduction_pct", 100),
+            conn=conn,
+            share_view=str(params.get("share_view") or "personal"),
+        )
+    finally:
+        conn.close()
+
+
 def net_worth_trend_action(_params: dict[str, Any]) -> dict[str, Any]:
     """Recorded months, their movement, and a prefill for the next one."""
     from utils.net_worth import net_worth_overview
@@ -3648,6 +3670,7 @@ ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "clear_money_focus": clear_money_focus_action,
     "delete_transaction": delete_transaction_action,
     "spending_patterns": spending_patterns_action,
+    "counterfactual_replay": counterfactual_replay_action,
     "explain_insight": explain_insight_action,
     "ai_ask": ai_ask_action,
     "test_ai_connection": test_ai_connection_action,

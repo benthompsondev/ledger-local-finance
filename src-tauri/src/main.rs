@@ -414,6 +414,28 @@ async fn get_spending_patterns(app: AppHandle, months: Option<i64>) -> Result<Va
 }
 
 #[tauri::command]
+async fn get_counterfactual_replay(
+    app: AppHandle,
+    month: Option<String>,
+    target_kind: Option<String>,
+    target_key: Option<String>,
+    reduction_pct: Option<f64>,
+) -> Result<Value, String> {
+    run_engine(
+        &app,
+        "counterfactual_replay",
+        json!({
+            "month": month,
+            "target_kind": target_kind,
+            "target_key": target_key,
+            "reduction_pct": reduction_pct,
+        }),
+        ENGINE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+#[tauri::command]
 async fn explain_insight(app: AppHandle, finding_id: String) -> Result<Value, String> {
     // A provider call can be slow, so give it the import-length budget.
     run_engine(
@@ -1188,6 +1210,7 @@ fn main() {
             ai_coaching_summary,
             get_insight_feed,
             get_spending_patterns,
+            get_counterfactual_replay,
             explain_insight,
             get_net_worth_trend,
             save_net_worth_entry,

@@ -14,6 +14,7 @@ fn main() {
             "ai_coaching_summary",
             "get_insight_feed",
             "get_spending_patterns",
+            "get_counterfactual_replay",
             "explain_insight",
             "get_net_worth_trend",
             "save_net_worth_entry",
