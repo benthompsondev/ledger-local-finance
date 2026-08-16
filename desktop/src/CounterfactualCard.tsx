@@ -13,6 +13,7 @@ import { loadCounterfactual } from "./api";
 import { ReplayChart } from "./charts";
 import { money, moneyCents } from "./money";
 import { createRequestGate } from "./planPreview";
+import { visibleReplay } from "./counterfactualState";
 import type { CounterfactualPayload, ReplayTarget } from "./types";
 
 interface Props {
@@ -55,6 +56,7 @@ export default function CounterfactualCard({ refreshToken }: Props) {
   }) => {
     const token = gate.current.begin();
     setBusy(true);
+    setError("");
     try {
       const next = await loadCounterfactual({
         month: spec.month,
@@ -66,6 +68,8 @@ export default function CounterfactualCard({ refreshToken }: Props) {
       if (!gate.current.isLatest(token)) return;
       setData(next);
       setMonth(next.month);
+      if ("target" in spec) setTarget(spec.target ?? null);
+      if (spec.pct !== undefined) setPct(spec.pct);
       setError("");
     } catch (cause) {
       if (!gate.current.isLatest(token)) return;
@@ -87,22 +91,18 @@ export default function CounterfactualCard({ refreshToken }: Props) {
   }, [run, refreshToken]);
 
   const chooseMonth = (next: string) => {
-    setMonth(next);
-    setTarget(null);
     setShowEvidence(false);
-    void run({ month: next });
+    void run({ month: next, target: null, pct });
   };
 
   const chooseTarget = (next: ReplayTarget) => {
     const same = target?.kind === next.kind && target?.key === next.key;
     const chosen = same ? null : next;
-    setTarget(chosen);
     setShowEvidence(false);
     void run({ month, target: chosen, pct });
   };
 
   const choosePct = (next: number) => {
-    setPct(next);
     void run({ month, target, pct: next });
   };
 
@@ -133,7 +133,7 @@ export default function CounterfactualCard({ refreshToken }: Props) {
 
   const categories = data.targets.filter((t) => t.kind === "category");
   const merchants = data.targets.filter((t) => t.kind === "merchant");
-  const replay = data.replay;
+  const replay = busy ? null : visibleReplay(data, error, { month, target, pct });
   const isActive = (t: ReplayTarget) =>
     target?.kind === t.kind && target?.key === t.key;
 
@@ -159,7 +159,15 @@ export default function CounterfactualCard({ refreshToken }: Props) {
         </label>
       </div>
 
-      {error && <div className="inline-error" role="alert">{error}</div>}
+      {error && <>
+        <div className="inline-error" role="alert">{error}</div>
+        <div className="button-row">
+          <button type="button" disabled={busy}
+            onClick={() => void run({ month, target, pct })}>
+            Try again
+          </button>
+        </div>
+      </>}
 
       <div className="replay-picker">
         <span className="eyebrow">Spend less on</span>
@@ -212,7 +220,7 @@ export default function CounterfactualCard({ refreshToken }: Props) {
           <p className="replay-headline">
             Spending {replay.removed_entirely ? "nothing" : `${String(replay.reduction_pct)}% less`}
             {" "}on <strong>{replay.target?.label}</strong> would have freed{" "}
-            <strong className="good-text">{money(replay.freed ?? 0)}</strong>
+            <strong className="good-text">{moneyCents(replay.freed ?? 0)}</strong>
             {" "}across {replay.matched_count} purchase
             {replay.matched_count === 1 ? "" : "s"}.
           </p>

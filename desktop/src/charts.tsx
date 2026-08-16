@@ -23,7 +23,7 @@ import type {
   CalendarDay, CashflowMonth, CategoryPaceItem, DayOfWeekRow, IncomeSourceItem,
   NetWorthOverview, PacePoint, ReplayMonth, SpendingPace, SpendingPatterns,
 } from "./types";
-import { niceMax } from "./chartScale";
+import { niceMax, signedBarGeometry } from "./chartScale";
 import { readWeekStart } from "./preferences";
 
 const AVG_COLOR = "#d29922";
@@ -1203,17 +1203,21 @@ export function ReplayChart({ months }: { months: ReplayMonth[] }) {
   if (!months.length) {
     return <p className="guidance">No finished months to compare yet.</p>;
   }
-  const scale = Math.max(
-    1,
-    ...months.map((m) => Math.abs(m.net)),
-    ...months.map((m) => Math.abs(m.replayed_net)),
+  const domainMin = Math.min(
+    0, ...months.map((m) => m.net), ...months.map((m) => m.replayed_net),
   );
+  const domainMax = Math.max(
+    0, ...months.map((m) => m.net), ...months.map((m) => m.replayed_net),
+  );
+  const zero = signedBarGeometry(domainMin, 0, domainMin, domainMax).height;
   return (
     <div className="replay-chart">
       {months.map((m) => {
         const gained = m.is_replayed && m.replayed_net > m.net;
-        const actualPct = (Math.abs(m.net) / scale) * 100;
-        const replayedPct = (Math.abs(m.replayed_net) / scale) * 100;
+        const actual = signedBarGeometry(0, m.net, domainMin, domainMax);
+        const gain = signedBarGeometry(
+          m.net, m.replayed_net, domainMin, domainMax,
+        );
         return (
           <div
             className={m.is_replayed ? "replay-bar replay-bar-active" : "replay-bar"}
@@ -1223,19 +1227,24 @@ export function ReplayChart({ months }: { months: ReplayMonth[] }) {
               : `${m.label}: kept ${moneyCents(m.net)}`}
           >
             <div className="replay-bar-track">
-              {gained && (
-                <i
-                  className="replay-bar-gain"
-                  style={{ height: `${Math.max(2, replayedPct)}%` }}
-                />
-              )}
+              <span className="replay-zero" style={{ bottom: `${zero}%` }} />
               <i
                 className="replay-bar-actual"
                 style={{
-                  height: `${Math.max(2, actualPct)}%`,
+                  bottom: `${actual.bottom}%`,
+                  height: `${actual.height}%`,
                   background: m.net >= 0 ? VIZ.income : VIZ.spending,
                 }}
               />
+              {gained && (
+                <i
+                  className="replay-bar-gain"
+                  style={{
+                    bottom: `${gain.bottom}%`,
+                    height: `${gain.height}%`,
+                  }}
+                />
+              )}
             </div>
             <small>{m.label.slice(0, 3)}</small>
           </div>

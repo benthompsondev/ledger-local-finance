@@ -109,6 +109,31 @@ def test_a_refund_sharing_the_category_is_not_removed(ledger_db):
     )
 
 
+@pytest.mark.parametrize("tx_type", [
+    "refund", "reimbursement", "rewards_credit", "shared_reimbursement",
+])
+def test_refund_and_reimbursement_types_are_never_reduced(ledger_db, tx_type):
+    """Every canonical Money In type stays outside a spending replay."""
+    seed_month(ledger_db, "2026-04", grocery_days=2, grocery_amount=25)
+    description = f"GROCER {tx_type.upper()}"
+    add_tx(ledger_db, day="2026-04-20", desc=description, amount=40,
+           direction="credit", category="Groceries", merchant="Grocer")
+    ledger_db.execute(
+        "UPDATE transactions SET transaction_type=? WHERE raw_description=?",
+        (tx_type, description),
+    )
+    ledger_db.commit()
+
+    replay = _replay(ledger_db, month="2026-04", target_kind="category",
+                     target_key="Groceries", reduction_pct=100)["replay"]
+
+    assert replay["matched_count"] == 2
+    assert replay["freed"] == pytest.approx(50.0)
+    assert replay["counterfactual"]["income"] == pytest.approx(
+        replay["actual"]["income"]
+    )
+
+
 def test_merchant_target_matches_only_that_merchant(ledger_db):
     seed_month(ledger_db, "2026-04", grocery_days=4, grocery_amount=20)
     for day in (6, 13, 20):
@@ -126,6 +151,98 @@ def test_merchant_target_matches_only_that_merchant(ledger_db):
     assert replay["available"], replay.get("reason")
     assert replay["matched_count"] == 3
     assert replay["freed"] == pytest.approx(96.0)
+
+
+def test_merchant_variants_share_their_canonical_normalized_key(ledger_db):
+    seed_month(ledger_db, "2026-04", grocery_days=2, grocery_amount=10)
+    add_tx(ledger_db, day="2026-04-21", desc="TAKEOUT PLACE 001", amount=12.34,
+           direction="debit", category="Restaurants", merchant="Takeout Place")
+    add_tx(ledger_db, day="2026-04-22", desc="TAKEOUT PLACE 002", amount=23.45,
+           direction="debit", category="Restaurants", merchant="TAKEOUT PLACE #2")
+    ledger_db.execute(
+        "UPDATE transactions SET merchant_normalized='TAKEOUT PLACE' "
+        "WHERE raw_description LIKE 'TAKEOUT PLACE %'"
+    )
+    ledger_db.commit()
+
+    packet = _replay(ledger_db, month="2026-04")
+    merchant = next(
+        target for target in packet["targets"]
+        if target["kind"] == "merchant" and target["key"] == "TAKEOUT PLACE"
+    )
+    replay = _replay(
+        ledger_db, month="2026-04", target_kind="merchant",
+        target_key=merchant["key"], reduction_pct=100,
+    )["replay"]
+
+    assert merchant["tx_count"] == 2
+    assert merchant["amount"] == pytest.approx(35.79)
+    assert replay["matched_count"] == 2
+    assert replay["freed"] == pytest.approx(35.79)
+
+
+@pytest.mark.parametrize(("pct", "freed", "remaining"), [
+    (25, 5.00, 14.99),
+    (50, 10.00, 9.99),
+    (100, 19.99, 0.00),
+])
+def test_odd_cent_reductions_reconcile_to_currency_cents(
+    ledger_db, pct, freed, remaining,
+):
+    seed_month(ledger_db, "2026-04", grocery_days=2, grocery_amount=10)
+    add_tx(ledger_db, day="2026-04-21", desc="ODD CENT PURCHASE", amount=19.99,
+           direction="debit", category="Shopping", merchant="Odd Cent Shop")
+    ledger_db.commit()
+
+    packet = _replay(ledger_db, month="2026-04")
+    target = next(
+        item for item in packet["targets"]
+        if item["kind"] == "merchant" and item["label"] == "Odd Cent Shop"
+    )
+    replay = _replay(
+        ledger_db, month="2026-04", target_kind="merchant",
+        target_key=target["key"], reduction_pct=pct,
+    )["replay"]
+
+    assert replay["freed"] == pytest.approx(freed)
+    assert replay["net_delta"] == pytest.approx(freed)
+    assert replay["transactions"][0]["replayed_amount"] == pytest.approx(
+        remaining
+    )
+    assert replay["actual"]["spending"] - replay["counterfactual"]["spending"] \
+        == pytest.approx(freed)
+
+
+def test_sub_cent_reductions_reconcile_across_multiple_transactions(ledger_db):
+    """Totals and evidence must use the same cent result for every purchase."""
+    seed_month(ledger_db, "2026-04", grocery_days=2, grocery_amount=10)
+    for day in (21, 22, 23):
+        add_tx(
+            ledger_db, day=f"2026-04-{day}", desc=f"PENNY SHOP {day}",
+            amount=0.01, direction="debit", category="Shopping",
+            merchant="Penny Shop",
+        )
+    ledger_db.commit()
+
+    packet = _replay(ledger_db, month="2026-04")
+    target = next(
+        item for item in packet["targets"]
+        if item["kind"] == "category" and item["label"] == "Shopping"
+    )
+    replay = _replay(
+        ledger_db, month="2026-04", target_kind="category",
+        target_key=target["key"], reduction_pct=50,
+    )["replay"]
+
+    assert replay["matched_count"] == 3
+    assert replay["freed"] == pytest.approx(0.03)
+    assert replay["net_delta"] == pytest.approx(0.03)
+    assert [row["amount"] for row in replay["transactions"]] == [0.01] * 3
+    assert [row["replayed_amount"] for row in replay["transactions"]] == [0.0] * 3
+    assert sum(
+        row["amount"] - row["replayed_amount"]
+        for row in replay["transactions"]
+    ) == pytest.approx(replay["freed"])
 
 
 # ── ranking the month against its peers ───────────────────────────────────
@@ -259,3 +376,19 @@ def test_evidence_lists_the_matched_transactions(ledger_db):
     first = replay["transactions"][0]
     assert first["amount"] == pytest.approx(40.0)
     assert first["replayed_amount"] == pytest.approx(20.0)
+
+
+def test_replay_does_not_write_or_change_the_schema(ledger_db):
+    seed_month(ledger_db, "2026-04", grocery_days=3, grocery_amount=40)
+    changes_before = ledger_db.total_changes
+    schema_before = ledger_db.execute("PRAGMA schema_version").fetchone()[0]
+
+    replay = _replay(ledger_db, month="2026-04", target_kind="category",
+                     target_key="Groceries", reduction_pct=50)["replay"]
+
+    assert replay["available"]
+    assert ledger_db.total_changes == changes_before
+    assert (
+        ledger_db.execute("PRAGMA schema_version").fetchone()[0]
+        == schema_before
+    )

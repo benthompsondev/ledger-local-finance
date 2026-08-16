@@ -1191,10 +1191,14 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
   position: relative; display: flex; align-items: flex-end; height: 100%;
 }
 .replay-bar-track i {
-  position: absolute; bottom: 0; width: 100%; border-radius: 3px 3px 0 0;
+  position: absolute; width: 100%; border-radius: 3px;
+}
+.replay-zero {
+  position: absolute; left: 0; width: 100%; z-index: 2;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent);
 }
 .replay-bar-gain {
-  background: var(--accent); opacity: .34;
+  z-index: 1; background: var(--accent); opacity: .6;
   outline: 1px dashed var(--accent); outline-offset: -1px;
 }
 .replay-bar small {

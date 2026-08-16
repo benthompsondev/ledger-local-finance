@@ -27,6 +27,7 @@ from __future__ import annotations
 import math
 import sqlite3
 from collections import defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 from utils.database import get_connection
@@ -38,6 +39,7 @@ MAX_TARGETS = 12
 MAX_EVIDENCE_ROWS = 60
 
 TARGET_KINDS = ("category", "merchant")
+CENT = Decimal("0.01")
 
 
 def _conn(conn: Optional[sqlite3.Connection]) -> tuple[sqlite3.Connection, bool]:
@@ -131,6 +133,19 @@ def _matches(tx: dict, kind: str, key: str) -> bool:
     return _target_key(tx, kind) == key
 
 
+def _reduced_amount(tx: dict, reduction_pct: float) -> float:
+    """Apply a reduction as real currency, one transaction at a time.
+
+    The replay changes real purchases, so each changed row must still be a
+    valid cent amount. Quantizing the removed amount also gives the evidence
+    list and canonical totals one identical answer for odd-cent purchases.
+    """
+    original = Decimal(str(_amount(tx))).quantize(CENT, ROUND_HALF_UP)
+    pct = Decimal(str(reduction_pct)) / Decimal("100")
+    removed = (original * pct).quantize(CENT, ROUND_HALF_UP)
+    return float(original - removed)
+
+
 def available_targets(rows: list[dict]) -> list[dict]:
     """What is worth replaying in this month, biggest spend first.
 
@@ -176,15 +191,18 @@ def apply_reduction(rows: list[dict], kind: str, key: str,
     "half the takeout" is a change a person can actually make, and deleting
     rows would only ever model "all of it".
     """
-    factor = 1.0 - (float(reduction_pct) / 100.0)
     replayed: list[dict] = []
     matched: list[dict] = []
     for tx in rows:
         if cashflow_role(tx) == "spending" and _matches(tx, kind, key):
             changed = dict(tx)
-            changed["_cashflow_amount"] = _amount(tx) * factor
+            original = round(_amount(tx), 2)
+            changed_amount = _reduced_amount(tx, reduction_pct)
+            changed["_cashflow_amount"] = changed_amount
+            changed["_counterfactual_original_amount"] = original
+            changed["_counterfactual_replayed_amount"] = changed_amount
             replayed.append(changed)
-            matched.append(tx)
+            matched.append(changed)
         else:
             replayed.append(tx)
     return replayed, matched
@@ -212,14 +230,20 @@ def _rank(net_by_month: dict[str, float], month: str, net: float) -> int:
 
 
 def _evidence(matched: list[dict], reduction_pct: float) -> list[dict]:
-    rows = sorted(matched, key=lambda tx: _amount(tx), reverse=True)
-    factor = 1.0 - (float(reduction_pct) / 100.0)
+    rows = sorted(
+        matched,
+        key=lambda tx: tx.get("_counterfactual_original_amount", _amount(tx)),
+        reverse=True,
+    )
     return [{
         "date": str(tx.get("transaction_date") or ""),
         "description": str(tx.get("merchant") or tx.get("raw_description") or ""),
         "category": str(tx.get("category") or ""),
-        "amount": round(_amount(tx), 2),
-        "replayed_amount": round(_amount(tx) * factor, 2),
+        "amount": tx.get("_counterfactual_original_amount", round(_amount(tx), 2)),
+        "replayed_amount": tx.get(
+            "_counterfactual_replayed_amount",
+            _reduced_amount(tx, reduction_pct),
+        ),
     } for tx in rows[:MAX_EVIDENCE_ROWS]]
 
 
@@ -327,7 +351,10 @@ def _packet(conn: sqlite3.Connection, month: str, target_kind: str,
     target = next(
         (t for t in targets if t["kind"] == kind and t["key"] == key),
         {"kind": kind, "key": key, "label": key,
-         "amount": round(sum(_amount(tx) for tx in matched), 2),
+         "amount": round(sum(
+             tx.get("_counterfactual_original_amount", _amount(tx))
+             for tx in matched
+         ), 2),
          "tx_count": len(matched)},
     )
     rank_actual = _rank(net_by_month, selected, actual["net"])
