@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.7.1_x64-setup.exe
+NorthstarLedger_2.7.2_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,10 +58,11 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.7.1. Windows public beta.** It works, it is tested, and it
-is still a beta. This release makes Plan one clear monthly decision, keeps
-save and edit state reliable after a restart, and makes recurring-cost choices
-stick in both the screen and the numbers.
+**Current release: 2.7.2. Windows public beta.** It works, it is tested, and it
+is still a beta. This release fixes Plan saving: one consistent definition of
+monthly income, so a valid plan is no longer refused by a hidden second
+calculation, and the figures Northstar works out are clearly separated from
+the amounts you choose.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.

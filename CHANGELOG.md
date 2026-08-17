@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.7.2 - 2026-08-17
+
+Plan saves again.
+
+### What changed
+
+- A second income calculation was running behind the screen and refusing
+  valid plans, with an error naming an amount you could not find anywhere in
+  the app. There is one definition now: Money coming in
+  is the average of your complete months, the same figure Safe to Spend
+  uses, and it tells you which months it averaged.
+- Money coming in, the non-monthly set-aside and the everyday spending
+  result are all worked out by Northstar rather than sent from the screen,
+  so the number you see is the number that gets saved.
+- Plan reads a little clearer: the figures Northstar works out look like
+  facts instead of boxes you cannot type in, the three amounts you choose
+  look editable, and what is left for everyday spending is the biggest thing
+  on the page.
+- A plan that really does allocate more than comes in is still refused, and
+  still tells you how much to move.
+
 ## 2.7.1 - 2026-08-17
 
 Plan is simpler and saves what you mean.
