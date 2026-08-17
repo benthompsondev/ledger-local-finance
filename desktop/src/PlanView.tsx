@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadPlan, previewPlan, savePlan, setIncomeSourcePreference } from "./api";
 import MoneyFocusCard from "./MoneyFocusCard";
-import { moneyCents } from "./money";
+import { money, moneyCents } from "./money";
 import { readSavingsPreference } from "./preferences";
 import { createRequestGate, previewSignature } from "./planPreview";
 import type { PlanEquation, PlanPayload } from "./types";
@@ -264,6 +264,63 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
       </div>
       {error && <div className="inline-error" role="alert">{error}</div>}
       {data && <>
+
+        {/* ── Last month's result ────────────────────────────────────
+            Absent unless the engine can prove an exact plan for a
+            canonically complete month predated that month's end. No card,
+            no nag, and no arithmetic here — every figure is supplied. */}
+        {data.last_plan_result?.available && (
+          <section className="plan-result-card">
+            <span className="eyebrow">
+              Last finished month · {data.last_plan_result.month_label}
+            </span>
+            <h3 className="plan-result-headline">
+              {/* Whole dollars: this is a sentence, not a ledger line. The
+                  cents live in the comparison below, where the two figures
+                  have to reconcile with each other. */}
+              {data.last_plan_result.target_is_zero
+                ? <>You planned to keep nothing, and kept{" "}
+                    <strong>{money(data.last_plan_result.actual_kept ?? 0)}</strong>.</>
+                : <><strong className={data.last_plan_result.met ? "good-text" : ""}>
+                      {money(data.last_plan_result.difference_abs ?? 0)}
+                    </strong>{" "}
+                    {data.last_plan_result.met ? "more" : "less"} than you planned
+                    to keep.</>}
+            </h3>
+
+            <div className="plan-result-compare">
+              <div>
+                <span>You planned to keep</span>
+                <strong>{moneyCents(data.last_plan_result.intended_kept ?? 0)}</strong>
+              </div>
+              <b aria-hidden="true">→</b>
+              <div>
+                <span>{data.last_plan_result.kept_is_negative
+                  ? "You went behind by" : "You kept"}</span>
+                <strong>
+                  {moneyCents(Math.abs(data.last_plan_result.actual_kept ?? 0))}
+                </strong>
+              </div>
+            </div>
+
+            <p className="plan-result-support">
+              {moneyCents(data.last_plan_result.money_in ?? 0)} came in,{" "}
+              {moneyCents(data.last_plan_result.spending ?? 0)} went out.
+            </p>
+            <p className="file-meta">
+              {data.last_plan_result.coverage_note}
+              {data.last_plan_result.planned_on
+                ? ` Plan saved ${data.last_plan_result.planned_on}.` : ""}
+            </p>
+
+            <div className="button-row">
+              <button type="button" className="ghost-button"
+                onClick={() => onNavigate("plan#commitment-review")}>
+                Review {monthName}’s plan
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* ── A. Where you stand ─────────────────────────────────── */}
         <section className={`verdict-card verdict-${data.outcome.state}`}>

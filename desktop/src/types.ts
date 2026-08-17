@@ -880,9 +880,32 @@ export interface AnalysisContext {
   label: string;
 }
 
+/**
+ * How the last finished month compared with what was intended for it.
+ * Every figure is computed by the engine; the screen only formats them.
+ */
+export interface LastPlanResult {
+  available: boolean;
+  reason: string;
+  month?: string;
+  month_label?: string;
+  intended_kept?: number;
+  actual_kept?: number;
+  difference?: number;
+  difference_abs?: number;
+  met?: boolean;
+  money_in?: number;
+  spending?: number;
+  target_is_zero?: boolean;
+  kept_is_negative?: boolean;
+  coverage_note?: string;
+  planned_on?: string;
+}
+
 export interface PlanPayload {
   month: string;
   analysis?: AnalysisContext;
+  last_plan_result?: LastPlanResult;
   saved: PlanRecord | null;
   proposal: PlanRecord;
   working_plan: PlanRecord;

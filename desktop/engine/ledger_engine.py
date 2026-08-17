@@ -1943,6 +1943,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
         balance_reconciliation, get_account_balances, get_monthly_plan,
         spending_balance_summary,
     )
+    from utils.plan_result import last_plan_result
     from utils.planner import (
         PLAN_MODES, bills_and_commitments, forecast_month,
         plan_commitment_agreement, plan_confirm_proposal, plan_target_month,
@@ -2179,6 +2180,12 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
         # So the screen can name the exact date the figures describe rather
         # than implying they are about today.
         "analysis": analysis_context(conn=conn, today=today),
+        # How the last finished month compared with what was intended for it.
+        # Read-only, and absent unless an exact plan for a canonically
+        # complete month can be proven to predate the month's end.
+        "last_plan_result": last_plan_result(
+            conn=conn, today=today,
+        ),
         "saved": saved,
         "proposal": proposal,
         # Values actually rendered by the plan form and equation. This keeps
