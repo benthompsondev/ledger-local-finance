@@ -891,6 +891,7 @@ export interface LastPlanResult {
   month_label?: string;
   intended_kept?: number;
   actual_kept?: number;
+  actual_kept_abs?: number;
   difference?: number;
   difference_abs?: number;
   met?: boolean;

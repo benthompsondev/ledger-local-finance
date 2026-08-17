@@ -298,7 +298,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate, focusAnchor, focusT
                 <span>{data.last_plan_result.kept_is_negative
                   ? "You went behind by" : "You kept"}</span>
                 <strong>
-                  {moneyCents(Math.abs(data.last_plan_result.actual_kept ?? 0))}
+                  {moneyCents(data.last_plan_result.actual_kept_abs ?? 0)}
                 </strong>
               </div>
             </div>

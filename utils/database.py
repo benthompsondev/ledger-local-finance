@@ -17,7 +17,7 @@ import json
 import threading
 import time
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 from utils.platform_utils import get_data_dir
@@ -475,8 +475,8 @@ _SCHEMA_SQL = """
             fixed_override_reason TEXT,
             net_worth_target    REAL,
             notes               TEXT,
-            created_at          TEXT DEFAULT (datetime('now')),
-            updated_at          TEXT DEFAULT (datetime('now')),
+            created_at          TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            updated_at          TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
             UNIQUE(month)
         );
         CREATE INDEX IF NOT EXISTS idx_mp_month ON monthly_plans(month);
@@ -3131,6 +3131,16 @@ def get_net_worth_snapshots(conn: Optional[sqlite3.Connection] = None,
 # Pass 21 — monthly plans / budget targets / goals
 # ─────────────────────────────────────────────
 
+def _utc_timestamp() -> str:
+    """One unambiguous timestamp shape for newly persisted plan versions."""
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
 def upsert_monthly_plan(plan: dict, conn: Optional[sqlite3.Connection] = None) -> int:
     """Insert or update a plan for a month. Returns the plan id.
 
@@ -3142,7 +3152,14 @@ def upsert_monthly_plan(plan: dict, conn: Optional[sqlite3.Connection] = None) -
         conn = get_connection()
         close = True
     plan = dict(plan)
-    plan["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    stamp = _utc_timestamp()
+    # The old path let SQLite create `created_at` in UTC while Python wrote
+    # `updated_at` in local time.  Near a month boundary the two stamps could
+    # describe the same save on different calendar dates.  New plan versions
+    # carry an explicit UTC marker for both fields; existing `created_at`
+    # values remain untouched on conflict.
+    plan.setdefault("created_at", stamp)
+    plan["updated_at"] = stamp
     cols = ", ".join(plan.keys())
     qm = ", ".join(["?"] * len(plan))
     updates = ", ".join(f"{k}=excluded.{k}" for k in plan.keys()

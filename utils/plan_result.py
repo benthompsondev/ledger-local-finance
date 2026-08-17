@@ -27,18 +27,15 @@ against a target set *after* seeing the result would manufacture a certainty
 the data does not support.
 
 Both stamps must therefore fall on or before the final moment of the month.
+A plan may legitimately be created before that month starts; the exact month
+key proves what period the intention belongs to, while the timestamps prove it
+was not written or changed after the result was knowable.
 
-Two honest limitations, neither of which is worked around here:
-
-  • `created_at` is written by SQLite's `datetime('now')`, which is UTC, while
-    `upsert_monthly_plan` writes `updated_at` from local time. A plan saved in
-    the last few hours of a month, in a timezone behind UTC, can therefore
-    carry a `created_at` that has already rolled into the next month and be
-    refused. That fails closed — it hides a card that could have been shown,
-    rather than showing one that cannot be trusted — so it is left alone. A
-    tolerance window would fix it only by admitting genuinely retroactive
-    plans, which is the error that actually misleads.
-  • A missing or unparseable stamp proves nothing, so it is refused too.
+New plan writes use explicit UTC timestamps.  The target month remains a local
+calendar month, so aware stamps are compared with that local month-end converted
+to UTC.  Old unmarked stamps are left in their original fail-closed comparison:
+their mixed UTC/local basis cannot be reconstructed safely at a boundary.
+A missing or unparseable stamp likewise proves nothing and is refused.
 
 Public API
 ──────────
@@ -48,15 +45,15 @@ from __future__ import annotations
 
 import calendar
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, tzinfo
 from typing import Any, Optional
 
 from utils.database import get_connection
 
 _MONTHS = ("January", "February", "March", "April", "May", "June", "July",
            "August", "September", "October", "November", "December")
-# Accepted shapes for a persisted timestamp. SQLite's own default writes the
-# first; anything else is treated as unprovable rather than guessed at.
+# Accepted legacy shapes for persisted timestamps. New writes are ISO 8601 UTC
+# with a trailing Z and are parsed separately so their basis is unambiguous.
 _TS_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f",
                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d")
 
@@ -92,6 +89,14 @@ def parse_stamp(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
         return None
+    try:
+        parsed = datetime.fromisoformat(
+            text[:-1] + "+00:00" if text.endswith("Z") else text
+        )
+        if parsed.tzinfo is not None:
+            return parsed
+    except ValueError:
+        pass
     for shape in _TS_FORMATS:
         try:
             return datetime.strptime(text, shape)
@@ -100,7 +105,26 @@ def parse_stamp(value: Any) -> Optional[datetime]:
     return None
 
 
-def intention_is_contemporaneous(plan: dict, month: str) -> bool:
+def _before_month_end(stamp: datetime, end: datetime,
+                      local_timezone: Optional[tzinfo]) -> bool:
+    """Compare a stamp without guessing the basis of legacy naive values."""
+    if stamp.tzinfo is None:
+        # Historical rows mixed UTC created_at with local updated_at and did
+        # not mark either basis. Preserve the old conservative comparison;
+        # converting either one could admit a genuinely retroactive row.
+        return stamp <= end
+    if local_timezone is None:
+        # astimezone() on a naive datetime applies the machine's local rules
+        # for that historical date, including the relevant DST offset.
+        end_utc = end.astimezone(timezone.utc)
+    else:
+        end_utc = end.replace(tzinfo=local_timezone).astimezone(timezone.utc)
+    return stamp.astimezone(timezone.utc) <= end_utc
+
+
+def intention_is_contemporaneous(
+    plan: dict, month: str, *, local_timezone: Optional[tzinfo] = None,
+) -> bool:
     """Whether this row proves an intention that existed during the month.
 
     Requires both stamps: `created_at` shows the row was not invented after
@@ -114,7 +138,17 @@ def intention_is_contemporaneous(plan: dict, month: str) -> bool:
     updated = parse_stamp(plan.get("updated_at"))
     if created is None or updated is None:
         return False
-    return created <= end and updated <= end
+    return (
+        _before_month_end(created, end, local_timezone)
+        and _before_month_end(updated, end, local_timezone)
+    )
+
+
+def _local_date(stamp: datetime) -> str:
+    """Display an aware save in the calendar date the user experienced."""
+    if stamp.tzinfo is not None:
+        stamp = stamp.astimezone()
+    return stamp.strftime("%Y-%m-%d")
 
 
 def _coverage_note(detail: dict) -> str:
@@ -197,6 +231,7 @@ def _result(conn: sqlite3.Connection, today,
             "month_label": month_label(month),
             "intended_kept": intended,
             "actual_kept": actual,
+            "actual_kept_abs": abs(actual),
             "difference": difference,
             "difference_abs": abs(difference),
             "met": difference >= 0,
@@ -206,7 +241,7 @@ def _result(conn: sqlite3.Connection, today,
             "target_is_zero": intended == 0,
             "kept_is_negative": actual < 0,
             "coverage_note": _coverage_note(coverage.get(month) or {}),
-            "planned_on": saved_on.strftime("%Y-%m-%d") if saved_on else "",
+            "planned_on": _local_date(saved_on) if saved_on else "",
         }
 
     return _unavailable(

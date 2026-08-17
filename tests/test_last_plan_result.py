@@ -9,6 +9,7 @@ refuses rather than guesses.
 from __future__ import annotations
 
 import pytest
+from zoneinfo import ZoneInfo
 
 from tests.conftest import add_tx, save_plan, seed_month
 
@@ -89,6 +90,9 @@ def test_a_month_that_spent_more_than_it_earned_reads_honestly(ledger_db):
     assert result["difference"] == pytest.approx(
         result["actual_kept"] - 200.0
     )
+    assert result["actual_kept_abs"] == pytest.approx(
+        abs(result["actual_kept"])
+    )
 
 
 def test_a_zero_savings_target_is_a_real_intention(ledger_db):
@@ -159,6 +163,69 @@ def test_a_plan_edited_after_the_month_ended_is_refused(ledger_db):
     _stamp(ledger_db, "2026-06", "2026-06-02 09:00:00", "2026-07-09 20:00:00")
 
     assert _result(ledger_db)["available"] is False
+
+
+def test_an_exact_plan_may_be_saved_before_its_target_month(ledger_db):
+    """The month key identifies the intent; early planning is still planning."""
+    seed_month(ledger_db, "2026-06")
+    save_plan(ledger_db, "2026-06", savings=800)
+    _stamp(ledger_db, "2026-06", "2026-05-30 09:00:00",
+           "2026-05-30 09:00:00")
+
+    assert _result(ledger_db)["month"] == "2026-06"
+
+
+def test_new_utc_stamp_in_the_last_local_hours_is_contemporaneous():
+    """June 30 at 23:30 Toronto is July 1 in UTC, but still a June plan."""
+    from utils.plan_result import intention_is_contemporaneous
+
+    plan = {
+        "created_at": "2026-07-01T03:30:00Z",
+        "updated_at": "2026-07-01T03:30:00Z",
+    }
+
+    assert intention_is_contemporaneous(
+        plan, "2026-06", local_timezone=ZoneInfo("America/Toronto")
+    ) is True
+
+
+def test_new_utc_stamp_after_local_month_end_is_refused():
+    from utils.plan_result import intention_is_contemporaneous
+
+    plan = {
+        # Exactly local midnight belongs to July, not the June plan window.
+        "created_at": "2026-07-01T04:00:00Z",
+        "updated_at": "2026-07-01T04:00:00Z",
+    }
+
+    assert intention_is_contemporaneous(
+        plan, "2026-06", local_timezone=ZoneInfo("America/Toronto")
+    ) is False
+
+
+def test_new_utc_month_end_uses_the_historical_dst_offset():
+    """Toronto month-end is UTC-4 in June and UTC-5 in November."""
+    from utils.plan_result import intention_is_contemporaneous
+
+    toronto = ZoneInfo("America/Toronto")
+    assert intention_is_contemporaneous({
+        "created_at": "2026-12-01T04:30:00Z",
+        "updated_at": "2026-12-01T04:30:00Z",
+    }, "2026-11", local_timezone=toronto) is True
+    assert intention_is_contemporaneous({
+        "created_at": "2026-12-01T05:00:00Z",
+        "updated_at": "2026-12-01T05:00:00Z",
+    }, "2026-11", local_timezone=toronto) is False
+
+
+def test_legacy_mixed_boundary_stamps_remain_fail_closed():
+    """Unmarked historical UTC/local values cannot be reconstructed safely."""
+    from utils.plan_result import intention_is_contemporaneous
+
+    assert intention_is_contemporaneous({
+        "created_at": "2026-07-01 03:30:00",  # old SQLite UTC
+        "updated_at": "2026-06-30 23:30:00",  # old Python local time
+    }, "2026-06", local_timezone=ZoneInfo("America/Toronto")) is False
 
 
 def test_an_unparseable_or_missing_stamp_proves_nothing(ledger_db):
