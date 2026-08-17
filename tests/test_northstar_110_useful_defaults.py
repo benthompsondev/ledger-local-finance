@@ -5,15 +5,29 @@ month-to-month comparison and remaining-bill failures without statement data.
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from tests.conftest import add_tx, save_plan, seed_month
 
 
-def test_insights_and_home_use_real_same_day_category_comparisons(ledger_db):
+def test_insights_and_home_use_real_same_day_category_comparisons(
+    ledger_db, monkeypatch,
+):
+    import utils.analysis_period as analysis_period
     from desktop.engine.ledger_engine import (
         home_dashboard_action, insights_summary_action,
     )
+
+    class FrozenDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 8)
+
+    # This is a July same-day comparison fixture. Freeze only the canonical
+    # analysis clock so it does not become "stale" as the real calendar moves.
+    monkeypatch.setattr(analysis_period, "date", FrozenDate)
 
     seed_month(ledger_db, "2026-06", grocery_days=5, grocery_amount=20)
     for day in (22, 23, 24, 25):

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.7.0 - 2026-08-17
+
+Two new ways to look back at a finished month without guessing.
+
+### What changed
+
+- Insights can replay a finished month after reducing one real category or
+  merchant by 25%, 50% or 100%, then compare the actual and counterfactual
+  results.
+- Every replay shows the matched transactions behind the result and uses the
+  same deterministic cash-flow rules as the rest of Northstar.
+- Plan can compare what you intended to keep with what the month actually
+  kept, but only when that exact plan existed in time and statement coverage
+  is complete.
+- Replays are read-only. They do not change transactions, plans or forecasts.
+
 ## 2.6.3 - 2026-08-12
 
 An Insights comparison fix. No new features.

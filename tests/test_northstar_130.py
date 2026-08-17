@@ -203,7 +203,7 @@ def test_release_versions_are_consistent():
         package_version, package_lock_version, tauri_version,
         cargo["package"]["version"], cargo_lock_version, __version__,
     }
-    assert versions == {"2.6.3"}
+    assert versions == {"2.7.0"}
     assert 'AppVersion "1.6.0"' in (
         root / "packaging" / "windows" / "Ledger.iss"
     ).read_text(encoding="utf-8")

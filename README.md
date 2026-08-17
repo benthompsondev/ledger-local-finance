@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.6.3_x64-setup.exe
+NorthstarLedger_2.7.0_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,10 +58,10 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.6.3. Windows public beta.** It works, it is tested, and it
-is still a beta. This release fixes month-completeness checks in Insights so
-finished months, prior-month comparisons, rolling averages and signed best-month
-figures agree with the imported statements.
+**Current release: 2.7.0. Windows public beta.** It works, it is tested, and it
+is still a beta. This release adds Counterfactual Replay in Insights and Last
+Plan Result in Plan, so you can test one spending change against a finished
+month and compare that month with the plan that actually existed for it.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
@@ -88,8 +88,8 @@ There are six tabs:
 |---|---|
 | **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
-| **Plan** | Turn recent spending into a monthly plan. Income, fixed costs, reserves for non-monthly bills, savings, buffer, and the flexible amount left over. |
-| **Insights** | Spending pace, category movement, income steadiness, cashflow, and your monthly net worth: four figures you enter once a month, so every point on the chart is a real reading. |
+| **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
+| **Insights** | Spending pace, category movement, income steadiness, cashflow, monthly net worth, and a read-only replay of one category or merchant change in a finished month. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
