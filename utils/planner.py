@@ -463,6 +463,18 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
     #    hand downstream.
     from utils.recurring_cadence import merchant_cadences
 
+    # The cadence pass reaches merchants the monthly detector never saw, so
+    # it has to read the user's review decision itself. find_recurring()
+    # joins this table for the monthly items; without the same join here a
+    # quarterly bill stayed "automatic" no matter how many times it was
+    # confirmed, and "Review recurring costs" could never be cleared.
+    cadence_preferences = {
+        str(row["merchant_normalized"]): str(row["status"])
+        for row in conn.execute(
+            "SELECT merchant_normalized, status FROM recurring_preferences"
+        ).fetchall()
+    }
+
     for row in merchant_cadences(conn=conn):
         key = (row.get("merchant") or "").upper()
         cadence = row["cadence"]
@@ -521,7 +533,9 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         "nonmonthly_commitments",
             "reason":        row["setaside_note"],
             "source":        "cadence",
-            "recurring_status": "automatic",
+            "recurring_status": cadence_preferences.get(
+                str(row["merchant_normalized"] or ""), "automatic",
+            ),
         })
 
     # Anything the cadence pass did not reach still needs the fields its

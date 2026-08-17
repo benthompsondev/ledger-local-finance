@@ -3,7 +3,7 @@
 All data here is invented and disposable.
 
 The installed 2.6.0 app reported `database is locked` seventeen times in one
-session, across money_focus, insights_summary, review_summary, ai_settings,
+session, across insights_summary, review_summary, ai_settings,
 insight_feed, category_settings and preview_plan. Every one of those is a
 **read**. In WAL mode a read never blocks on a writer, so a read-only action
 should not have been able to produce that message at all.
@@ -409,7 +409,6 @@ def test_a_screenful_of_mixed_actions_reports_no_lock(fresh):
         return code, out.getvalue()
 
     burst = [
-        ("money_focus", {}),
         ("insights_summary", {"period_days": 30}),
         ("review_summary", {}),
         ("ai_settings", {}),

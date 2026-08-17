@@ -66,8 +66,7 @@ def test_every_explicit_plan_action_invalidates_older_previews() -> None:
 
     boundaries = {
         "refresh": ("const refresh =", "useEffect(() => { void refresh()"),
-        "choosePreset": ("const choosePreset =", "const save ="),
-        "save": ("const save =", "const confirmIncome ="),
+        "save": ("const save =", "if (!data && !error)"),
     }
     for handler, (opening, closing) in boundaries.items():
         start = source.index(opening)
@@ -81,8 +80,7 @@ def test_preset_and_save_ignore_stale_results() -> None:
     source = PLAN_VIEW.read_text(encoding="utf-8")
 
     boundaries = {
-        "choosePreset": ("const choosePreset =", "const save ="),
-        "save": ("const save =", "const confirmIncome ="),
+        "save": ("const save =", "if (!data && !error)"),
     }
     for handler, (opening, closing) in boundaries.items():
         start = source.index(opening)
@@ -95,14 +93,15 @@ def test_preset_and_save_ignore_stale_results() -> None:
         assert "if (gate.current.isLatest(token)) setBusy(false)" not in body
         assert "setBusy(false);" in body
 
-    assert "disabled={busy}" in source[source.index('aria-label="Monthly plan presets"'):]
+    # Every editable input is locked while an explicit action is running.
+    assert source.count("disabled={busy}") >= 3
 
 
 def test_save_repreviews_the_current_form_before_persisting() -> None:
     """Clicking Save inside the debounce window must not send stale flexible room."""
     source = PLAN_VIEW.read_text(encoding="utf-8")
     start = source.index("const save =")
-    end = source.index("const confirmIncome =", start)
+    end = source.index("if (!data && !error)", start)
     body = source[start:end]
 
     preview = body.index("await previewPlan(")
@@ -116,7 +115,7 @@ def test_live_preview_pauses_while_an_explicit_action_is_busy() -> None:
     source = PLAN_VIEW.read_text(encoding="utf-8")
     comment = source.index("// An explicit action")
     start = source.rindex("useEffect(() => {", 0, comment)
-    effect = source[start:source.index("const choosePreset =")]
+    effect = source[start:source.index("const save =")]
     assert "if (!data || busy) return" in effect
     assert "form.mode, busy]" in effect
 

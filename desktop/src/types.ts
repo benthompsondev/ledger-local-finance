@@ -417,6 +417,9 @@ export interface PlanRecord {
   fixed_override_reason?: string;
   detected_commitments_at_save?: number | null;
   notes?: string;
+  /** Persisted save stamps, so "Saved" survives a reload and a restart. */
+  created_at?: string;
+  updated_at?: string;
 }
 
 /** Optional AI assistance. Off unless the user turns it on. */
@@ -519,43 +522,6 @@ export interface FocusMonth {
   running: number;
 }
 
-/**
- * One saving focus, funded by the months that actually finished rather than
- * by anyone remembering to type their progress in.
- */
-export interface MoneyFocus {
-  available: boolean;
-  needs_setup: boolean;
-  reason?: string;
-  suggested_start?: string;
-  months_available?: number;
-  focus?: {
-    name: string; target_amount: number; target_date: string;
-    started_month: string; already_saved: number; note: string;
-  };
-  saved?: number;
-  target?: number;
-  remaining?: number;
-  reached?: boolean;
-  progress_pct?: number;
-  months: FocusMonth[];
-  months_counted?: number;
-  typical_month?: number;
-  best_month?: FocusMonth | null;
-  weakest_month?: FocusMonth | null;
-  /** The month still in progress, shown beside the total and never inside it. */
-  this_month?: { month: string; kept_so_far: number; complete: boolean } | null;
-  projection?: {
-    available: boolean; reason?: string; months_to_go?: number;
-    finish_month?: string; monthly_rate?: number;
-  };
-  by_target_date?: {
-    available: boolean; months_left?: number; needed_monthly?: number;
-    actual_monthly?: number; on_track?: boolean; shortfall_monthly?: number;
-    past_due?: boolean;
-  };
-  sentence?: string;
-}
 
 /** One thing Northstar noticed, with the arithmetic already done. */
 export interface Insight {
@@ -622,73 +588,6 @@ export interface CalendarDay {
   count: number;
   weekday: number;
   month: string;
-}
-
-/** Counterfactual replay — a finished month with one spending change. */
-export interface ReplayTarget {
-  kind: "category" | "merchant";
-  key: string;
-  label: string;
-  amount: number;
-  tx_count: number;
-}
-
-export interface ReplayTotals {
-  income: number;
-  spending: number;
-  net: number;
-  savings_rate: number;
-}
-
-export interface ReplayMonth {
-  month: string;
-  label: string;
-  income: number;
-  spending: number;
-  net: number;
-  replayed_net: number;
-  is_replayed: boolean;
-}
-
-export interface ReplayEvidenceRow {
-  date: string;
-  description: string;
-  category: string;
-  amount: number;
-  replayed_amount: number;
-}
-
-export interface ReplayResult {
-  available: boolean;
-  reason: string;
-  target?: ReplayTarget;
-  reduction_pct?: number;
-  removed_entirely?: boolean;
-  actual?: ReplayTotals;
-  counterfactual?: ReplayTotals;
-  freed?: number;
-  net_delta?: number;
-  savings_rate_delta?: number;
-  matched_count?: number;
-  rank?: {
-    actual: number;
-    counterfactual: number;
-    total: number;
-    improved: boolean;
-  };
-  transactions?: ReplayEvidenceRow[];
-  evidence_truncated?: boolean;
-  months?: ReplayMonth[];
-}
-
-export interface CounterfactualPayload {
-  available: boolean;
-  reason: string;
-  months: { month: string; label: string; income: number; spending: number; net: number }[];
-  month: string;
-  month_label: string;
-  targets: ReplayTarget[];
-  replay: ReplayResult | null;
 }
 
 export interface SpendingPatterns {
@@ -903,10 +802,20 @@ export interface LastPlanResult {
   planned_on?: string;
 }
 
+/** At most one thing about this month worth interrupting for. */
+export interface PlanNotice {
+  level: "info" | "warn";
+  headline: string;
+  detail: string;
+  action: string;
+  screen: string;
+}
+
 export interface PlanPayload {
   month: string;
   analysis?: AnalysisContext;
   last_plan_result?: LastPlanResult;
+  plan_notice?: PlanNotice | null;
   saved: PlanRecord | null;
   proposal: PlanRecord;
   working_plan: PlanRecord;

@@ -2165,6 +2165,46 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
             "action": "Add data",
             "screen": "add-data",
         })
+    # At most one thing worth interrupting for. Plan used to render a queue of
+    # up to six review items plus a list of optional cash checks, which made a
+    # monthly decision screen read as a task manager and buried the plan
+    # itself. Income sources, recurring costs and account balances are all
+    # reviewable where they live (Settings and Insights); none of them needs
+    # to shout from this page. Only a reason the plan itself cannot be trusted
+    # earns space here, and the engine decides that, not the screen.
+    plan_notice = None
+    if outcome.get("state") == "stale_data":
+        plan_notice = {
+            "level": "warn",
+            "headline": outcome.get("headline") or "Import your latest transactions",
+            "detail": outcome.get("sentence") or (
+                "This plan is measured against data that has stopped moving."
+            ),
+            "action": "Add data",
+            "screen": "add-data",
+        }
+    elif not history_sufficient:
+        plan_notice = {
+            "level": "info",
+            "headline": (
+                "Import your first statement" if not int(history["n"] or 0)
+                else "One full month of history makes this more accurate"
+            ),
+            "detail": (
+                "Northstar needs about 28 days of activity before its income "
+                "baseline settles."
+            ),
+            "action": "Add data",
+            "screen": "add-data",
+        }
+    elif not equation["coherent"]:
+        plan_notice = {
+            "level": "warn",
+            "headline": "This plan spends more than it expects to receive",
+            "detail": equation.get("explanation") or "",
+            "action": "",
+            "screen": "",
+        }
     forecast_ready = bool(
         saved and history_sufficient
         and reliable_income.get("confirmed")
@@ -2186,6 +2226,8 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
         "last_plan_result": last_plan_result(
             conn=conn, today=today,
         ),
+        # The single most important thing about this month, or nothing.
+        "plan_notice": plan_notice,
         "saved": saved,
         "proposal": proposal,
         # Values actually rendered by the plan form and equation. This keeps
@@ -3072,28 +3114,6 @@ def spending_patterns_action(params: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
-def counterfactual_replay_action(params: dict[str, Any]) -> dict[str, Any]:
-    """Replay one finished month with one spending change applied.
-
-    Called with no target it returns only what can be replayed, so the month
-    picker, the target list and the result all come from one round trip.
-    """
-    from utils.counterfactual import counterfactual_packet
-
-    conn = _connection()
-    try:
-        return counterfactual_packet(
-            month=str(params.get("month") or ""),
-            target_kind=str(params.get("target_kind") or ""),
-            target_key=str(params.get("target_key") or ""),
-            reduction_pct=params.get("reduction_pct", 100),
-            conn=conn,
-            share_view=str(params.get("share_view") or "personal"),
-        )
-    finally:
-        conn.close()
-
-
 def net_worth_trend_action(_params: dict[str, Any]) -> dict[str, Any]:
     """Recorded months, their movement, and a prefill for the next one."""
     from utils.net_worth import net_worth_overview
@@ -3181,47 +3201,6 @@ def export_transactions_action(params: dict[str, Any]) -> dict[str, Any]:
             "rows": len(rows),
             "columns": selected,
         }
-    finally:
-        conn.close()
-
-
-def money_focus_action(_params: dict[str, Any]) -> dict[str, Any]:
-    """One saving focus, funded by the months that actually finished."""
-    from utils.money_focus import money_focus_summary
-
-    conn = _connection()
-    try:
-        return money_focus_summary(conn=conn)
-    finally:
-        conn.close()
-
-
-def save_money_focus_action(params: dict[str, Any]) -> dict[str, Any]:
-    from utils.money_focus import money_focus_summary, save_focus
-
-    conn = _connection()
-    try:
-        save_focus(
-            name=str(params.get("name") or ""),
-            target_amount=float(params.get("target_amount") or 0),
-            started_month=str(params.get("started_month") or ""),
-            target_date=str(params.get("target_date") or ""),
-            already_saved=float(params.get("already_saved") or 0),
-            note=str(params.get("note") or ""),
-            conn=conn,
-        )
-        return money_focus_summary(conn=conn)
-    finally:
-        conn.close()
-
-
-def clear_money_focus_action(_params: dict[str, Any]) -> dict[str, Any]:
-    from utils.money_focus import clear_focus, money_focus_summary
-
-    conn = _connection()
-    try:
-        clear_focus(conn=conn)
-        return money_focus_summary(conn=conn)
     finally:
         conn.close()
 
@@ -3672,12 +3651,8 @@ ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "save_net_worth_entry": save_net_worth_entry_action,
     "delete_net_worth_entry": delete_net_worth_entry_action,
     "export_transactions": export_transactions_action,
-    "money_focus": money_focus_action,
-    "save_money_focus": save_money_focus_action,
-    "clear_money_focus": clear_money_focus_action,
     "delete_transaction": delete_transaction_action,
     "spending_patterns": spending_patterns_action,
-    "counterfactual_replay": counterfactual_replay_action,
     "explain_insight": explain_insight_action,
     "ai_ask": ai_ask_action,
     "test_ai_connection": test_ai_connection_action,

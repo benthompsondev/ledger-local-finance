@@ -98,7 +98,6 @@ def test_plan_and_a_full_screen_of_reads_together_report_no_lock(three_months):
         ("plan_summary", {}),
         ("preview_plan", {"mode": "normal", "apply_preset": False}),
         ("insights_summary", {"period_days": 30}),
-        ("money_focus", {}),
         ("review_summary", {}),
         ("category_settings", {}),
         ("ai_settings", {}),

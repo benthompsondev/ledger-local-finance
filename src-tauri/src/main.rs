@@ -351,42 +351,6 @@ async fn export_transactions(app: AppHandle, path: String) -> Result<Value, Stri
 }
 
 #[tauri::command]
-async fn get_money_focus(app: AppHandle) -> Result<Value, String> {
-    run_engine(&app, "money_focus", json!({}), ENGINE_TIMEOUT_SECS).await
-}
-
-#[tauri::command]
-async fn save_money_focus(
-    app: AppHandle,
-    name: String,
-    target_amount: f64,
-    started_month: String,
-    target_date: Option<String>,
-    already_saved: Option<f64>,
-    note: Option<String>,
-) -> Result<Value, String> {
-    run_engine(
-        &app,
-        "save_money_focus",
-        json!({
-            "name": name,
-            "target_amount": target_amount,
-            "started_month": started_month,
-            "target_date": target_date,
-            "already_saved": already_saved,
-            "note": note,
-        }),
-        ENGINE_TIMEOUT_SECS,
-    )
-    .await
-}
-
-#[tauri::command]
-async fn clear_money_focus(app: AppHandle) -> Result<Value, String> {
-    run_engine(&app, "clear_money_focus", json!({}), ENGINE_TIMEOUT_SECS).await
-}
-
-#[tauri::command]
 async fn delete_transaction(app: AppHandle, id: i64) -> Result<Value, String> {
     run_engine(
         &app,
@@ -408,28 +372,6 @@ async fn get_spending_patterns(app: AppHandle, months: Option<i64>) -> Result<Va
         &app,
         "spending_patterns",
         json!({ "months": months }),
-        ENGINE_TIMEOUT_SECS,
-    )
-    .await
-}
-
-#[tauri::command]
-async fn get_counterfactual_replay(
-    app: AppHandle,
-    month: Option<String>,
-    target_kind: Option<String>,
-    target_key: Option<String>,
-    reduction_pct: Option<f64>,
-) -> Result<Value, String> {
-    run_engine(
-        &app,
-        "counterfactual_replay",
-        json!({
-            "month": month,
-            "target_kind": target_kind,
-            "target_key": target_key,
-            "reduction_pct": reduction_pct,
-        }),
         ENGINE_TIMEOUT_SECS,
     )
     .await
@@ -1210,14 +1152,10 @@ fn main() {
             ai_coaching_summary,
             get_insight_feed,
             get_spending_patterns,
-            get_counterfactual_replay,
             explain_insight,
             get_net_worth_trend,
             save_net_worth_entry,
             delete_net_worth_entry,
-            get_money_focus,
-            save_money_focus,
-            clear_money_focus,
             pick_export_file,
             export_transactions,
             delete_transaction,

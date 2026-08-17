@@ -14,17 +14,3 @@ export interface SignedBarGeometry {
 }
 
 /** Position a signed interval inside a chart whose domain includes zero. */
-export function signedBarGeometry(
-  from: number,
-  to: number,
-  domainMin: number,
-  domainMax: number,
-): SignedBarGeometry {
-  const span = Math.max(1, domainMax - domainMin);
-  const low = Math.min(from, to);
-  const high = Math.max(from, to);
-  return {
-    bottom: ((low - domainMin) / span) * 100,
-    height: ((high - low) / span) * 100,
-  };
-}

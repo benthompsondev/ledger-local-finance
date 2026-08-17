@@ -33,10 +33,8 @@ import type {
   Insight,
   InsightExplanation,
   InsightFeed,
-  MoneyFocus,
   NetWorthOverview,
   SpendingPatterns,
-  CounterfactualPayload,
 } from "./types";
 
 export async function loadHomeSummary(periodDays: 30 | 90): Promise<HomePacket> {
@@ -219,34 +217,12 @@ export const exportTransactions = (path: string) =>
   invoke<{ exported: boolean; path: string; rows: number; columns: string[] }>(
     "export_transactions", { path },
   );
-export const loadMoneyFocus = () => invoke<MoneyFocus>("get_money_focus");
-export const saveMoneyFocus = (spec: {
-  name: string; targetAmount: number; startedMonth: string;
-  targetDate?: string; alreadySaved?: number; note?: string;
-}) => invoke<MoneyFocus>("save_money_focus", {
-  name: spec.name, targetAmount: spec.targetAmount,
-  startedMonth: spec.startedMonth, targetDate: spec.targetDate ?? "",
-  alreadySaved: spec.alreadySaved ?? 0, note: spec.note ?? "",
-});
-export const clearMoneyFocus = () => invoke<MoneyFocus>("clear_money_focus");
 export const deleteTransaction = (id: number) =>
   invoke<{ deleted: boolean; id: number }>("delete_transaction", { id });
 export const loadInsightFeed = () =>
   invoke<InsightFeed>("get_insight_feed");
 export const loadSpendingPatterns = (months?: number) =>
   invoke<SpendingPatterns>("get_spending_patterns", { months });
-export const loadCounterfactual = (spec?: {
-  month?: string;
-  targetKind?: string;
-  targetKey?: string;
-  reductionPct?: number;
-}) =>
-  invoke<CounterfactualPayload>("get_counterfactual_replay", {
-    month: spec?.month ?? null,
-    targetKind: spec?.targetKind ?? null,
-    targetKey: spec?.targetKey ?? null,
-    reductionPct: spec?.reductionPct ?? null,
-  });
 export const explainInsight = (findingId: string) =>
   invoke<{ explanation: InsightExplanation; finding: Insight }>(
     "explain_insight", { findingId },

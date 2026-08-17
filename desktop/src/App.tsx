@@ -47,7 +47,7 @@ export default function App(){
     <nav className="app-nav" aria-label="Main">{SCREENS.map(s=><button key={s.id} type="button" className={screen===s.id?"nav-button nav-active":"nav-button"} onClick={()=>goTo(s.id)}>{s.label}{s.id==="transactions"&&reviewCount>0&&<span className="nav-count">{reviewCount>99?"99+":reviewCount}</span>}</button>)}</nav>
     {screen==="home"&&<HomeView onAddData={()=>goTo("add-data")} onNavigate={goTo} onDrill={drill} refreshToken={dataVersion}/>}
     {addDataMounted&&<div hidden={screen!=="add-data"}><AddDataView onGoHome={()=>setScreen("home")} onGoTransactions={()=>setScreen("transactions")} onDataChanged={changed}/></div>}
-    {screen==="plan"&&<PlanView refreshToken={dataVersion} onDataChanged={changed} onNavigate={goTo} focusAnchor={focusAnchor} focusToken={focusToken}/>}
+    {screen==="plan"&&<PlanView refreshToken={dataVersion} onDataChanged={changed} onNavigate={goTo}/>}
     {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed} focusAnchor={focusAnchor} focusToken={focusToken}/>}
     {screen==="transactions"&&<TransactionsView refreshToken={dataVersion} onDataChanged={changed} prefill={txPrefill} onPrefillApplied={()=>setTxPrefill(null)}/>}
     {screen==="ai"&&<AiView onOpenSettings={()=>goTo("settings#ai-assist")} onDrill={d=>drill({category:d.category,search:d.merchant,startDate:d.start_date,endDate:d.end_date})}/>}
