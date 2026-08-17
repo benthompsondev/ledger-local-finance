@@ -104,17 +104,25 @@ def test_balances_stay_unconfigured_until_one_is_entered(engine_env) -> None:
     assert after["data"]["net_worth"]["net_worth"] == pytest.approx(-425.50)
 
 
-def test_plan_rejects_outflow_above_income(engine_env) -> None:
+def test_plan_without_an_income_basis_cannot_be_saved(engine_env) -> None:
+    """Income is derived, so an empty database cannot price a month at all.
+
+    This used to submit its own income_target and be refused for allocating
+    more than that invented figure. The engine no longer accepts a client
+    income, so the honest refusal comes first: there is nothing to plan
+    against. Over-allocation against a real income basis is covered by
+    test_plan_income_contract_2_7_2.
+    """
     code, payload = _request({
         "action": "save_plan",
         "params": {
-            "month": "2026-07", "mode": "normal", "income_target": 3000,
-            "fixed_obligations": 1800, "flexible_allowance": 800,
+            "month": "2026-07", "mode": "normal",
+            "fixed_obligations": 1800,
             "savings_target": 400, "safety_buffer": 100,
         },
     })
     assert code == 1
-    assert "cannot exceed expected income" in payload["error"]
+    assert "complete month" in payload["error"]
 
 
 def test_one_recurring_confirmation_updates_matching_history(engine_env) -> None:
@@ -536,25 +544,24 @@ def test_native_plan_goal_insights_and_manual_entry(engine_env) -> None:
     assert manual["data"]["transaction"]["account_name"] == "Northstar Chequing"
 
     month = date.today().strftime("%Y-%m")
+    # One manual grocery row and no income, so there is no baseline to plan
+    # against. The engine derives income rather than accepting one, so it
+    # says so instead of pricing the month off a figure the client invented.
+    # The arithmetic this used to assert is covered against a real income
+    # basis in test_plan_income_contract_2_7_2.
     code, plan = _request({
         "action": "save_plan",
         "params": {
             "month": month,
             "mode": "normal",
-            "income_target": 5000,
-                "fixed_obligations": 2200,
-                "flexible_allowance": 1200,
-                "savings_target": 1000,
-                "safety_buffer": 200,
-                "fixed_override_reason": "Synthetic manual commitments",
-            },
+            "fixed_obligations": 2200,
+            "savings_target": 1000,
+            "safety_buffer": 200,
+            "fixed_override_reason": "Synthetic manual commitments",
+        },
     })
-    assert code == 0
-    # 0.7 makes flexible spending the exact remainder in the authoritative
-    # engine equation: 5000 - 2200 fixed - 1000 savings - 200 buffer = 1600.
-    assert plan["data"]["saved"]["spending_target"] == 3800
-    assert plan["data"]["equation"]["flexible"] == 1600
-    assert plan["data"]["saved"]["safety_buffer"] == 200
+    assert code == 1
+    assert "complete month" in plan["error"]
 
     code, goals = _request({
         "action": "create_goal",

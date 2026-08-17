@@ -98,7 +98,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
         const preference = readSavingsPreference();
         token = gate.current.begin();
         const preview = await previewPlan({
-          mode: next.mode, incomeTarget: Number(next.income),
+          mode: next.mode,
           fixedObligations: Number(next.fixed), savingsTarget: Number(next.savings),
           safetyBuffer: Number(next.buffer), applyPreset: false,
           applyPreference: true, savingsPreferenceStyle: preference.style,
@@ -132,7 +132,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
       previewed.current = signature;
       const token = gate.current.begin();
       void previewPlan({
-        mode: form.mode, incomeTarget: Number(form.income),
+        mode: form.mode,
         fixedObligations: Number(form.fixed), savingsTarget: Number(form.savings),
         safetyBuffer: Number(form.buffer), applyPreset: false,
       }).then(p => {
@@ -156,7 +156,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
       // The equation on screen may be one debounce behind the form, so
       // re-derive it from the exact values being saved.
       const currentPreview = await previewPlan({
-        mode: form.mode, incomeTarget: Number(form.income),
+        mode: form.mode,
         fixedObligations: Number(form.fixed), savingsTarget: Number(form.savings),
         safetyBuffer: Number(form.buffer), applyPreset: false,
       });
@@ -167,9 +167,8 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
         return;
       }
       const payload = await savePlan({
-        month: data.month, mode: form.mode, incomeTarget: Number(form.income),
+        month: data.month, mode: form.mode,
         fixedObligations: Number(form.fixed),
-        flexibleAllowance: currentPreview.equation.flexible,
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
         notes: data.saved?.notes ?? "", fixedOverrideReason: form.overrideReason,
       });
@@ -207,15 +206,14 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
   const savedStamp = savedOn(savedRecord?.updated_at);
   // "Saved" is read from the stored row, so it survives a reload and a
   // restart rather than living in this component's memory.
-  const savedSignature = savedRecord ? previewSignature({
-    mode: savedRecord.mode || "normal",
-    income: shown(savedRecord.income_target),
-    fixed: shown(savedRecord.fixed_obligations ?? 0),
-    savings: shown(savedRecord.savings_target),
-    buffer: shown(savedRecord.safety_buffer),
-  }) : "";
+  // Only the three figures the user actually chooses, plus the reason.
+  // Income is derived, so a moved baseline is not an unsaved edit of theirs.
+  const decisions = (fixed: string, savings: string, buffer: string) =>
+    [fixed, savings, buffer].join("|");
   const dirty = !!savedRecord && (
-    previewSignature(form) !== savedSignature
+    decisions(form.fixed, form.savings, form.buffer)
+      !== decisions(shown(savedRecord.fixed_obligations ?? 0),
+        shown(savedRecord.savings_target), shown(savedRecord.safety_buffer))
     // The reason is persisted too, so changing only it is still a change.
     || form.overrideReason.trim() !== (savedRecord.fixed_override_reason ?? "").trim()
   );
@@ -224,10 +222,10 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
     <section className="workflow-panel plan-panel">
       <div className="panel-head">
         <div>
+          {/* The rows below name themselves, so a sentence restating them
+              only pushed the decision further down the page. */}
           <span className="eyebrow">Plan</span>
           <h2>{monthName}</h2>
-          <p>What is coming in, what is already committed, and what that
-            leaves you to spend.</p>
         </div>
       </div>
       {error && <div className="inline-error" role="alert">{error}</div>}
@@ -247,63 +245,66 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
         )}
 
         <article className="plan-card">
-          <div className="plan-rows">
-            <div className="plan-row">
-              <label htmlFor="plan-income">Money coming in</label>
-              <div className="plan-row-value">
-                <input id="plan-income" type="number" value={form.income} readOnly />
-              </div>
-              <small>{data.income_basis.months_used
+          {/* Facts first. A derived figure is not an input and must not look
+              like one — a read-only box reads as "a field you are somehow
+              not allowed to use" rather than "a number Northstar worked
+              out". These are labels with values. */}
+          <dl className="plan-facts">
+            <div className="plan-fact">
+              <dt>Money coming in</dt>
+              <dd>{moneyCents(equation?.income ?? 0)}</dd>
+              <p>{data.income_basis.months_used
                 ? data.income_basis.basis_label
-                : "Import a full month to estimate this."}</small>
+                : "Import one complete month and Northstar can work this out."}</p>
             </div>
-
-            <div className="plan-row">
-              <label htmlFor="plan-fixed">Fixed commitments</label>
-              <div className="plan-row-value">
-                <input id="plan-fixed" type="number" min="0" step="0.01"
-                  value={form.fixed} disabled={busy}
-                  onChange={e => setForm({ ...form, fixed: e.target.value })} />
-              </div>
-              <small>{data.fixed_commitments.length} recognized bill{data.fixed_commitments.length === 1 ? "" : "s"} and subscription{data.fixed_commitments.length === 1 ? "" : "s"}.</small>
-            </div>
-
             {equation && equation.nonmonthly_reserves > 0 && (
-              <div className="plan-row plan-row-derived">
-                <span>Set aside for non-monthly bills</span>
-                <div className="plan-row-value">
-                  <strong>{moneyCents(equation.nonmonthly_reserves)}</strong>
-                </div>
-                <small>Quarterly and annual bills, spread evenly.</small>
+              <div className="plan-fact">
+                <dt>Set aside for non-monthly bills</dt>
+                <dd>{moneyCents(equation.nonmonthly_reserves)}</dd>
+                <p>Quarterly and annual bills, spread evenly.</p>
               </div>
             )}
+          </dl>
 
-            <div className="plan-row">
+          {/* Then the three figures that are actually yours to choose. */}
+          <div className="plan-choices">
+            <div className="plan-choice">
+              <label htmlFor="plan-fixed">Fixed commitments</label>
+              <div className="plan-input">
+                <span aria-hidden="true">$</span>
+                <input id="plan-fixed" type="number" min="0" step="0.01"
+                  inputMode="decimal" value={form.fixed} disabled={busy}
+                  onChange={e => setForm({ ...form, fixed: e.target.value })} />
+              </div>
+              <p>{data.fixed_commitments.length} recognized bill{data.fixed_commitments.length === 1 ? "" : "s"} and subscription{data.fixed_commitments.length === 1 ? "" : "s"}</p>
+            </div>
+            <div className="plan-choice">
               <label htmlFor="plan-savings">Amount you want to keep</label>
-              <div className="plan-row-value">
+              <div className="plan-input">
+                <span aria-hidden="true">$</span>
                 <input id="plan-savings" type="number" min="0" step="0.01"
-                  value={form.savings} disabled={busy}
+                  inputMode="decimal" value={form.savings} disabled={busy}
                   onChange={e => setForm({ ...form, savings: e.target.value })} />
               </div>
-              <small>What should still be here at the end of the month.</small>
             </div>
-
-            <div className="plan-row">
+            <div className="plan-choice">
               <label htmlFor="plan-buffer">Safety buffer</label>
-              <div className="plan-row-value">
+              <div className="plan-input">
+                <span aria-hidden="true">$</span>
                 <input id="plan-buffer" type="number" min="0" step="0.01"
-                  value={form.buffer} disabled={busy}
+                  inputMode="decimal" value={form.buffer} disabled={busy}
                   onChange={e => setForm({ ...form, buffer: e.target.value })} />
               </div>
-              <small>Held back for the unexpected. Safe to Spend respects it.</small>
+              <p>Held back rather than spent</p>
             </div>
           </div>
 
+          {/* The answer. One rule, then the largest thing on the screen. */}
           <div className={`plan-outcome${equation?.coherent ? "" : " plan-outcome-error"}`}>
-            <span className="eyebrow">Left for everyday spending</span>
+            <span>Left for everyday spending</span>
             <strong>{equation?.coherent
               ? moneyCents(equation.flexible) : "Over plan"}</strong>
-            <p>{equation?.explanation}</p>
+            {!equation?.coherent && <p>{equation?.explanation}</p>}
           </div>
 
           {overridden && (
@@ -322,13 +323,14 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
                 : savedRecord ? (dirty ? "Save changes" : "Saved")
                   : `Save ${monthName}'s plan`}
             </button>
+            {/* The button already says Saved / Save changes, so this only
+                adds what the button cannot: when, and whether anything is
+                outstanding. No sentence explaining the button to itself. */}
             <span className="plan-save-state">
-              {busy ? ""
-                : justSaved && !dirty ? "Saved just now."
-                  : savedRecord && !dirty
-                    ? `Saved${savedStamp ? ` ${savedStamp}` : ""}. These are the figures Northstar is using.`
-                    : savedRecord ? "Unsaved changes."
-                      : "Nothing saved for this month yet."}
+              {busy || justSaved ? ""
+                : savedRecord && !dirty ? `Saved ${savedStamp || "this month"}`
+                  : savedRecord ? "Unsaved changes"
+                    : ""}
             </span>
           </div>
         </article>

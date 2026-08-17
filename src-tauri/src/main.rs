@@ -769,9 +769,7 @@ async fn get_plan_summary(app: AppHandle) -> Result<Value, String> {
 struct PlanSpec {
     month: String,
     mode: String,
-    income_target: f64,
     fixed_obligations: f64,
-    flexible_allowance: f64,
     savings_target: f64,
     safety_buffer: f64,
     #[serde(default)]
@@ -784,7 +782,6 @@ struct PlanSpec {
 #[serde(rename_all = "camelCase")]
 struct PlanPreviewSpec {
     mode: String,
-    income_target: f64,
     fixed_obligations: f64,
     savings_target: f64,
     safety_buffer: f64,
@@ -803,7 +800,6 @@ async fn preview_plan(app: AppHandle, spec: PlanPreviewSpec) -> Result<Value, St
     run_engine(
         &app, "preview_plan", json!({
             "mode": spec.mode,
-            "income_target": spec.income_target,
             "fixed_obligations": spec.fixed_obligations,
             "savings_target": spec.savings_target,
             "safety_buffer": spec.safety_buffer,
@@ -823,9 +819,7 @@ async fn save_plan(app: AppHandle, spec: PlanSpec) -> Result<Value, String> {
         json!({
             "month": spec.month,
             "mode": spec.mode,
-            "income_target": spec.income_target,
             "fixed_obligations": spec.fixed_obligations,
-            "flexible_allowance": spec.flexible_allowance,
             "savings_target": spec.savings_target,
             "safety_buffer": spec.safety_buffer,
             "notes": spec.notes,

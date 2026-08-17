@@ -20,10 +20,10 @@ def test_plan_save_rejects_non_finite_amounts_without_persisting(
         save_plan_action({
             "month": "2026-08",
             "mode": "normal",
-            "income_target": value,
             "fixed_obligations": 0,
-            "flexible_allowance": 0,
-            "savings_target": 0,
+            # Income is derived by the engine, so the guard is asserted on a
+            # figure the client genuinely still supplies.
+            "savings_target": value,
             "safety_buffer": 0,
         })
 
@@ -34,7 +34,7 @@ def test_plan_save_rejects_non_finite_amounts_without_persisting(
 
 @pytest.mark.parametrize(
     "field",
-    ["income_target", "fixed_obligations", "savings_target", "safety_buffer"],
+    ["fixed_obligations", "savings_target", "safety_buffer"],
 )
 def test_plan_preview_rejects_non_finite_amounts(ledger_db, field) -> None:
     from desktop.engine.ledger_engine import preview_plan_action

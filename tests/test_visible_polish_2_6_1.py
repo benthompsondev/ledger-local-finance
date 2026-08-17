@@ -107,7 +107,9 @@ def test_save_repreviews_the_current_form_before_persisting() -> None:
     preview = body.index("await previewPlan(")
     save = body.index("await savePlan(")
     assert preview < save
-    assert "flexibleAllowance: currentPreview.equation.flexible" in body
+    # The allowance is no longer sent at all; the re-preview exists so the
+    # coherence check runs against the values actually being saved.
+    assert "flexibleAllowance" not in body
     assert "if (!currentPreview.equation.coherent)" in body
 
 

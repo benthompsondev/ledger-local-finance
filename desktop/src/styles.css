@@ -1108,73 +1108,105 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 
 .plan-notice {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 18px; margin-top: 16px; padding: 14px 18px;
+  gap: 18px; margin-top: 16px; padding: 13px 18px;
   border: 1px solid var(--border); border-radius: 12px;
   background: var(--panel-soft);
 }
-.plan-notice strong { display: block; }
-.plan-notice p { margin: 4px 0 0; color: var(--text-muted); font-size: .86rem; }
+.plan-notice strong { display: block; font-size: .95rem; }
+.plan-notice p { margin: 3px 0 0; color: var(--text-muted); font-size: .85rem; }
 .plan-notice-warn { border-color: rgba(227,179,65,.38); background: rgba(75,55,14,.16); }
 .plan-notice-warn strong { color: #f1d38a; }
 
+/* One surface. The figures inside are separated by rhythm and rules, not by
+   nesting another box inside a box inside a card. */
 .plan-card {
   margin-top: 16px; padding: 22px 30px 20px;
   border: 1px solid #24303b; border-radius: 14px;
-  background: linear-gradient(135deg, rgba(25,40,51,.96), rgba(13,21,29,.96));
-  box-shadow: 0 14px 40px rgba(0,0,0,.18);
+  background: var(--panel);
 }
-.plan-rows { display: grid; gap: 2px; }
-.plan-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
-  grid-template-areas: "label value" "hint value";
-  align-items: center; gap: 0 20px;
-  padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.05);
-}
-.plan-row > label, .plan-row > span:first-child {
-  grid-area: label; font-size: 1rem; color: var(--text);
-}
-.plan-row small {
-  grid-area: hint; color: var(--text-muted); font-size: .8rem; line-height: 1.45;
-}
-.plan-row-value { grid-area: value; justify-self: end; width: 100%; }
-.plan-row-value input {
-  width: 100%; text-align: right; font-size: 1.05rem;
-  font-variant-numeric: tabular-nums; padding: 9px 12px;
-}
-.plan-row-value input[readonly] {
-  background: transparent; border-color: transparent; color: var(--text);
-  font-weight: 600;
-}
-.plan-row-value strong {
-  display: block; text-align: right; font-size: 1.05rem; padding: 9px 12px;
-  font-variant-numeric: tabular-nums; color: var(--text-muted);
-}
-.plan-row-derived > span:first-child { color: var(--text-muted); }
 
+/* Derived: a label and a value, deliberately not a field. A read-only box
+   reads as "a field you are not allowed to use" rather than "a number
+   Northstar worked out". */
+.plan-facts { display: grid; gap: 12px; margin: 0 0 18px; }
+.plan-fact {
+  display: grid; grid-template-columns: minmax(0,1fr) auto;
+  grid-template-areas: "label value" "hint value";
+  align-items: baseline; column-gap: 20px;
+}
+.plan-fact dt { grid-area: label; color: var(--text); font-size: 1rem; }
+.plan-fact dd {
+  grid-area: value; margin: 0; justify-self: end;
+  font-size: 1.15rem; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.plan-fact p {
+  grid-area: hint; margin: 3px 0 0;
+  color: var(--text-muted); font-size: .8rem; line-height: 1.45;
+}
+
+/* Editable: an unmistakable field, with the currency mark outside the value
+   so digits stay right-aligned against every other figure on the card. */
+.plan-choices {
+  display: grid; gap: 12px;
+  padding-top: 16px; border-top: 1px solid rgba(255,255,255,.07);
+}
+.plan-choice {
+  display: grid; grid-template-columns: minmax(0,1fr) 190px;
+  grid-template-areas: "label field" "hint field";
+  align-items: center; column-gap: 20px;
+}
+.plan-choice label { grid-area: label; color: var(--text); font-size: 1rem; }
+.plan-choice p {
+  grid-area: hint; margin: 3px 0 0;
+  color: var(--text-muted); font-size: .8rem; line-height: 1.45;
+}
+.plan-input {
+  grid-area: field; display: flex; align-items: center; gap: 2px;
+  border: 1px solid #35485a; border-radius: 9px;
+  background: var(--panel-soft); padding: 0 12px;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.plan-input:hover:not(:focus-within) { border-color: #42586d; }
+.plan-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(50,213,131,.16);
+}
+.plan-input > span { color: var(--text-muted); font-size: 1rem; }
+.plan-input input {
+  flex: 1; min-width: 0; border: 0; background: transparent;
+  padding: 10px 0; text-align: right; color: var(--text);
+  font-size: 1.05rem; font-variant-numeric: tabular-nums;
+}
+.plan-input input:focus { outline: none; }
+.plan-input input::-webkit-outer-spin-button,
+.plan-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* The answer. A rule, then the biggest number on the screen. */
 .plan-outcome {
-  display: grid; gap: 4px; margin-top: 18px; padding: 18px 22px;
-  border: 1px solid rgba(50,213,131,.32); border-radius: 12px;
-  background: rgba(29,104,52,.12);
+  display: grid; gap: 2px; margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.plan-outcome > span {
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-muted);
 }
 .plan-outcome strong {
-  font-size: 2.1rem; letter-spacing: -0.03em; line-height: 1.1;
+  font-size: 2.6rem; line-height: 1.08; letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums; color: #77e096;
 }
-.plan-outcome p { margin: 0; color: #a9bcb1; font-size: .86rem; line-height: 1.5; }
-.plan-outcome-error { border-color: rgba(227,179,65,.4); background: rgba(75,55,14,.18); }
-.plan-outcome-error strong { color: #f1d38a; }
-.plan-outcome-error p { color: #c6b47e; }
+.plan-outcome p { margin: 6px 0 0; color: #c6b47e; font-size: .86rem; line-height: 1.5; }
+.plan-outcome-error strong { color: #f1d38a; font-size: 1.9rem; }
 
 .plan-save-row {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 .plan-save { padding: 11px 22px; font-size: .95rem; }
 .plan-save:disabled { opacity: 1; }
 .plan-save-state { color: var(--text-muted); font-size: .84rem; }
 
-.plan-last { margin-top: 24px; }
+.plan-last { margin-top: 26px; }
 .plan-last-figures {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px; margin-top: 8px;
@@ -1193,12 +1225,11 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 
 @media (max-width: 620px) {
   .plan-card { padding: 20px 18px 18px; }
-  .plan-row {
+  .plan-choice {
     grid-template-columns: 1fr;
-    grid-template-areas: "label" "value" "hint";
+    grid-template-areas: "label" "field" "hint";
     gap: 6px;
   }
-  .plan-row-value { justify-self: stretch; }
-  .plan-row-value input, .plan-row-value strong { text-align: left; }
+  .plan-outcome strong { font-size: 2.1rem; }
   .plan-notice { flex-direction: column; align-items: flex-start; }
 }

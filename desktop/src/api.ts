@@ -122,17 +122,18 @@ export async function addManualTransaction(spec: {
 }
 
 export const loadPlan = () => invoke<PlanPayload>("get_plan_summary");
+// incomeTarget and flexibleAllowance are deliberately absent: both are
+// derived, and the engine computes them from the same helper it uses to
+// display them, so a client copy could only ever disagree.
 export const previewPlan = (spec: {
-  mode: string; incomeTarget: number; fixedObligations: number;
+  mode: string; fixedObligations: number;
   savingsTarget: number; safetyBuffer: number; applyPreset: boolean;
   applyPreference?:boolean; savingsPreferenceStyle?:string; savingsPreferenceValue?:number;
 }) => invoke<PlanPreview>("preview_plan", { spec });
 export const savePlan = (spec: {
   month: string;
   mode: string;
-  incomeTarget: number;
   fixedObligations: number;
-  flexibleAllowance: number;
   savingsTarget: number;
   safetyBuffer: number;
   notes: string;

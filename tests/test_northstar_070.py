@@ -56,18 +56,24 @@ def test_stable_payroll_is_not_redefined_by_saved_plan(engine_env) -> None:
         _tx(account_id, f"{month}-28", f"{month} COVERAGE END", 1,
             "debit", "Internal Transfer")
     _tx(account_id, "2026-07-02", "INVENTED GROCER", 20, "debit", "Groceries")
-    code, rejected = _request({"action": "save_plan", "params": {
+    # A saved plan cannot redefine payroll because it cannot state an income
+    # at all: the engine derives it. Submitting an invented 9999 changes
+    # nothing about what gets stored.
+    code, attempted = _request({"action": "save_plan", "params": {
         "month": "2026-06", "mode": "normal", "income_target": 9999,
-        "fixed_obligations": 1000, "flexible_allowance": 7999,
+        "fixed_obligations": 1000,
         "savings_target": 500, "safety_buffer": 500,
         "fixed_override_reason": "Synthetic override",
     }})
-    assert code == 1
-    assert "reliable income floor" in rejected["error"]
+    assert code == 0, attempted
+    # Whatever was submitted, the plan is priced with the derived baseline.
+    assert attempted["data"]["working_plan"]["income_target"] != 9999
+    assert attempted["data"]["equation"]["income"] != 9999
     code, _ = _request({"action": "save_plan", "params": {
-        "month": "2026-07", "mode": "normal", "income_target": 4000,
-        "fixed_obligations": 0, "flexible_allowance": 3000,
+        "month": "2026-07", "mode": "normal",
+        "fixed_obligations": 0,
         "savings_target": 500, "safety_buffer": 500,
+        "fixed_override_reason": "Synthetic override",
     }})
     assert code == 0
 
@@ -80,22 +86,25 @@ def test_stable_payroll_is_not_redefined_by_saved_plan(engine_env) -> None:
 
 
 def test_plan_preview_owns_the_exact_equation(engine_env) -> None:
+    """Preview derives income itself and ignores whatever the caller sends.
+
+    A supplied income used to flow straight into the equation, which is how
+    the screen and the save endpoint ended up pricing the same month two
+    different ways.
+    """
     code, payload = _request({"action": "preview_plan", "params": {
         "mode": "normal", "income_target": 5000,
         "fixed_obligations": 2200, "savings_target": 1000,
         "safety_buffer": 200,
     }})
     assert code == 0
-    assert payload["data"]["equation"] == {
-        "income": 5000.0, "fixed": 2200.0, "savings": 1000.0,
-        "nonmonthly_reserves": 0.0,
-        "buffer": 200.0, "flexible": 1600.0, "unallocated": 1600.0,
-        "coherent": True,
-        "explanation": (
-            "Typical monthly income minus fixed costs, nonmonthly reserves, "
-            "savings, and buffer leaves one flexible spending amount."
-        ),
-    }
+    equation = payload["data"]["equation"]
+    # Empty database: the derived basis is zero, not the 5000 sent above.
+    assert equation["income"] == 0.0
+    assert equation["fixed"] == 2200.0
+    assert equation["savings"] == 1000.0
+    assert equation["buffer"] == 200.0
+    assert equation["coherent"] is False
 
 
 def test_questrade_movement_is_not_income() -> None:

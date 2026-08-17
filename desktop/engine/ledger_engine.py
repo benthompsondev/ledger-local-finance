@@ -1989,24 +1989,22 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
     bills = bills_and_commitments(conn=conn)
     from utils.analytics import (
         income_confirmation_candidates, reliable_income_summary,
-        stable_income_summary, typical_monthly_income,
+        stable_income_summary,
     )
     payroll_income = stable_income_summary(conn=conn)
     reliable_income = reliable_income_summary(conn=conn)
-    # The one baseline Home also uses. Plan used to read
-    # `reliable_income_summary` here, which sums a median per income source
-    # and drops unconfirmed payroll, so the two screens quoted different
-    # incomes for the same database.
-    income_basis = typical_monthly_income(conn=conn)
+    # The one baseline Home, Safe to Spend and the planner all read.
+    # One helper, shared with preview_plan and save_plan, so the figure the
+    # screen shows is by construction the figure the save will use.
+    _income = _planning_income(conn)
+    income_basis, planning_income = _income["basis"], _income["amount"]
     income_candidates = income_confirmation_candidates(conn=conn)
     # Regular monthly costs only. Nonmonthly invoices are handled by the
     # reserve below; counting their full amount here too charged the plan
     # twice for the same bill.
     fixed_suggestion = regular_monthly_fixed_total(bills)
-    if float(income_basis.get("amount") or 0) > 0:
-        proposal["income_target"] = round(
-            float(income_basis.get("amount") or 0), 2
-        )
+    if planning_income > 0:
+        proposal["income_target"] = planning_income
     proposal["fixed_obligations"] = fixed_suggestion
     proposal["savings_target"] = round(
         max(0.0, float(proposal.get("income_target") or 0) * 0.15), 2
@@ -2030,14 +2028,11 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
     ), 2)
     agreement = plan_commitment_agreement(saved, bills=bills, conn=conn)
     active_plan = dict(saved or proposal)
-    # Legacy saved plans can carry an income target from before the canonical
-    # completed-month baseline existed. The field is read-only in the native
-    # UI and the save endpoint already requires the canonical value, so the
-    # displayed equation must use that same current baseline too.
-    if float(income_basis.get("amount") or 0) > 0:
-        active_plan["income_target"] = round(
-            float(income_basis.get("amount") or 0), 2
-        )
+    # A saved row keeps whatever income was current when it was written.
+    # The equation must price the month with today's baseline, which is the
+    # same one save_plan derives, so a stored figure never outranks it.
+    if planning_income > 0:
+        active_plan["income_target"] = planning_income
     equation = _plan_equation({
         "income_target": active_plan.get("income_target", 0),
         "fixed_obligations": active_plan.get("fixed_obligations", fixed_suggestion),
@@ -2441,6 +2436,31 @@ def _plan_amount(value: Any, label: str) -> float:
     return round(amount, 2)
 
 
+def _planning_income(conn) -> dict[str, Any]:
+    """The one planning-income basis every Plan surface must use.
+
+    Northstar had two. The screen showed `typical_monthly_income` — the
+    average of complete months, which is also what Safe to Spend and the
+    planner read — while `save_plan` validated the submitted figure against
+    `reliable_income_summary`, which sums a median per source across only the
+    months that source appeared in. A source arriving in three months out of
+    six is counted by the second as though it arrived in all six, so the two
+    disagree for anyone whose deposits are not perfectly regular, and any
+    difference of a cent rejected the save.
+
+    There is now one function, and preview, display and save all call it.
+    `reliable_income_summary` keeps its separate job of saying whether income
+    has been *reviewed*; it no longer decides what the amount is.
+    """
+    from utils.analytics import typical_monthly_income
+
+    basis = typical_monthly_income(conn=conn)
+    return {
+        "amount": round(float(basis.get("amount") or 0), 2),
+        "basis": basis,
+    }
+
+
 def _plan_equation(params: dict[str, Any]) -> dict[str, Any]:
     """Return the authoritative monthly plan equation for the UI."""
     income = _plan_amount(params.get("income_target"), "Expected income")
@@ -2517,19 +2537,21 @@ def preview_plan_action(params: dict[str, Any]) -> dict[str, Any]:
 
     values = dict(params)
     for key, label in (
-        ("income_target", "Expected income"),
         ("fixed_obligations", "Fixed costs"),
         ("savings_target", "Savings target"),
         ("safety_buffer", "Safety buffer"),
     ):
         values[key] = _plan_amount(params.get(key), label)
-    # Read the reserve here rather than trusting the caller to send it, so a
-    # preview can never show more flexible room than a save would allow.
+    # Both of these are derived, so both are read here rather than trusted
+    # from the caller: a preview must never show more flexible room than a
+    # save would allow, and it must never price the month off a different
+    # income than the one the save will use.
     conn = _connection()
     try:
         values["nonmonthly_reserves"] = _nonmonthly_reserve(
             bills_and_commitments(conn=conn)
         )
+        values["income_target"] = _planning_income(conn)["amount"]
     finally:
         conn.close()
     if params.get("apply_preset"):
@@ -2576,7 +2598,6 @@ def plan_summary_action(_params: dict[str, Any]) -> dict[str, Any]:
 def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
     import re
 
-    from utils.analytics import reliable_income_summary
     from utils.database import upsert_monthly_plan
     from utils.planner import (
         PLAN_MODES, bills_and_commitments, regular_monthly_fixed_total,
@@ -2588,41 +2609,39 @@ def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Plan month must use YYYY-MM format.")
     if mode not in PLAN_MODES:
         raise ValueError("Choose a valid planning stance.")
+    # Only what the user actually chose. Income and flexible spending are
+    # both derived, and a client copy of a derived figure can only ever
+    # agree with the engine or contradict it — never inform it.
     values = {
         key: _plan_amount(params.get(key), label)
         for key, label in (
-            ("income_target", "Expected income"),
             ("fixed_obligations", "Fixed costs"),
-            ("flexible_allowance", "Flexible spending"),
             ("savings_target", "Savings target"),
             ("safety_buffer", "Safety buffer"),
         )
     }
-    if values["income_target"] <= 0:
-        raise ValueError("Expected income must be greater than zero.")
-    # The reserve is derived from real commitments, never sent by the client,
-    # so a saved plan reserves the same amount the preview showed.
+    # Both derived figures come from the same connection, and income comes
+    # from the same helper the payload and the preview used.
     reserve_conn = _connection()
     try:
         nonmonthly_reserve = _nonmonthly_reserve(
             bills_and_commitments(conn=reserve_conn)
         )
+        values["income_target"] = _planning_income(reserve_conn)["amount"]
     finally:
         reserve_conn.close()
-    requested_total = (
-        values["fixed_obligations"] + values["flexible_allowance"]
-        + values["savings_target"] + values["safety_buffer"]
-        + nonmonthly_reserve
-    )
-    if requested_total > values["income_target"] + 0.005:
+    if values["income_target"] <= 0:
         raise ValueError(
-            "Fixed costs, nonmonthly reserves, flexible spending, savings, and "
-            "buffer cannot exceed expected income. Reduce an amount before "
-            "saving."
+            "Northstar cannot work out a monthly income yet. Import at least "
+            "one complete month of statements and the plan can be saved."
         )
     # The reserve is derived from live commitments on every read, so it is
     # deliberately not persisted with the plan: storing it would let a saved
     # copy drift away from the commitments it represents.
+    #
+    # Coherence is the equation's own test — income minus every allocation
+    # cannot go below zero. The separate total-versus-income check this
+    # replaces asked the same question of the client's copy of the answer.
     equation = _plan_equation({**values, "nonmonthly_reserves": nonmonthly_reserve})
     if not equation["coherent"]:
         raise ValueError(
@@ -2634,14 +2653,6 @@ def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
     )
     conn = _connection()
     try:
-        reliable = reliable_income_summary(conn=conn)
-        if reliable.get("confirmed"):
-            floor = round(float(reliable.get("monthly_amount") or 0), 2)
-            if abs(values["income_target"] - floor) >= 0.01:
-                raise ValueError(
-                    f"Monthly planning income is anchored to the reliable "
-                    f"income floor of ${floor:,.2f}."
-                )
         bills = bills_and_commitments(conn=conn)
         # The override check compares against the same fixed-cost basis the
         # plan displays, so a nonmonthly bill cannot make a correct plan look

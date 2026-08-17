@@ -102,15 +102,28 @@ def test_an_impossible_plan_explains_itself_instead_of_going_silent():
 
 
 def test_a_negative_plan_cannot_be_saved(engine_env):
+    """Allocating more than comes in is refused, on the engine's own income.
+
+    This used to invent an income_target of 1000 to make the plan negative.
+    The engine derives income now, so the allocation is sized against the
+    real baseline instead.
+    """
     _seed_income_and_quarterly_bill(engine_env)
+
+    code, current = _request({"action": "plan_summary"})
+    assert code == 0
+    income = current["data"]["equation"]["income"]
+    assert income > 0
 
     code, response = _request({
         "action": "save_plan",
         "params": {
             "month": "2026-07", "mode": "normal",
-            "income_target": 1000.0, "fixed_obligations": 900.0,
-            "flexible_allowance": 500.0, "savings_target": 400.0,
+            "fixed_obligations": 0.0,
+            # More kept than ever arrives: the equation cannot balance.
+            "savings_target": income + 500.0,
             "safety_buffer": 200.0,
+            "fixed_override_reason": "Synthetic override",
         },
     })
 
