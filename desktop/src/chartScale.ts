@@ -7,10 +7,3 @@ export function niceMax(value: number): number {
   const ceiling = ceilings.find((candidate) => candidate >= normalized) ?? 10;
   return ceiling * power;
 }
-
-export interface SignedBarGeometry {
-  bottom: number;
-  height: number;
-}
-
-/** Position a signed interval inside a chart whose domain includes zero. */

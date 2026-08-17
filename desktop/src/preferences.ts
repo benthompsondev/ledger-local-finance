@@ -14,10 +14,9 @@ const CATEGORY_EXPANDED_KEY = "northstar.categoryExpanded";
 const WEEK_START_KEY = "northstar.weekStart";
 export type WeekStart = "monday" | "sunday";
 export type Density = "comfortable" | "compact";
-// Goals left primary navigation when Money Focus replaced it, but this list
-// still offered it as a startup screen, which reopened the retired
-// self-reported goal system. Anyone who had chosen it is moved to Home; the
-// goal records and schema are untouched.
+// Goals left primary navigation, but this list still offered it as a startup
+// screen. Anyone who had chosen it is moved to Home; the goal records and
+// schema are untouched.
 export type LandingPage = "home"|"plan"|"insights"|"transactions";
 export type SavingsStyle = "percentage"|"amount";
 export type CompareBaseline = "last"|"average";

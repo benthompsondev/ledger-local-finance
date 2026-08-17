@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { loadPlan, previewPlan, savePlan } from "./api";
 import { money, moneyCents } from "./money";
 import { createRequestGate, previewSignature } from "./planPreview";
+import { readSavingsPreference } from "./preferences";
 import type { PlanEquation, PlanPayload } from "./types";
 
 interface Props {
@@ -94,11 +95,14 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
       setData(payload); setForm(next); setEquation(payload.equation);
       previewed.current = previewSignature(next);
       if (!payload.saved) {
+        const preference = readSavingsPreference();
         token = gate.current.begin();
         const preview = await previewPlan({
           mode: next.mode, incomeTarget: Number(next.income),
           fixedObligations: Number(next.fixed), savingsTarget: Number(next.savings),
           safetyBuffer: Number(next.buffer), applyPreset: false,
+          applyPreference: true, savingsPreferenceStyle: preference.style,
+          savingsPreferenceValue: preference.value,
         });
         if (!gate.current.isLatest(token)) return;
         next = { ...next, savings: shown(preview.values.savings_target),
@@ -167,7 +171,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
         fixedObligations: Number(form.fixed),
         flexibleAllowance: currentPreview.equation.flexible,
         savingsTarget: Number(form.savings), safetyBuffer: Number(form.buffer),
-        notes: "", fixedOverrideReason: form.overrideReason,
+        notes: data.saved?.notes ?? "", fixedOverrideReason: form.overrideReason,
       });
       if (!gate.current.isLatest(token)) return;
       // Everything below is re-read from the saved payload, never from the
@@ -336,7 +340,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
               <div><span>Planned to keep</span>
                 <strong>{money(result.intended_kept ?? 0)}</strong></div>
               <div><span>{result.kept_is_negative ? "Went behind by" : "Actually kept"}</span>
-                <strong>{money(result.actual_kept_abs ?? Math.abs(result.actual_kept ?? 0))}</strong></div>
+                <strong>{money(result.actual_kept_abs ?? 0)}</strong></div>
               <div><span>Difference</span>
                 <strong className={result.met ? "good-text" : ""}>
                   {money(result.difference_abs ?? 0)} {result.met ? "more" : "less"}

@@ -37,9 +37,9 @@ powershell -File scripts/build_native_desktop.ps1
 - `desktop/src/` — the React UI. Six tabs, listed in `SCREENS` in `App.tsx`:
   `HomeView`, `AddDataView`, `PlanView`, `InsightsView`, `TransactionsView`,
   `AiView` (labelled Coach). `SettingsView` is the header gear, not a tab.
-  `GoalsView` is retired: nothing navigates to it, and Home's `MoneyFocusCard`
-  replaced it. `types.ts` is the contract with the engine; `charts.tsx` holds
-  every chart.
+  `GoalsView` and Money Focus are retired and have no native navigation.
+  Their stored rows are preserved. `types.ts` is the contract with the engine;
+  `charts.tsx` holds every chart.
 - `desktop/engine/ledger_engine.py` — the sidecar. One `*_action` function per
   request; every new action is hand-plumbed across a Rust command, the
   capability TOML, the engine action, `api.ts`, and `types.ts`.

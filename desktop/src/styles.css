@@ -729,7 +729,10 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 .ai-workspace{max-width:980px}
 .ai-onboarding-card{border-color:rgba(255,196,84,.32)}
 .ai-question-card{border-color:rgba(50,213,131,.28)}
-.ai-prompt-row{margin-bottom:14px}
+.ai-prompt-row{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 14px}
+.ai-prompt-row .preset-button{display:grid;flex:1;gap:3px;min-width:220px;border:1px solid #2a3945;background:#111b24;color:#bec8d2;border-radius:11px;padding:11px 15px;text-align:left}
+.ai-prompt-row .preset-button small{max-width:220px;color:#8f9ba8;line-height:1.35}
+.ai-prompt-row .preset-button:hover{border-color:#36ce70;background:rgba(54,206,112,.09);transform:translateY(-1px)}
 .ai-question-label{display:grid;gap:7px;color:#aeb9c4;font-size:.82rem;font-weight:700}
 .ai-question-label textarea{width:100%;resize:vertical;border:1px solid #2a3642;border-radius:10px;padding:12px;color:#e9eef5;background:#0d161f;line-height:1.5}
 .ai-question-label textarea:focus{border-color:#36ce70;outline:2px solid rgba(54,206,112,.12)}
@@ -1069,8 +1072,6 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 .income-bar small {
   text-align: center; font-size: 0.63rem; color: var(--muted);
 }
-
-/* ── money focus ────────────────────────────────────────────────────── */
 
 /* ── plan: the commitment review you were sent to ───────────────────── */
 .plan-data-through { margin-top: 8px; color: var(--muted); font-size: 0.8rem; }

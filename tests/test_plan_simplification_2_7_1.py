@@ -26,6 +26,24 @@ def _quarterly_bill(conn) -> None:
     conn.commit()
 
 
+def _quarterly_bill_three_times(conn) -> None:
+    """Three observations also reach the monthly recurring detector."""
+    for day in ("2025-12-09", "2026-03-09", "2026-06-09"):
+        add_tx(conn, day=day, desc="CITY WATER QUARTERLY", amount=210,
+               direction="debit", category="Utilities / Bills",
+               merchant="City Water")
+    conn.commit()
+
+
+def _monthly_subscription(conn) -> None:
+    for day, amount in (("2026-05-04", 20), ("2026-06-04", 20),
+                        ("2026-07-04", 25)):
+        add_tx(conn, day=day, desc="DEMO VIDEO SUBSCRIPTION", amount=amount,
+               direction="debit", category="Subscriptions & Digital",
+               merchant="Demo Video")
+    conn.commit()
+
+
 def _uncertain(conn) -> list[dict]:
     from utils.analytics import recurring_status_is_reviewed
     from utils.planner import bills_and_commitments
@@ -67,9 +85,48 @@ def test_confirming_a_nonmonthly_bill_actually_clears_it(ledger_db):
     assert _uncertain(ledger_db) == []
 
 
-def test_marking_a_nonmonthly_bill_not_recurring_also_resolves_it(ledger_db):
-    """Either explicit decision is a decision; only silence is unreviewed."""
+def test_confirmed_renamed_quarterly_bill_stays_one_nonmonthly_reserve(ledger_db):
+    """Confirmation and display edits must not turn a quarter into a month."""
     from utils.database import set_recurring_preference
+    from utils.planner import bills_and_commitments, regular_monthly_fixed_total
+
+    for month in ("2026-04", "2026-05", "2026-06", "2026-07"):
+        seed_month(ledger_db, month)
+    _quarterly_bill_three_times(ledger_db)
+    set_recurring_preference(
+        "CITY WATER QUARTERLY", "recurring",
+        display_name="City Water Bill", category="Utilities / Bills",
+        conn=ledger_db,
+    )
+    ledger_db.commit()
+
+    bills = bills_and_commitments(conn=ledger_db)
+    water = [
+        item for item in bills["items"]
+        if item.get("merchant_normalized") == "CITY WATER QUARTERLY"
+    ]
+
+    assert len(water) == 1
+    assert water[0]["merchant"] == "City Water Bill"
+    assert water[0]["group"] == "nonmonthly_commitments"
+    assert water[0]["recurring_status"] == "recurring"
+    assert water[0]["monthly_setaside"] == pytest.approx(70)
+    assert bills["nonmonthly_monthly_reserve"] == pytest.approx(70)
+    assert regular_monthly_fixed_total(bills) == pytest.approx(
+        sum(
+            float(item.get("monthly_setaside") or item.get("est_amount") or 0)
+            for item in bills["items"]
+            if item.get("included_in_forecast")
+            and item.get("merchant_normalized") != "CITY WATER QUARTERLY"
+            and item.get("group") != "nonmonthly_commitments"
+        )
+    )
+
+
+def test_marking_a_nonmonthly_bill_not_recurring_also_resolves_it(ledger_db):
+    """Not recurring must remove both the warning and the reserved money."""
+    from utils.database import set_recurring_preference
+    from utils.planner import bills_and_commitments
 
     for month in ("2026-04", "2026-05", "2026-06", "2026-07"):
         seed_month(ledger_db, month)
@@ -79,6 +136,11 @@ def test_marking_a_nonmonthly_bill_not_recurring_also_resolves_it(ledger_db):
     ledger_db.commit()
 
     assert _uncertain(ledger_db) == []
+    bills = bills_and_commitments(conn=ledger_db)
+    assert "City Water" not in [
+        item["merchant"] for item in bills["nonmonthly_commitments"]
+    ]
+    assert bills["nonmonthly_monthly_reserve"] == pytest.approx(0)
 
 
 def test_an_unreviewed_nonmonthly_bill_is_still_reported(ledger_db):
@@ -88,6 +150,68 @@ def test_an_unreviewed_nonmonthly_bill_is_still_reported(ledger_db):
     _quarterly_bill(ledger_db)
 
     assert [i["merchant"] for i in _uncertain(ledger_db)] == ["City Water"]
+
+
+def test_nonmonthly_bill_can_be_reviewed_from_native_settings(ledger_db):
+    """An automatic quarterly bill must be exposed before a preference exists."""
+    from desktop.engine.ledger_engine import category_settings_action
+
+    for month in ("2026-04", "2026-05", "2026-06", "2026-07"):
+        seed_month(ledger_db, month)
+    _quarterly_bill(ledger_db)
+
+    settings = category_settings_action({})
+    city_water = [
+        item for item in settings["recurring"]
+        if item["merchant_normalized"] == "CITY WATER QUARTERLY"
+    ]
+
+    assert len(city_water) == 1
+    assert city_water[0]["cadence"] == "quarterly"
+
+
+def test_monthly_subscription_preference_is_not_bypassed(ledger_db):
+    """Subscription detection must use the same saved status as cadence."""
+    from utils.database import set_recurring_preference
+    from utils.planner import bills_and_commitments
+
+    for month in ("2026-05", "2026-06", "2026-07"):
+        seed_month(ledger_db, month)
+    _monthly_subscription(ledger_db)
+
+    set_recurring_preference("DEMO VIDEO", "recurring", conn=ledger_db)
+    ledger_db.commit()
+    confirmed = [
+        item for item in bills_and_commitments(conn=ledger_db)["items"]
+        if item.get("merchant_normalized") == "DEMO VIDEO"
+    ]
+    assert len(confirmed) == 1
+    assert confirmed[0]["recurring_status"] == "recurring"
+
+    set_recurring_preference("DEMO VIDEO", "not_recurring", conn=ledger_db)
+    ledger_db.commit()
+    assert "DEMO VIDEO" not in [
+        item.get("merchant_normalized")
+        for item in bills_and_commitments(conn=ledger_db)["items"]
+    ]
+
+
+def test_nonmonthly_bill_is_not_also_presented_as_a_monthly_fixed_cost(ledger_db):
+    """Plan provenance must match the equation's single-charge treatment."""
+    from desktop.engine.ledger_engine import _plan_payload
+
+    for month in ("2026-04", "2026-05", "2026-06", "2026-07"):
+        seed_month(ledger_db, month)
+    _quarterly_bill(ledger_db)
+
+    payload = _plan_payload(ledger_db, today="2026-08-17")
+
+    assert "City Water" not in [
+        item["merchant"] for item in payload["fixed_commitments"]
+    ]
+    assert [
+        item["merchant"] for item in payload["nonmonthly_commitments"]
+    ] == ["City Water"]
 
 
 # ── saving persists, and says so ──────────────────────────────────────────
@@ -212,10 +336,21 @@ def test_plan_reads_its_saved_state_from_the_stored_row() -> None:
     assert "savedOn(savedRecord?.updated_at)" in source
 
 
+def test_unsaved_plan_uses_preference_and_resave_preserves_hidden_notes() -> None:
+    source = PLAN_VIEW.read_text(encoding="utf-8")
+
+    assert "const preference = readSavingsPreference()" in source
+    assert "applyPreference: true" in source
+    assert "savingsPreferenceStyle: preference.style" in source
+    assert "savingsPreferenceValue: preference.value" in source
+    assert 'notes: data.saved?.notes ?? ""' in source
+
+
 def test_plan_does_no_money_arithmetic() -> None:
     """The engine supplies every figure, including the differences."""
     source = PLAN_VIEW.read_text(encoding="utf-8")
 
     for banned in ("actual_kept -", "intended_kept -", "income_target -",
-                   "flexible +", "- savings_target"):
+                   "flexible +", "- savings_target",
+                   "actual_kept_abs ?? Math.abs"):
         assert banned not in source, banned

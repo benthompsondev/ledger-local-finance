@@ -28,10 +28,9 @@ from utils.platform_utils import get_data_dir
 # Deliberate user edits and saved-rule results are never rewritten.
 _BUILTIN_CATEGORIZATION_MIGRATION = "builtin-categorization-0.9.0"
 _INVESTMENT_SEMANTICS_MIGRATION = "investment-semantics-0.7.0"
-# Goals was retired from native navigation and Money Focus replaced it,
-# but active legacy goal rows kept reserving money out of Safe to Spend
-# with no screen left to see or stop them. Their influence is switched
-# off once; the rows themselves are preserved.
+# Goals was retired from native navigation, but active legacy goal rows kept
+# reserving money out of Safe to Spend with no screen left to see or stop them.
+# Their influence is switched off once; the rows themselves are preserved.
 _LEGACY_GOALS_MIGRATION = "legacy_goals_excluded_from_plan_v1"
 
 _DATA_DIR    = get_data_dir()
@@ -927,8 +926,8 @@ def _migrate_investment_semantics_070(conn) -> None:
 def _migrate_retire_legacy_goal_reservations(conn) -> None:
     """Stop retired Goals reserving money nobody can see.
 
-    Goals is gone from native navigation and Money Focus replaced it, but
-    `goal_plan_summary` still read every active goal whose include_in_plan
+    Goals is gone from native navigation, but `goal_plan_summary` still read
+    every active goal whose include_in_plan
     was 1 — the column default. A goal carried over from the Streamlit era
     therefore kept taking money out of Safe to Spend and the cash cushion,
     and there was no screen left on which to inspect, pause or remove it. A
@@ -959,8 +958,8 @@ def _migrate_retire_legacy_goal_reservations(conn) -> None:
         "INSERT INTO app_migrations "
         "(migration_key,rows_scanned,rows_changed,details_json) VALUES (?,?,?,?)",
         (_LEGACY_GOALS_MIGRATION, changed, changed, json.dumps({
-            "reason": "Goals is not reachable in the native app; Money Focus "
-                      "replaced it. Rows are preserved, influence removed.",
+            "reason": "Goals is not reachable in the native app. Rows are "
+                      "preserved; plan influence is removed.",
             "rows_deleted": 0,
         })),
     )

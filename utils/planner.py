@@ -337,6 +337,7 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
     """
     from utils.insights import subscription_detective, recurring_merchants
     from utils.database import get_connection
+    from utils.categorizer import normalize_merchant
 
     close = conn is None
     if close:
@@ -349,11 +350,22 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
     sub_active   = list(sub.get("active_candidates")  or [])
     sub_stale    = list(sub.get("stale_candidates")   or [])
     rec          = recurring_merchants(min_months=3, conn=conn) or []
+    recurring_preferences = {
+        str(row["merchant_normalized"]): dict(row)
+        for row in conn.execute(
+            "SELECT merchant_normalized, status, display_name, category "
+            "FROM recurring_preferences"
+        ).fetchall()
+    }
 
     seen: dict[str, dict] = {}
 
     def _add(item: dict) -> None:
-        key = (item.get("merchant") or "").upper()
+        # Display names are editable. Identity is the normalized merchant so
+        # a renamed quarterly bill cannot be added again by the cadence pass.
+        key = str(
+            item.get("merchant_normalized") or item.get("merchant") or ""
+        ).upper()
         if not key:
             return
         if key in seen:
@@ -362,6 +374,11 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
 
     # 1. Active subscriptions — always commitments.
     for c in sub_active:
+        merchant_normalized = normalize_merchant(str(c.get("merchant") or ""))
+        preference = recurring_preferences.get(merchant_normalized, {})
+        recurring_status = str(preference.get("status") or "automatic")
+        if recurring_status == "not_recurring":
+            continue
         last_seen = c.get("last_seen") or ""
         try:
             last_dt = date.fromisoformat(last_seen) if last_seen else None
@@ -373,8 +390,9 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             if nxt >= today.replace(day=1):
                 expected_next = nxt.isoformat()
         _add({
-            "merchant":      c.get("merchant"),
-            "category":      c.get("category") or "Subscriptions & Digital",
+            "merchant":      preference.get("display_name") or c.get("merchant"),
+            "merchant_normalized": merchant_normalized,
+            "category":      preference.get("category") or c.get("category") or "Subscriptions & Digital",
             "est_amount":    float(c.get("avg_amount") or 0),
             "frequency":     "monthly",
             "last_seen":     last_seen,
@@ -385,7 +403,7 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         "active_subscriptions",
             "reason":        "Active subscription (subscription_detective).",
             "source":        "subscription_active",
-            "recurring_status": "automatic",
+            "recurring_status": recurring_status,
         })
 
     # 2. Stale subscriptions — never in forecast.
@@ -468,16 +486,20 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
     # joins this table for the monthly items; without the same join here a
     # quarterly bill stayed "automatic" no matter how many times it was
     # confirmed, and "Review recurring costs" could never be cleared.
-    cadence_preferences = {
-        str(row["merchant_normalized"]): str(row["status"])
-        for row in conn.execute(
-            "SELECT merchant_normalized, status FROM recurring_preferences"
-        ).fetchall()
-    }
-
     for row in merchant_cadences(conn=conn):
-        key = (row.get("merchant") or "").upper()
+        key = str(
+            row.get("merchant_normalized") or row.get("merchant") or ""
+        ).upper()
         cadence = row["cadence"]
+        preference = recurring_preferences.get(
+            str(row["merchant_normalized"] or ""), {}
+        )
+        recurring_status = str(preference.get("status") or "automatic")
+        # Match the monthly detector: an explicit rejection removes the
+        # commitment and its reserve, rather than merely clearing a warning.
+        if recurring_status == "not_recurring":
+            seen.pop(key, None)
+            continue
         existing = seen.get(key)
         if not row.get("is_active", True):
             # Cancelled, paid off, or moved elsewhere. Reserving for a bill
@@ -494,6 +516,11 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
                 )
             continue
         if existing is not None:
+            if preference.get("display_name"):
+                existing["merchant"] = preference["display_name"]
+            if preference.get("category"):
+                existing["category"] = preference["category"]
+            existing["recurring_status"] = recurring_status
             existing["cadence"] = cadence
             existing["period_months"] = row["period_months"]
             existing["monthly_setaside"] = row["monthly_setaside"]
@@ -506,17 +533,23 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             # that was never actually charged. Plan for what it costs now.
             if row["price_change"] or cadence != "monthly":
                 existing["est_amount"] = row["est_amount"]
+            if cadence != "monthly" and _classify_commitment(
+                existing.get("category")
+            ) == "fixed":
+                existing["group"] = "nonmonthly_commitments"
+                existing["included_in_forecast"] = True
             continue
 
         if cadence == "monthly":
             continue  # the monthly detector already had its say
-        cls = _classify_commitment(row.get("category"))
+        category = preference.get("category") or row.get("category")
+        cls = _classify_commitment(category)
         if cls != "fixed":
             continue  # a weekly coffee habit is not a bill
         _add({
-            "merchant":      row["merchant"],
+            "merchant":      preference.get("display_name") or row["merchant"],
             "merchant_normalized": row["merchant_normalized"],
-            "category":      row["category"],
+            "category":      category,
             "est_amount":    row["est_amount"],
             "frequency":     cadence,
             "cadence":       cadence,
@@ -533,9 +566,7 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
             "group":         "nonmonthly_commitments",
             "reason":        row["setaside_note"],
             "source":        "cadence",
-            "recurring_status": cadence_preferences.get(
-                str(row["merchant_normalized"] or ""), "automatic",
-            ),
+            "recurring_status": recurring_status,
         })
 
     # Anything the cadence pass did not reach still needs the fields its

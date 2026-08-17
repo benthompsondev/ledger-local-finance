@@ -89,7 +89,7 @@ There are six tabs:
 | **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
-| **Insights** | Spending pace, category movement, income steadiness, cashflow, monthly net worth, and a read-only replay of one category or merchant change in a finished month. |
+| **Insights** | Spending pace, category movement, income steadiness, cashflow, and monthly net worth. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
@@ -98,10 +98,8 @@ restore, preferences, categorization controls, data-safety tools, planning
 balances, app updates and the optional AI configuration. Demo mode uses the
 environment-variable flow described below rather than an in-app switch.
 
-There is no Goals tab. It was replaced by the **Money Focus** card on Home,
-which tracks one thing you are saving for and reads progress from months that
-have actually finished, rather than asking you to type it in and trusting that
-you remembered.
+There is no Goals tab. The old goal rows are kept in the local database, but
+they no longer reserve money or appear in the native app.
 
 ## Design rules
 

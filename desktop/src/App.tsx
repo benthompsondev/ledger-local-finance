@@ -13,7 +13,7 @@ import { readDensity, readLandingPage } from "./preferences";
 
 type Screen = "home" | "add-data" | "plan" | "insights" | "transactions" | "ai" | "settings";
 // Goals is gone. Its progress was self-reported, which made a whole tab out of
-// a number the app could not check, and Money Focus on Home replaced it.
+// a number the app could not check.
 //
 // Until 2.5.4 the component was still imported and still had a screen branch,
 // so it shipped in the bundle while being unreachable — and worse, the goal
@@ -48,7 +48,7 @@ export default function App(){
     {screen==="home"&&<HomeView onAddData={()=>goTo("add-data")} onNavigate={goTo} onDrill={drill} refreshToken={dataVersion}/>}
     {addDataMounted&&<div hidden={screen!=="add-data"}><AddDataView onGoHome={()=>setScreen("home")} onGoTransactions={()=>setScreen("transactions")} onDataChanged={changed}/></div>}
     {screen==="plan"&&<PlanView refreshToken={dataVersion} onDataChanged={changed} onNavigate={goTo}/>}
-    {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed} focusAnchor={focusAnchor} focusToken={focusToken}/>}
+    {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed}/>}
     {screen==="transactions"&&<TransactionsView refreshToken={dataVersion} onDataChanged={changed} prefill={txPrefill} onPrefillApplied={()=>setTxPrefill(null)}/>}
     {screen==="ai"&&<AiView onOpenSettings={()=>goTo("settings#ai-assist")} onDrill={d=>drill({category:d.category,search:d.merchant,startDate:d.start_date,endDate:d.end_date})}/>}
     {screen==="settings"&&<SettingsView onDataChanged={changed} focusAnchor={focusAnchor} focusToken={focusToken}/>}

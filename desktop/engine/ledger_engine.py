@@ -1675,6 +1675,7 @@ def category_settings_action(_params: dict[str, Any]) -> dict[str, Any]:
         list_income_source_preferences, list_learned_rules,
         list_recurring_preferences,
     )
+    from utils.planner import bills_and_commitments
     conn = _connection()
     try:
         recurring_preferences = list_recurring_preferences(conn=conn)
@@ -1683,6 +1684,36 @@ def category_settings_action(_params: dict[str, Any]) -> dict[str, Any]:
             if row.get("planning_relevant")
         ]
         visible_merchants = {row["merchant_normalized"] for row in recurring}
+        # The monthly detector deliberately rejects quarterly and annual gaps
+        # as irregular. Planner's cadence detector owns those commitments, so
+        # expose its rows here as well or the native Settings screen cannot
+        # confirm or reject them.
+        for item in bills_and_commitments(conn=conn).get(
+            "nonmonthly_commitments", []
+        ):
+            merchant_key = str(item.get("merchant_normalized") or "")
+            if not merchant_key or merchant_key in visible_merchants:
+                continue
+            occurrences = max(1, int(item.get("occurrences") or 1))
+            recurring.append({
+                "merchant": item.get("merchant") or merchant_key.title(),
+                "category": item.get("category") or "Uncategorized",
+                "avg_amount": round(float(item.get("est_amount") or 0), 2),
+                "months_seen": occurrences,
+                "total": round(
+                    float(item.get("est_amount") or 0) * occurrences, 2
+                ),
+                "tx_count": occurrences,
+                "confidence": item.get("confidence") or "low",
+                "cadence": item.get("cadence") or "nonmonthly",
+                "recurring_status": (
+                    "confirmed"
+                    if item.get("recurring_status") == "recurring"
+                    else "automatic"
+                ),
+                "merchant_normalized": merchant_key,
+            })
+            visible_merchants.add(merchant_key)
         # An explicit "not recurring" choice suppresses a merchant from the
         # Insights list, but it must stay visible in Settings so the user can
         # change that decision later.
@@ -2265,6 +2296,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
             }
             for item in bills.get("items", [])
             if item.get("included_in_forecast")
+            and item.get("group") != "nonmonthly_commitments"
         ],
         # Bills that do not arrive every month, and what to set aside for
         # them. These were invisible before 1.6.0, so nothing was reserved

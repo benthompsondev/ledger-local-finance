@@ -515,14 +515,6 @@ export interface NetWorthOverview {
   material_move?: number;
 }
 
-export interface FocusMonth {
-  month: string;
-  kept: number;
-  income: number;
-  running: number;
-}
-
-
 /** One thing Northstar noticed, with the arithmetic already done. */
 export interface Insight {
   id: string;

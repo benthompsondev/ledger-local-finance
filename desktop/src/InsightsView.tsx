@@ -29,11 +29,9 @@ interface Props {
   onDrill: (prefill: TxPrefill) => void;
   onNavigate: (screen: string) => void;
   onDataChanged: () => void;
-  focusAnchor?: string;
-  focusToken?: number;
 }
 
-function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged, focusAnchor, focusToken }: Props) {
+function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Props) {
   const [data, setData] = useState<InsightsPayload | null>(null);
   const [error, setError] = useState("");
   // Deleting a hand-typed reading is the only write this screen still makes.
