@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.7.1 - 2026-08-17
+
+Plan is simpler and saves what you mean.
+
+### What changed
+
+- Plan is one clear monthly decision: what is coming in, what is committed,
+  what you want to keep, and what is left for everyday spending.
+- Saved plans survive a relaunch, edits replace the same monthly row, and the
+  screen clearly separates saved figures from unsaved changes.
+- Confirming or rejecting monthly, quarterly, and annual recurring costs now
+  sticks and changes the Plan reserve correctly.
+- Last Plan Result stays available as a quieter historical check.
+- The experimental What-if replay and Money Focus surfaces were removed after
+  real use showed they were not earning their space. Existing stored rows are
+  left untouched.
+
 ## 2.7.0 - 2026-08-17
 
 Two new ways to look back at a finished month without guessing.

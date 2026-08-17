@@ -1,6 +1,6 @@
 [package]
 name = "ledger-native"
-version = "2.7.0"
+version = "2.7.1"
 description = "Northstar Ledger native desktop"
 authors = ["Ben Thompson"]
 homepage = "https://github.com/benthompsondev/ledger-local-finance"
