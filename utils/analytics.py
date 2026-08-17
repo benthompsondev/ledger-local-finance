@@ -270,7 +270,14 @@ def stable_income_summary(conn: Optional[sqlite3.Connection] = None) -> dict:
 
 
 def reliable_income_summary(conn: Optional[sqlite3.Connection] = None) -> dict:
-    """Return the conservative income floor used by the monthly plan.
+    """Which income sources look reviewed and recurring, and their sizes.
+
+    **This is review state, not the planning amount.** The monthly plan's
+    income is ``typical_monthly_income``; so is Safe to Spend's. Only
+    ``confirmed`` here is load-bearing, as the signal that income has been
+    reviewed at all. Nothing may reuse ``monthly_amount`` as a planning
+    figure — until 2.7.1 ``save_plan`` did, and because the two numbers are
+    built differently, any gap of a cent rejected the save outright.
 
     This is intentionally broader than ``stable_income_summary``. Payroll is
     still reported as payroll, while recurring interest and recurring
@@ -280,8 +287,15 @@ def reliable_income_summary(conn: Optional[sqlite3.Connection] = None) -> dict:
 
     Automatic sources need at least three complete historical months with
     amounts within 35% of their median. A user-confirmed source can be used
-    after two complete months. Each source contributes its six-month median,
-    so an unusually large month cannot expand the spending plan.
+    after two complete months.
+
+    One property matters and is easy to misread as conservatism: each source
+    contributes the median of the months **it actually appeared in**, not of
+    the window. A source arriving in three months out of six therefore
+    contributes its full monthly amount as though it arrived in all six, so
+    this total runs *above* the average month for anyone with irregular
+    deposits. `test_reliable_income_overstates_an_intermittent_source` pins
+    that. It is the reason this figure must never price a month.
     """
     close = False
     if conn is None:

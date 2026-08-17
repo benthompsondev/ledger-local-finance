@@ -262,3 +262,59 @@ def test_editing_the_amount_to_keep_persists(ledger_db):
     assert ledger_db.execute(
         "SELECT COUNT(*) FROM monthly_plans WHERE month=?", (after["month"],),
     ).fetchone()[0] == 1
+
+
+# ── why the two figures differ, pinned ────────────────────────────────────
+
+def test_reliable_income_overstates_an_intermittent_source(ledger_db):
+    """The mechanism behind the shipped failure, stated as behaviour.
+
+    `reliable_income_summary` medians each source across only the months it
+    appeared in, so a source arriving in three months out of six contributes
+    its full monthly amount as though it arrived in all six. That is why it
+    can sit above the average month, and why it must never price a plan. Its
+    docstring once called this conservative; it is the opposite.
+    """
+    from utils.analytics import reliable_income_summary, typical_monthly_income
+    from utils.database import set_income_source_preference
+
+    _mismatched_income(ledger_db)
+    set_income_source_preference(
+        "CONTRACT CLIENT PAYOUT", "confirmed", conn=ledger_db,
+    )
+    ledger_db.commit()
+
+    typical = round(float(typical_monthly_income(conn=ledger_db)["amount"]), 2)
+    reliable = reliable_income_summary(conn=ledger_db)
+    contract = next(
+        source for source in reliable["sources"]
+        if source["source_normalized"] == "CONTRACT CLIENT PAYOUT"
+    )
+
+    # Counted at its full per-arrival size, despite landing every other month.
+    assert contract["monthly_amount"] == pytest.approx(1500.0)
+    # And it lands in only three of the six months that were averaged.
+    assert typical_monthly_income(conn=ledger_db)["months_used"] == 6
+    # So the "floor" sits above the honest monthly average.
+    assert round(float(reliable["monthly_amount"]), 2) > typical
+
+
+def test_the_planning_amount_ignores_review_state_entirely(ledger_db):
+    """Confirming or excluding a source must not move the planning figure.
+
+    `reliable_income_summary` owns review state. If review state could also
+    move the amount, the two would be coupled again by a different route.
+    """
+    from desktop.engine.ledger_engine import _plan_payload
+    from utils.database import set_income_source_preference
+
+    _mismatched_income(ledger_db)
+    before = _plan_payload(ledger_db, today=TODAY)["equation"]["income"]
+
+    set_income_source_preference(
+        "CONTRACT CLIENT PAYOUT", "confirmed", conn=ledger_db,
+    )
+    ledger_db.commit()
+    after = _plan_payload(ledger_db, today=TODAY)["equation"]["income"]
+
+    assert after == pytest.approx(before)
