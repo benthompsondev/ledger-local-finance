@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.9.0_x64-setup.exe
+NorthstarLedger_2.9.1_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,12 +58,13 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.9.0. Windows public beta.** It works, it is tested, and it
-is still a beta. This release adds the next few weeks to Home: the recurring
-costs and paydays Northstar recognises from your statements, on the dates
-their rhythm suggests. They are expectations rather than scheduled payments,
-each one opens to the real charges behind it, and nothing projects a balance.
-Insights still carries the pattern observations added in 2.8.0.
+**Current release: 2.9.1. Windows public beta.** It works, it is tested, and it
+is still a beta. Money Radar now shows only bills that the same Plan logic
+treats as obligations. Regular groceries, restaurants and delivery habits stay
+out, expected dates start today instead of building an overdue backlog, and
+non-payroll income needs an explicit decision before it appears as a payday.
+Each item still opens to the real charges behind it, and nothing projects a
+balance. Insights still carries the pattern observations added in 2.8.0.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.

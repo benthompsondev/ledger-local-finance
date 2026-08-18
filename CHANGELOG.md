@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.9.1 - 2026-08-18
+
+This patch makes Money Radar much more selective after real use showed that
+regular shopping habits were being presented like bills.
+
+### What changed
+
+- Radar now shows only costs that Northstar's Plan logic also treats as real
+  obligations. A weekly grocery shop, regular restaurant visit or repeat
+  delivery merchant stays out, even when its timing is predictable.
+- Steady subscriptions now stay aligned across Radar, Plan and Safe to Spend.
+  They no longer need a price change or another cancellation flag before the
+  plan reserves them.
+- Payroll can appear as an expected payday automatically. Other regular income
+  needs an explicit Use as income decision before Radar places it on a future
+  date. Excluding a source now removes it from planning income too.
+- The old Already due section is gone. Radar starts today, looks 28 days ahead
+  and leaves missed-bill detection to a separate question.
+- Goal and learned-rule updates now use the same UTC timestamp convention as
+  the rest of the database. Existing timestamp rows are preserved as written.
+
 ## 2.9.0 - 2026-08-18
 
 Northstar can show you what is coming, not just what happened.
