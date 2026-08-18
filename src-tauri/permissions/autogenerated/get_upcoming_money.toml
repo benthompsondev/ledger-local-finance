@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-upcoming-money"
+description = "Enables the get_upcoming_money command without any pre-configured scope."
+commands.allow = ["get_upcoming_money"]
+
+[[permission]]
+identifier = "deny-get-upcoming-money"
+description = "Denies the get_upcoming_money command without any pre-configured scope."
+commands.deny = ["get_upcoming_money"]

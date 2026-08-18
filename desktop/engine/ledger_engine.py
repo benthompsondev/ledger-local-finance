@@ -3121,6 +3121,27 @@ def ai_coaching_summary_action(_params: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+def upcoming_money_action(params: dict[str, Any]) -> dict[str, Any]:
+    """Recurring money expected in the next few weeks.
+
+    ``as_of_date`` exists so the window is testable and so a smoke run can
+    pin a date. Left out, it means the real local date, because a person
+    asking what is coming means the calendar rather than the last day their
+    statements happen to reach.
+    """
+    from utils.upcoming import upcoming_money
+
+    conn = _connection()
+    try:
+        return upcoming_money(
+            conn=conn,
+            today=params.get("as_of_date") or None,
+            horizon_days=int(params.get("horizon_days") or 35),
+        )
+    finally:
+        conn.close()
+
+
 def insight_feed_action(params: dict[str, Any]) -> dict[str, Any]:
     """What Northstar noticed. Works with no AI configured at all."""
     from utils.insight_feed import insight_feed
@@ -3690,6 +3711,7 @@ ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ai_payload_preview": ai_payload_preview_action,
     "ai_coaching_summary": ai_coaching_summary_action,
     "insight_feed": insight_feed_action,
+    "upcoming_money": upcoming_money_action,
     "net_worth_trend": net_worth_trend_action,
     "save_net_worth_entry": save_net_worth_entry_action,
     "delete_net_worth_entry": delete_net_worth_entry_action,

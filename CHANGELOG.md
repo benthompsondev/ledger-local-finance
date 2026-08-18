@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.9.0 - 2026-08-18
+
+Northstar can show you what is coming, not just what happened.
+
+### What changed
+
+- Home has a new section under Safe to Spend: the next few weeks of
+  recurring money Northstar recognises from your statements. Expected
+  paydays sit above the line, recurring costs below it, on the dates their
+  rhythm suggests.
+- **These are expectations, not scheduled payments.** Northstar has no
+  connection to your bank and no list of your bills. It reads what has
+  repeated and says when the pattern is next due. A date can be wrong, and
+  a charge can simply not arrive.
+- Open any expected item to see the last three real charges behind it, when
+  it was last seen, and how often it usually happens. From there you can go
+  straight to the transactions.
+- Every estimate carries how confident Northstar is, and the section always
+  says which day your statements run to. If your import is behind, it says
+  so plainly and lowers its own confidence rather than looking current.
+- A recurring cost you have marked "Not recurring", and an income source you
+  have marked "No", are both left out.
+- Nothing here projects a balance. Northstar will not tell you what you will
+  have, or that you will be short. It shows the events and what they add up
+  to, and leaves the arithmetic about your bank account to your bank.
+- Nothing to set up or maintain. There are no reminders to enter and no bills
+  to configure; it comes from the statements you already import.
+
 ## 2.8.0 - 2026-08-17
 
 Insights notices more, and shows its working.

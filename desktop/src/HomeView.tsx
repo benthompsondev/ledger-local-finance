@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnalysisContextNote } from "./AnalysisContextNote";
-import { loadHomeDashboard, loadHomeSummary, loadInsightFeed } from "./api";
+import {
+  loadHomeDashboard, loadHomeSummary, loadInsightFeed, loadUpcomingMoney,
+} from "./api";
+import { MoneyRadar } from "./MoneyRadar";
 import {
   CashflowChart, CategoryBars, CategoryDonut, IncomeSourceDonut,
   IncomeSteadiness, PaceChart, paceComparisonNote,
@@ -11,7 +14,9 @@ import {
   readHomeSecondary,
   type AnalysisPeriod, type ChartPeriod,
 } from "./preferences";
-import type { HomeDashboard, HomePacket, InsightFeed, TxPrefill } from "./types";
+import type {
+  HomeDashboard, HomePacket, InsightFeed, TxPrefill, UpcomingMoney,
+} from "./types";
 
 interface Props {
   onAddData: () => void;
@@ -24,6 +29,7 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
   const [packet, setPacket] = useState<HomePacket | null>(null);
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null);
   const [feed, setFeed] = useState<InsightFeed | null>(null);
+  const [radar, setRadar] = useState<UpcomingMoney | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(readChartPeriod);
@@ -45,6 +51,10 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
       // Additive: Home must still render if no pattern crosses a threshold or
       // a detector fails.
       try { setFeed(await loadInsightFeed()); } catch { setFeed(null); }
+      // Guarded on purpose. The engine deliberately does not swallow a
+      // radar failure, so a broken detector stays visible to the tests;
+      // this is where it is kept harmless to the check-in.
+      try { setRadar(await loadUpcomingMoney()); } catch { setRadar(null); }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -254,6 +264,11 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
             {!packet.safe_to_spend.available && packet.safe_to_spend.setup_screen && <button className="ghost-button" type="button" onClick={()=>onNavigate(packet.safe_to_spend.setup_screen!)}>Finish setup</button>}
             {packet.safe_to_spend.available && packet.safe_to_spend.reserved.basis === "flow" && <details className="formula-details" open><summary>Why this number?</summary><div className="formula-list"><span>Typical monthly income <strong>{money(packet.safe_to_spend.reserved.reliable_income||0)}</strong></span><span>− Recurring commitments <strong>−{money(packet.safe_to_spend.reserved.recurring_commitments||0)}</strong></span><span>− Savings target <strong>−{money(packet.safe_to_spend.reserved.savings_target||0)}</strong></span>{(packet.safe_to_spend.reserved.buffer||0)>0&&<span>− Safety buffer <strong>−{money(packet.safe_to_spend.reserved.buffer||0)}</strong></span>}<span className="formula-subtotal">Monthly everyday plan <strong>{money(packet.safe_to_spend.reserved.monthly_plan||0)}</strong></span><span>− Everyday spending so far this month <strong>−{money(packet.safe_to_spend.reserved.flexible_spent||0)}</strong></span><span className="formula-total">Left for everyday spending <strong>{money(packet.safe_to_spend.amount)}</strong></span></div><p className="guidance">Typical monthly income: {packet.safe_to_spend.reserved.income_basis_label||"median of your complete months"}. Recurring bills are already set aside, so they are not counted again in spending so far. Add account balances to check this against real cash.</p></details>}{packet.safe_to_spend.available && packet.safe_to_spend.reserved.basis !== "flow" && <details className="formula-details"><summary>Why this number?</summary><div className="formula-list"><span>Flexible allowance remaining <strong>{money(packet.safe_to_spend.reserved.flexible_remaining||0)}</strong></span><span>Cash cushion after bills <strong>{money(packet.safe_to_spend.reserved.cash_cushion_after_bills||0)}</strong></span><span className="formula-total">Safe now is the lower amount <strong>{money(packet.safe_to_spend.amount)}</strong></span></div><p className="guidance">Cash cushion uses current spendable balances minus complete card liabilities, unpaid confirmed bills, savings still to contribute, and the safety buffer. It is context, not extra spending permission.</p>{packet.safe_to_spend.reserved.reconciliation?.accounts?.map(account=><p className="guidance" key={`${account.account_ref}-${account.account_name}`}>{account.account_name}: balance as of {account.as_of_date||"not entered"}{account.last_activity?` · transactions through ${account.last_activity}`:""}.</p>)}{(packet.safe_to_spend.reserved.excluded_balance||0)>0&&<p className="guidance">{money(packet.safe_to_spend.reserved.excluded_balance||0)} in protected savings or other accounts is not included.</p>}{(packet.safe_to_spend.reserved.future_income_forecast||0)>0&&<p className="guidance">{money(packet.safe_to_spend.reserved.future_income_forecast||0)} of planned income has not arrived. It is forecast separately and is not included here.</p>}</details>}
           </article>
+
+          {/* Directly under Safe to Spend: that number is about now, and
+              this is the same question asked about the next few weeks.
+              Everything below stays where it was. */}
+          {radar && <MoneyRadar data={radar} onDrill={onDrill} />}
 
           {/* Teasers, not the experience. Insights has the same findings
               with their working, their evidence and a way into the

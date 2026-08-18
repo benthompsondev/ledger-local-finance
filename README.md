@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.8.0_x64-setup.exe
+NorthstarLedger_2.9.0_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,13 +58,12 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.8.0. Windows public beta.** It works, it is tested, and it
-is still a beta. This release is about Insights finding things you would not
-go looking for. It reads your finished months as a run instead of one at a
-time, so it can tell you when a category has moved to a new level, when what
-you keep each month has changed, and what made the last finished month
-different from the one before. Every observation shows the figures behind it
-and takes you to the transactions that back it up.
+**Current release: 2.9.0. Windows public beta.** It works, it is tested, and it
+is still a beta. This release adds the next few weeks to Home: the recurring
+costs and paydays Northstar recognises from your statements, on the dates
+their rhythm suggests. They are expectations rather than scheduled payments,
+each one opens to the real charges behind it, and nothing projects a balance.
+Insights still carries the pattern observations added in 2.8.0.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
@@ -89,7 +88,7 @@ There are six tabs:
 
 | Tab | What it is for |
 |---|---|
-| **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
+| **Home** | The weekly check-in. Safe to Spend, the next few weeks of recurring money, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
 | **Insights** | What Northstar noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |

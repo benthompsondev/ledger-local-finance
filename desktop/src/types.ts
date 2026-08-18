@@ -1147,6 +1147,55 @@ export interface SharedSettingsPayload {
 }
 
 /** Filters a drill-down applies when landing on the Transactions screen. */
+/** One thing Northstar expects to happen, drawn from a rhythm it has seen.
+ *  An expected date is an observation about the past stated forward, never
+ *  a claim that the charge will occur. */
+export interface UpcomingItem {
+  kind: "income" | "bill";
+  key: string;
+  label: string;
+  amount: number;
+  expected_date: string;
+  days_away: number;
+  cadence: string;
+  /** "usually once a month" — the rhythm in words, not a field name. */
+  cadence_note: string;
+  confidence: "low" | "medium" | "high";
+  last_seen: string;
+  /** The last few real charges behind the estimate. */
+  recent: { date: string; amount: number }[];
+  /** The statements cover this date and the charge is not in them. */
+  not_seen_yet: boolean;
+  drill?: {
+    merchant?: string; search?: string; category?: string;
+    start_date?: string; end_date?: string;
+  };
+}
+
+export interface UpcomingMoney {
+  available: boolean;
+  reason: string;
+  window_start: string;
+  window_end: string;
+  horizon_days?: number;
+  /** The last day the imported statements reach. Deliberately separate
+   *  from window_start: the window is the real calendar, this is evidence. */
+  data_through: string;
+  data_age_days: number;
+  staleness: "current" | "getting_stale" | "stale" | "no_data";
+  staleness_note: string;
+  items: UpcomingItem[];
+  income: UpcomingItem[];
+  bills: UpcomingItem[];
+  expected_in_total: number;
+  expected_out_total: number;
+  income_count: number;
+  bill_count: number;
+  next_income: UpcomingItem | null;
+  out_before_next_income: number | null;
+  summary: string;
+}
+
 export interface TxPrefill {
   category?: string;
   search?: string;

@@ -583,6 +583,94 @@ def _expected_dates(entry: dict, month: str) -> list[date]:
     return dates
 
 
+def expected_income_events(
+    start: date,
+    end: date,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> list[dict]:
+    """Paydays expected between two dates, from observed rhythm alone.
+
+    Reuses the schedule the plan forecast already trusts: the same deposits,
+    the same gap classifier, the same refusal to treat an irregular arrival
+    as a payday. Nothing here predicts a new source of income; it only says
+    when a rhythm that has been running is next due to run.
+
+    Sources marked "No" in Insights are left out. That check lives here
+    rather than in ``_planning_income_deposits`` on purpose. The monthly
+    baseline and Safe to Spend read those same deposits, and changing what
+    they count is a decision about the plan's income contract — not one a
+    forward-looking view should make on their behalf. The narrower rule is
+    that Northstar must not draw a payday marker for a source the user has
+    explicitly said is not dependable.
+    """
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        deposits = _planning_income_deposits(conn)
+        excluded = {
+            str(row["source_normalized"] or "").strip().upper()
+            for row in conn.execute(
+                "SELECT source_normalized,status FROM income_source_preferences"
+            ).fetchall()
+            if str(row["status"] or "") == "excluded"
+        }
+    finally:
+        if close:
+            conn.close()
+
+    if excluded:
+        deposits = [
+            deposit for deposit in deposits
+            if str(deposit["source"]).strip().upper() not in excluded
+        ]
+    schedule = _income_schedule(deposits, before=start)
+    if not schedule:
+        return []
+
+    # The last few real deposits per source, so an expected payday can show
+    # what its figure was drawn from rather than asserting an amount.
+    recent: dict[str, list[dict]] = {}
+    for deposit in deposits:
+        recent.setdefault(deposit["source"], []).append(deposit)
+
+    events: list[dict] = []
+    for entry in schedule:
+        history = [
+            {"date": row["date"], "amount": round(float(row["amount"]), 2)}
+            for row in recent.get(entry["source"], [])[-3:]
+        ]
+        for month in _months_spanned(start, end):
+            for when in _expected_dates(entry, month):
+                if start <= when <= end:
+                    events.append({
+                        "source": entry["source"],
+                        "label": entry["label"],
+                        "cadence": entry["cadence"],
+                        "typical_gap_days": entry["typical_gap_days"],
+                        "amount": entry["amount"],
+                        "last_seen": entry["last_seen"],
+                        "occurrences": entry["occurrences"],
+                        "recent": history,
+                        "expected_date": when.isoformat(),
+                    })
+    events.sort(key=lambda row: (row["expected_date"], -row["amount"]))
+    return events
+
+
+def _months_spanned(start: date, end: date) -> list[str]:
+    """Every YYYY-MM the window touches, so a window can cross a year end."""
+    months, year, month = [], start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month, year = 1, year + 1
+    return months
+
+
 def scheduled_income_outlook(
     month: str,
     *,

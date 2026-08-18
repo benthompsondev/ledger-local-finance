@@ -35,6 +35,7 @@ import type {
   InsightFeed,
   NetWorthOverview,
   SpendingPatterns,
+  UpcomingMoney,
 } from "./types";
 
 export async function loadHomeSummary(periodDays: 30 | 90): Promise<HomePacket> {
@@ -222,6 +223,8 @@ export const deleteTransaction = (id: number) =>
   invoke<{ deleted: boolean; id: number }>("delete_transaction", { id });
 export const loadInsightFeed = () =>
   invoke<InsightFeed>("get_insight_feed");
+export const loadUpcomingMoney = (asOfDate?: string) =>
+  invoke<UpcomingMoney>("get_upcoming_money", { asOfDate });
 export const loadSpendingPatterns = (months?: number) =>
   invoke<SpendingPatterns>("get_spending_patterns", { months });
 export const explainInsight = (findingId: string) =>

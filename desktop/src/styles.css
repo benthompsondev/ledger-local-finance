@@ -849,6 +849,95 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 .noticed-claim {
   margin: 0; color: #c9d3dd; font-size: .88rem; line-height: 1.6;
 }
+/* ── money radar: the next few weeks ────────────────────────────────── */
+/* Expected things are drawn quieter than things that happened. Nothing in
+   here may look as solid as a figure on the rest of Home, because none of
+   it has happened yet. */
+.radar-card { margin-top: 4px; }
+.radar-through {
+  border: 1px solid var(--line); border-radius: 999px; color: #8794a1;
+  font-size: .72rem; padding: 3px 10px; white-space: nowrap;
+}
+.radar-through.radar-stale, .radar-through.radar-getting_stale {
+  border-color: rgba(210,153,34,.42); color: #d6a63a;
+}
+.radar-stale {
+  background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.28);
+  border-radius: 10px; color: #c9d3dd; font-size: .8rem; line-height: 1.5;
+  margin: 10px 0 0; padding: 9px 12px;
+}
+.radar-timeline {
+  display: block; height: 76px; margin: 16px 0 0; width: 100%;
+}
+.radar-axis { stroke: rgba(255,255,255,.16); stroke-width: .35; }
+.radar-mark { fill: #8b7bd8; }
+.radar-mark.income { fill: #52b788; }
+.radar-mark.missed { fill: #b08a2e; }
+.radar-scale {
+  color: #7f8c99; display: flex; font-size: .72rem;
+  justify-content: space-between; margin-top: 2px;
+}
+.radar-totals {
+  border-top: 1px solid rgba(255,255,255,.07); display: flex; gap: 28px;
+  margin-top: 14px; padding-top: 12px;
+}
+.radar-totals span {
+  color: #8794a1; display: block; font-size: .74rem;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+.radar-totals strong {
+  color: #eef4f8; display: block; font-size: 1.35rem;
+  font-variant-numeric: tabular-nums; margin-top: 3px;
+}
+.radar-totals strong.income { color: #71e49a; }
+.radar-totals small { color: #7f8c99; display: block; font-size: .74rem; }
+.radar-summary {
+  color: #c9d3dd; font-size: .86rem; line-height: 1.55; margin: 12px 0 0;
+}
+.radar-weeks { margin-top: 8px; }
+.radar-weeks h4 {
+  color: #8794a1; font-size: .72rem; font-weight: 750; letter-spacing: .08em;
+  margin: 16px 0 4px; text-transform: uppercase;
+}
+.radar-row { border-bottom: 1px solid rgba(255,255,255,.05); }
+.radar-row:last-child { border-bottom: 0; }
+.radar-row-head {
+  align-items: baseline; background: transparent; border: 0; cursor: pointer;
+  display: flex; gap: 14px; padding: 7px 0; text-align: left; width: 100%;
+}
+.radar-row-head:hover { background: rgba(255,255,255,.02); }
+.radar-when {
+  color: #c9d3dd; flex: 0 0 62px; font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Inline, not stacked: the cadence and confidence are context for the row,
+   not a second row of their own. Seven events stacked two-high turned a
+   five-week view into 540px of list. */
+.radar-what small {
+  color: #7f8c99; font-size: .74rem; margin-left: 8px;
+}
+.radar-what {
+  color: #eef4f8; flex: 1; font-size: .85rem; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.radar-amount {
+  color: #c9d3dd; font-size: .92rem; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.radar-amount.income { color: #71e49a; }
+.radar-evidence {
+  border-left: 2px solid rgba(139,123,216,.4); margin: 0 0 10px 4px;
+  padding: 8px 0 4px 14px;
+}
+.radar-row.income .radar-evidence { border-left-color: rgba(82,183,136,.4); }
+.radar-evidence dl { display: flex; gap: 18px; margin: 0 0 8px; }
+.radar-evidence dt { color: #7f8c99; font-size: .74rem; margin: 0; }
+.radar-evidence dd {
+  color: #eef4f8; font-size: .82rem; font-variant-numeric: tabular-nums;
+  margin: 2px 0 0;
+}
+.radar-note { color: #7f8c99; font-size: .76rem; line-height: 1.5; margin: 0 0 8px; }
+
 /* Home's compact form of the same finding: headline and figure only. */
 .insight-card.teaser { padding: 12px 14px; }
 .insight-card.teaser h4 { margin: 0; }

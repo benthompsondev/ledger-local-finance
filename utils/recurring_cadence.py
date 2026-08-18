@@ -263,6 +263,14 @@ def merchant_cadences(conn: Optional[sqlite3.Connection] = None,
                 "is_active": is_active,
                 "overdue_days": max(0, overdue_by),
                 "confidence": confidence,
+                # The last few actual charges, so anything showing an
+                # expected amount can show what it was drawn from. A figure
+                # a person cannot check is a figure they have to take on
+                # faith, and this one is a guess about the future.
+                "recent_charges": [
+                    {"date": day, "amount": round(float(amount), 2)}
+                    for day, amount in charges[-3:]
+                ],
                 "price_change": detect_price_change(charges),
                 "setaside_note": _setaside_note(
                     cadence, current_amount, monthly, expected_next,

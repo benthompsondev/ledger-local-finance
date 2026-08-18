@@ -13,6 +13,7 @@ fn main() {
             "ai_payload_preview",
             "ai_coaching_summary",
             "get_insight_feed",
+            "get_upcoming_money",
             "get_spending_patterns",
             "explain_insight",
             "get_net_worth_trend",

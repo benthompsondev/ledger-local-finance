@@ -362,6 +362,17 @@ async fn delete_transaction(app: AppHandle, id: i64) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn get_upcoming_money(app: AppHandle, as_of_date: Option<String>) -> Result<Value, String> {
+    run_engine(
+        &app,
+        "upcoming_money",
+        json!({ "as_of_date": as_of_date }),
+        ENGINE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+#[tauri::command]
 async fn get_insight_feed(app: AppHandle) -> Result<Value, String> {
     run_engine(&app, "insight_feed", json!({}), ENGINE_TIMEOUT_SECS).await
 }
@@ -1145,6 +1156,7 @@ fn main() {
             ai_payload_preview,
             ai_coaching_summary,
             get_insight_feed,
+            get_upcoming_money,
             get_spending_patterns,
             explain_insight,
             get_net_worth_trend,
