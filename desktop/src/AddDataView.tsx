@@ -529,7 +529,7 @@ function AddDataView({ onGoHome, onGoTransactions, onDataChanged }: Props) {
                           onClick={() => void chooseImportMode(file.path, "reexport")}
                         >
                           Updated or overlapping export
-                          <small>Skip matching rows already in SpendShape.</small>
+                          <small>Skip matching rows already in SignalSpace.</small>
                         </button>
                         <button
                           type="button"
@@ -548,13 +548,13 @@ function AddDataView({ onGoHome, onGoTransactions, onDataChanged }: Props) {
                     Income {moneyCents(file.income)} · Spending {moneyCents(file.spending)}
                   </p>
 
-                  {/* What SpendShape decided about this file, before anything
+                  {/* What SignalSpace decided about this file, before anything
                       is saved. A wrong guess about dates or decimals is
                       invisible in the charts months later, so it is shown
                       here while it can still be corrected. */}
                   {file.receipt && (
                     <details className="import-receipt">
-                      <summary>How SpendShape read this file</summary>
+                      <summary>How SignalSpace read this file</summary>
                       <div className="formula-list">
                         <span>Rows read <strong>{file.receipt.rows_parsed}</strong></span>
                         {file.receipt.rows_skipped > 0 && <span>Rows skipped <strong>{file.receipt.rows_skipped}</strong></span>}
@@ -607,7 +607,7 @@ function AddDataView({ onGoHome, onGoTransactions, onDataChanged }: Props) {
 
                   {file.dedup_pending && (
                     <p className="guidance">
-                      Choose an account to check which rows are already in SpendShape.
+                      Choose an account to check which rows are already in SignalSpace.
                     </p>
                   )}
 
@@ -617,10 +617,10 @@ function AddDataView({ onGoHome, onGoTransactions, onDataChanged }: Props) {
                         <div>
                           <strong>{file.mapping && !mappingOpen[file.path]
                             ? "CSV columns ready"
-                            : "Tell SpendShape what each column means"}</strong>
+                            : "Tell SignalSpace what each column means"}</strong>
                           <p className="guidance">
-                            SpendShape normalizes this preview locally. This screen
-                            only chooses columns; SpendShape preserves the values.
+                            SignalSpace normalizes this preview locally. This screen
+                            only chooses columns; SignalSpace preserves the values.
                           </p>
                         </div>
                         {file.mapping && !mappingOpen[file.path] && (
@@ -784,7 +784,7 @@ function AddDataView({ onGoHome, onGoTransactions, onDataChanged }: Props) {
           <strong>Create a new account</strong>
           <p className="guidance">
             Pick the type that matches your bank account or card. This helps
-            SpendShape handle balances correctly; it never changes the positive
+            SignalSpace handle balances correctly; it never changes the positive
             or negative signs in your statement.
           </p>
           <div className="form-grid">

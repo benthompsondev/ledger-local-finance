@@ -201,7 +201,7 @@ export interface AccountBalance {
  *
  *  Deliberately carries no assets, liabilities or net-worth total. These are
  *  planning inputs for Safe to Spend and Plan; the monthly readings on
- *  Insights are the only net worth SpendShape reports.
+ *  Insights are the only net worth SignalSpace reports.
  */
 export interface PlanningBalances {
   accounts: Account[];
@@ -452,7 +452,7 @@ export interface NetWorthMove {
 }
 
 /** A suggested reading built from account balances already entered. Always a
- *  suggestion: it only knows the accounts SpendShape has balances for. */
+ *  suggestion: it only knows the accounts SignalSpace has balances for. */
 export interface NetWorthPrefill {
   month: string;
   cash: number;
@@ -466,7 +466,7 @@ export interface NetWorthPrefill {
     amount: number; as_of_date: string; currency: string;
   }[];
   /** Balances left out of the arithmetic because they are not in the local
-   *  currency. SpendShape invents no exchange rate, so these are reported
+   *  currency. SignalSpace invents no exchange rate, so these are reported
    *  rather than converted or added. */
   excluded: {
     account: string; kind: string; field: string;
@@ -515,7 +515,7 @@ export interface NetWorthOverview {
   material_move?: number;
 }
 
-/** One thing SpendShape noticed, with the arithmetic already done. */
+/** One thing SignalSpace noticed, with the arithmetic already done. */
 export interface Insight {
   id: string;
   kind: string;
@@ -664,7 +664,7 @@ export interface AiSettings {
   enabled: boolean;
   base_url: string;
   model: string;
-  /** Populated for the read that repaired SpendShape's retired MiniMax default. */
+  /** Populated for the read that repaired SignalSpace's retired MiniMax default. */
   model_migrated_from: string;
   scope: string;
   months: number;
@@ -1147,7 +1147,7 @@ export interface SharedSettingsPayload {
 }
 
 /** Filters a drill-down applies when landing on the Transactions screen. */
-/** One thing SpendShape expects to happen, drawn from a rhythm it has seen.
+/** One thing SignalSpace expects to happen, drawn from a rhythm it has seen.
  *  An expected date is an observation about the past stated forward, never
  *  a claim that the charge will occur. */
 export interface UpcomingItem {

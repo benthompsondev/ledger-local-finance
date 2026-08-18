@@ -1,4 +1,4 @@
-"""What SpendShape expects to happen next, drawn only from what already has.
+"""What SignalSpace expects to happen next, drawn only from what already has.
 
 Every other reading in this app describes money that has moved. This one
 describes money that has moved *repeatedly*, and says when the rhythm is next
@@ -307,7 +307,7 @@ def upcoming_money(conn=None, today=None,
             return {
                 "available": False,
                 "reason": (
-                    "Import a statement and SpendShape can start recognising "
+                    "Import a statement and SignalSpace can start recognising "
                     "what repeats."
                 ),
                 "window_start": anchor.isoformat(),
@@ -367,7 +367,7 @@ def upcoming_money(conn=None, today=None,
         return {
             "available": bool(items),
             "reason": "" if items else (
-                "SpendShape does not have enough evidence for a trustworthy "
+                "SignalSpace does not have enough evidence for a trustworthy "
                 "bill or payday in this window. Review merchant categories, "
                 "recurring status, and income sources in Settings when they "
                 "need correction."

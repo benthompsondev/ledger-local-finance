@@ -1,4 +1,4 @@
-"""Pure account-assignment helpers shared by every SpendShape frontend.
+"""Pure account-assignment helpers shared by every SignalSpace frontend.
 
 These used to live in utils.account_picker, but that module imports
 Streamlit at the top, which the native desktop sidecar must not bundle.

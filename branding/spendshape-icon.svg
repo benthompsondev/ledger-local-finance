@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!--
-    SpendShape app mark.
+    SignalSpace app mark.
 
     Built to survive 32px, which is the size that actually matters on a Windows
     taskbar. That constraint drove every decision here: three fat bars rather

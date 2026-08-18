@@ -12,7 +12,7 @@
  * Identity is never color-alone: every series is directly labeled or
  * legended, and deltas always carry a ▲/▼ symbol and signed text.
  *
- * These are the SpendShape tokens from styles.css, repeated as literals
+ * These are the SignalSpace tokens from styles.css, repeated as literals
  * because SVG presentation attributes do not resolve var(). The roles were
  * already right — green income, violet spending, blue structure — so this is
  * a retune to the brand values, not a re-assignment. Violet was brightened
@@ -558,7 +558,7 @@ export function CategoryBars({
   );
 }
 
-// Eight hues that stay separable on the SpendShape navy and under the
+// Eight hues that stay separable on the SignalSpace navy and under the
 // common CVD simulations. Ordered so the first four, which is all most
 // breakdowns ever use, are maximally far apart.
 const CATEGORY_COLORS = [

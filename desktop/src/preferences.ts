@@ -149,7 +149,7 @@ export function saveCategoryExpanded(expanded: boolean): void {
   window.localStorage.setItem(CATEGORY_EXPANDED_KEY, expanded ? "expanded" : "collapsed");
 }
 
-export function clearSpendShapePreferences(): void {
+export function clearSignalSpacePreferences(): void {
   // Clears the legacy namespace too, so "reset everything" really does.
   for (const [old] of LEGACY_KEYS) window.localStorage.removeItem(old);
   window.localStorage.removeItem(COMPARE_BASELINE_KEY);

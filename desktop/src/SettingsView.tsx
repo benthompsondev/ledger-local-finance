@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const AI_CONSENT = `Turning this on sends your financial figures to an outside company.
 
-SpendShape is offline until you do this. After it, the data you selected leaves this computer every time you ask a question. The provider's terms govern what happens to it: they may log it, keep it, or train on it. SpendShape cannot control that and is not responsible for it.
+SignalSpace is offline until you do this. After it, the data you selected leaves this computer every time you ask a question. The provider's terms govern what happens to it: they may log it, keep it, or train on it. SignalSpace cannot control that and is not responsible for it.
 
 You can switch this off or forget your key at any time. A model running on this computer gives you the same feature with nothing leaving.
 
@@ -37,7 +37,7 @@ import {
   updateCategoryRule,
 } from "./api";
 import {
-  clearSpendShapePreferences, readAnalysisPeriod, readDensity,
+  clearSignalSpacePreferences, readAnalysisPeriod, readDensity,
   readHomeSecondary, readLandingPage, readShowNetWorth, readSavingsPreference,
   readWeekStart,
   saveAnalysisPeriod, saveDensity, saveHomeSecondary, saveLandingPage,
@@ -376,7 +376,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
     setError("");
     try {
       const result = await resetFinancialData(resetText, completeReset);
-      if (completeReset) clearSpendShapePreferences();
+      if (completeReset) clearSignalSpacePreferences();
       setResetResult(result);
       setShowReset(false);
       setResetText("");
@@ -397,7 +397,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           <span className="eyebrow">Settings</span>
           <h2>Local data and recovery</h2>
           <p>
-            SpendShape stores finance data on this computer and never
+            SignalSpace stores finance data on this computer and never
             requires an account.
           </p>
         </div>
@@ -407,7 +407,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
         <article className="form-card">
           <h3>About</h3>
           <dl>
-            <div><dt>Product</dt><dd>SpendShape {version || "…"}</dd></div>
+            <div><dt>Product</dt><dd>SignalSpace {version || "…"}</dd></div>
             <div><dt>Storage</dt><dd>{data?.data_directory ?? "Loading…"}</dd></div>
             <div><dt>Database</dt><dd>{data?.database_name ?? "finance.db"}</dd></div>
             <div><dt>Finance data</dt><dd>Stays on this computer. Every calculation runs in the local sidecar.</dd></div>
@@ -458,13 +458,13 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           </div>
         ) : (
           <p className="file-meta">
-            No balances recorded yet. SpendShape never infers one from your
+            No balances recorded yet. SignalSpace never infers one from your
             transactions, so Safe to Spend stays unavailable until you add one.
           </p>
         )}
         <h4>Add or update a balance</h4>
         <div className="form-grid">
-          <label>SpendShape account
+          <label>SignalSpace account
             <select value={balanceForm.accountRef || ""}
               onChange={(e)=>setBalanceForm({...balanceForm,accountRef:Number(e.target.value)})}>
               <option value="">Choose an account…</option>
@@ -556,15 +556,15 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           <div className="privacy-statement">
             <strong>What this changes</strong>
             <p>
-              With this off, SpendShape is entirely offline: your statements,
+              With this off, SignalSpace is entirely offline: your statements,
               figures and settings never leave this computer, and the app makes
               no network requests at all.
             </p>
             <p>
               With it on, and pointed at an online provider, the data you choose
               below is sent to that provider each time you ask a question. What
-              they do with it is governed by their terms, not SpendShape&apos;s.
-              They may log it, retain it, or use it to train on. SpendShape
+              they do with it is governed by their terms, not SignalSpace&apos;s.
+              They may log it, retain it, or use it to train on. SignalSpace
               cannot control that and is not responsible for it. You supply the
               key, you pay for the usage, and you can switch this off or forget
               the key at any time.
@@ -580,8 +580,8 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
               // localhost would train people to ignore it.
               ? `Ask questions about your own figures. Pointed at a model on
                  this computer, nothing leaves it, so this works like the rest
-                 of SpendShape. It is off until you switch it on.`
-              : `Everything else in SpendShape happens on this computer. This
+                 of SignalSpace. It is off until you switch it on.`
+              : `Everything else in SignalSpace happens on this computer. This
                  does not. Turning it on sends your figures to whichever
                  provider you point it at, using a key you supply and pay for.
                  It is off until you switch it on, and nothing is sent while
@@ -611,7 +611,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
                     <strong>Enable AI assistance</strong>
                     <small>{ready
                       ? ai.enabled
-                        ? "On. SpendShape may send the selected data when you ask a question."
+                        ? "On. SignalSpace may send the selected data when you ask a question."
                         : "Off. Nothing is sent to the provider."
                       : "Choose a provider and add a key first."}</small>
                   </span>
@@ -621,7 +621,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
                       className="toggle-input"
                     disabled={aiBusy || !ready}
                     onChange={(e) => {
-                      // Switching this on is the one decision in SpendShape
+                      // Switching this on is the one decision in SignalSpace
                       // that changes where someone's data lives. It gets an
                       // explicit yes rather than a silent toggle.
                       if (e.target.checked && !ai.is_local
@@ -639,7 +639,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
             })()}
             {ai.model_migrated_from && (
               <p className="success-text">
-                SpendShape updated the retired MiniMax model
+                SignalSpace updated the retired MiniMax model
                 {" "}{ai.model_migrated_from} to MiniMax-M3.
               </p>
             )}
@@ -687,7 +687,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
                   onChange={(e) => setAiKey(e.target.value)} />
                 <small>{ai.is_local
                   ? "Local models do not need a cloud key."
-                  : "Encrypted with Windows user protection. It is only decrypted when SpendShape calls the provider above."}</small>
+                  : "Encrypted with Windows user protection. It is only decrypted when SignalSpace calls the provider above."}</small>
               </label>
               <label>Months of history to share
                 <input type="number" min="1" max="12" value={ai.months}
@@ -760,7 +760,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
         <article className="form-card">
           <h3>Everyday view</h3>
           <div className="form-grid">
-            <label>Open SpendShape on<select value={landingPage} onChange={(e)=>changeLanding(e.target.value as LandingPage)}><option value="home">Home</option><option value="plan">Plan</option><option value="insights">Insights</option><option value="transactions">Transactions</option></select></label>
+            <label>Open SignalSpace on<select value={landingPage} onChange={(e)=>changeLanding(e.target.value as LandingPage)}><option value="home">Home</option><option value="plan">Plan</option><option value="insights">Insights</option><option value="transactions">Transactions</option></select></label>
             <label>Financial period<select value={defaultPeriod} onChange={(e)=>changePeriod(Number(e.target.value) as AnalysisPeriod)}><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select></label>
             <label>Display density<select value={density} onChange={(e)=>changeDensity(e.target.value as Density)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
             <label>Weeks start on<select value={weekStart} onChange={(e)=>changeWeekStart(e.target.value as WeekStart)}><option value="monday">Monday</option><option value="sunday">Sunday</option></select><small>Sets the columns in the spending calendar.</small></label>
@@ -773,7 +773,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
         </article>
         <article className="form-card">
           <h3>How categorization works</h3>
-          <p className="guidance">SpendShape protects payments and internal transfers first, then uses your saved merchant rules, the bank statement memo, known merchant mappings, and finally Uncategorized.</p>
+          <p className="guidance">SignalSpace protects payments and internal transfers first, then uses your saved merchant rules, the bank statement memo, known merchant mappings, and finally Uncategorized.</p>
           <p>Only high-impact or genuinely uncertain rows are promoted for review. Ordinary recognized activity updates charts automatically.</p>
         </article>
       </div>
@@ -792,7 +792,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
             ? `${categorySettings.income_sources.length} source${categorySettings.income_sources.length === 1 ? "" : "s"} · ${categorySettings.income_sources.filter(s => s.status === "confirmed" || s.status === "excluded").length} reviewed`
             : "No income sources yet"}
         </summary>
-        <p className="guidance">SpendShape's historical planning average includes genuine income unless you exclude it. Payroll can appear as an expected payday automatically. Use as income confirms another regular source for the Radar; Exclude removes it from planning.</p>
+        <p className="guidance">SignalSpace's historical planning average includes genuine income unless you exclude it. Payroll can appear as an expected payday automatically. Use as income confirms another regular source for the Radar; Exclude removes it from planning.</p>
         {categorySettings?.income_sources.length?categorySettings.income_sources.map(source=>{const reviewed=source.status==="confirmed"||source.status==="excluded";return <div className="rule-row" key={source.source_normalized}><span><strong>{source.source}</strong><small>{source.tx_count} deposit{source.tx_count===1?"":"s"} across {source.months_seen} month{source.months_seen===1?"":"s"}</small><small className={source.status==="confirmed"?"status-tag status-ok":source.status==="excluded"?"status-tag status-muted":"status-tag status-warn"}>{source.status==="confirmed"?"Using as income":source.status==="excluded"?"Excluded from planning income":"Not reviewed yet — choose one"}</small></span><select value={reviewed?source.status:""} disabled={busy===`income-${source.source_normalized}`} onChange={(e)=>void changeIncomeSource(source.source_normalized,e.target.value as "confirmed"|"excluded")}>{!reviewed&&<option value="" disabled>Choose…</option>}<option value="confirmed">Use as income</option><option value="excluded">Exclude</option></select>{saved===`income-${source.source_normalized}`&&<span className="success-text saved-flag">Saved</span>}</div>;}):<p className="guidance">Income sources appear after income is imported.</p>}
       </details>
 
@@ -804,9 +804,9 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
             ? `${categorySettings.recurring.length} recurring merchant${categorySettings.recurring.length === 1 ? "" : "s"} detected`
             : "None detected yet"}
         </summary>
-        <p className="guidance">SpendShape detects repeated outflows using merchant, cadence, amount stability, and whether the category is a known bill. Say so when it gets one wrong.</p>
+        <p className="guidance">SignalSpace detects repeated outflows using merchant, cadence, amount stability, and whether the category is a known bill. Say so when it gets one wrong.</p>
         {/* Two choices, matching Insights. A cost either recurs or it does
-            not; "Automatic" described how SpendShape found it, which is
+            not; "Automatic" described how SignalSpace found it, which is
             provenance, so it is a badge rather than a third thing to decide.
             Detection itself is unchanged underneath. */}
         {categorySettings?.recurring.length ? categorySettings.recurring.map(item=>{const edit=recurringEdits[item.merchant_normalized]??{name:item.merchant,category:item.category};const stored=recurringStatus(item.merchant_normalized,item.recurring_status==="confirmed"?"recurring":"automatic");const suggested=stored==="automatic";const status=suggested?"recurring":stored;return <div className="recurring-edit-row" key={item.merchant_normalized}><div><strong>{item.merchant}</strong><small>{item.cadence} · about {item.avg_amount.toLocaleString(undefined,{style:"currency",currency:"CAD"})}</small>{suggested&&<span className="suggested-badge">Suggested</span>}</div><label>Display name<input value={edit.name} onChange={(e)=>setRecurringEdits({...recurringEdits,[item.merchant_normalized]:{...edit,name:e.target.value}})}/></label><label>Category<select value={edit.category} onChange={(e)=>setRecurringEdits({...recurringEdits,[item.merchant_normalized]:{...edit,category:e.target.value}})}>{categorySettings.categories.map(category=><option key={category}>{category}</option>)}</select></label><label>Status<select value={status} disabled={busy===`recurring-${item.merchant_normalized}`} onChange={(e)=>void changeRecurring(item.merchant_normalized,e.target.value)}><option value="recurring">Recurring</option><option value="not_recurring">Not recurring</option></select></label><button className="ghost-button" disabled={busy===`recurring-${item.merchant_normalized}`} onClick={()=>void changeRecurring(item.merchant_normalized,status,true)}>Save details</button>{saved===`recurring-${item.merchant_normalized}`&&<span className="success-text saved-flag">Saved</span>}</div>}) : <p className="guidance">No recurring expenses have enough history yet.</p>}
@@ -828,7 +828,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
                 </div>
               ))}
               <p className="guidance">
-                Choose the original files above. SpendShape matches their saved
+                Choose the original files above. SignalSpace matches their saved
                 hashes and every row before enabling repair. The files are read
                 in place and are never copied into the app.
               </p>
@@ -876,7 +876,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
         <article className="form-card">
           <h3>Export your transactions</h3>
           <p className="guidance">
-            Every transaction SpendShape holds, written to a CSV file you
+            Every transaction SignalSpace holds, written to a CSV file you
             choose. Nothing is uploaded and nothing is deleted here; this is a
             copy, for a spreadsheet, your records, or another app.
           </p>
@@ -893,7 +893,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           <h3>Reset all financial data</h3>
           <p>
             Removes transactions, imports, accounts, plans, goals, balances,
-            rules, and profiles. SpendShape creates a validated backup first.
+            rules, and profiles. SignalSpace creates a validated backup first.
           </p>
           <p className="guidance">
             App preferences such as the selected chart period are preserved
@@ -944,7 +944,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
 
       {showReset && (
         <div className="confirm-panel reset-confirm" role="dialog" aria-modal="true">
-          <strong>Reset all SpendShape financial data?</strong>
+          <strong>Reset all SignalSpace financial data?</strong>
           <p>
             This removes {safety?.reset.transaction_count ?? 0} transactions
             and {safety?.reset.account_count ?? 0} accounts from the active database.

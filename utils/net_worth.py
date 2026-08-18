@@ -22,7 +22,7 @@ One row per month, keyed by month, so recording August twice corrects August
 rather than adding a second August. The figures are prefilled from whatever
 account balances have been entered, so the monthly update is a review rather
 than a data-entry chore, and every prefilled figure can be overridden because
-the user can see accounts SpendShape cannot.
+the user can see accounts SignalSpace cannot.
 
 Kept-per-month has not been thrown away. It is still the best explanation of
 *why* net worth moved, but it is now compared against two real measurements
@@ -67,7 +67,7 @@ COMPONENT_LABELS = {
     "other_assets": "Other assets",
     "liabilities": "Debts",
 }
-# The currency the readings are kept in. SpendShape has never invented an
+# The currency the readings are kept in. SignalSpace has never invented an
 # exchange rate anywhere, and a net worth entry is a single figure, so a
 # balance in anything else is reported rather than converted or added.
 LOCAL_CURRENCY = "CAD"
@@ -359,7 +359,7 @@ def suggested_entry(month: str = "", conn=None) -> dict:
                 "as_of_date": str(balance.get("as_of_date") or ""),
             }
             if currency != LOCAL_CURRENCY:
-                # SpendShape has no exchange rate and invents one nowhere
+                # SignalSpace has no exchange rate and invents one nowhere
                 # else, so a foreign balance cannot join a local total. It is
                 # reported instead, so the figure can be converted by hand
                 # rather than quietly disappearing.
@@ -444,7 +444,7 @@ def net_worth_overview(conn=None) -> dict:
             return {
                 "has_entries": False,
                 "reason": (
-                    "Record what you are worth this month and SpendShape will "
+                    "Record what you are worth this month and SignalSpace will "
                     "track it from here. Four figures, once a month."
                 ),
                 "entries": [],

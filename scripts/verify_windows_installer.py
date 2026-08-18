@@ -13,7 +13,7 @@ from utils import __version__
 def verify_installer(installer: Path, bundle: Path) -> dict[str, object]:
     installer = installer.resolve()
     bundle = bundle.resolve()
-    expected_name = f"SpendShape_{__version__}_x64-setup.exe"
+    expected_name = f"SignalSpaceFinance_{__version__}_x64-setup.exe"
     if installer.name != expected_name:
         raise RuntimeError(f"Expected installer name {expected_name}, got {installer.name}")
     if not installer.is_file() or installer.stat().st_size < 1_000_000:
@@ -41,7 +41,7 @@ def verify_installer(installer: Path, bundle: Path) -> dict[str, object]:
     names = [str(path.relative_to(bundle)) for path in bundle.rglob("*")]
     _assert_safe_names(names)
     if not re.fullmatch(r"\d+\.\d+\.\d+", __version__):
-        raise RuntimeError(f"SpendShape version is not installer-safe: {__version__}")
+        raise RuntimeError(f"SignalSpace version is not installer-safe: {__version__}")
     digest = hashlib.sha256(installer.read_bytes()).hexdigest().upper()
     return {
         "files": sum(path.is_file() for path in bundle.rglob("*")),

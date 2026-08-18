@@ -19,7 +19,7 @@ import type { NetWorthEntry, NetWorthOverview, NetWorthPrefill } from "./types";
  *
  * Four numbers once a month is a small enough habit to keep, and the prefill
  * makes it a review rather than data entry. Every prefilled figure stays
- * editable because SpendShape only knows the accounts it has balances for,
+ * editable because SignalSpace only knows the accounts it has balances for,
  * and most people own something it has never heard of.
  *
  * The form state is keyed on which reading is being shown rather than seeded
@@ -150,7 +150,7 @@ export function NetWorthEntryForm({
             {prefill.excluded
               .map((s) => `${s.account} (${s.currency} ${s.amount.toFixed(2)})`)
               .join(", ")}
-            . SpendShape does not convert currencies, so {prefill.excluded.length === 1
+            . SignalSpace does not convert currencies, so {prefill.excluded.length === 1
               ? "it is"
               : "they are"}{" "}
             left out of the figures above. Add a converted amount by hand if

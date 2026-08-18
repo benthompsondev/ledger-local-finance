@@ -163,7 +163,7 @@ def summarize_import(conn: Optional[sqlite3.Connection] = None,
         } for b in batches]
 
         # Money added by these batches, with the standard plumbing
-        # exclusions so the numbers match every other SpendShape total.
+        # exclusions so the numbers match every other SignalSpace total.
         from utils.financial_semantics import (
             sql_type_placeholders, transaction_types_for_role,
         )

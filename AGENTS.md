@@ -1,6 +1,6 @@
-# SpendShape — agent guide
+# SignalSpace — agent guide
 
-SpendShape (formerly Northstar Ledger) is a local-first personal finance
+SignalSpace (formerly Northstar Ledger) is a local-first personal finance
 desktop app. Import bank statements, clean up transactions, see where the
 money went, plan the month. Everything stays on the
 machine: no account, no server, and no network calls for any of the finance
@@ -50,7 +50,7 @@ powershell -File scripts/build_native_desktop.ps1
   pace, `money_runway`), `checkin.py` (`safe_to_spend_summary`, the one number
   every page must read), `analytics.py` (income baselines), `planner.py`
   (commitments and readiness), `database.py`. The detectors behind "What
-  SpendShape noticed" are `patterns.py` (windows ending at the latest imported
+  SignalSpace noticed" are `patterns.py` (windows ending at the latest imported
   day, partial month included) and `month_trends.py` (finished complete months
   only); `insight_feed.py` ranks them and decides which few get shown.
 - `parsers/` — statement import. `csv_dialect.py` decides a file's shape once;

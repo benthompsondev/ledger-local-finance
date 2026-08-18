@@ -1,6 +1,6 @@
 """Optional AI assistance, using a key the user supplies.
 
-SpendShape's whole point is that financial data stays on the machine. This
+SignalSpace's whole point is that financial data stays on the machine. This
 feature deliberately breaks that, so it is off until someone turns it on,
 and it says plainly what leaves.
 
@@ -103,7 +103,7 @@ _ANTHROPIC_HOST = "api.anthropic.com"
 # on their schedule rather than ours.
 _ANTHROPIC_VERSION = "2023-06-01"
 _RETIRED_MINIMAX_MODELS = frozenset({
-    # SpendShape shipped this MiniMax 01-era default before the native AI
+    # SignalSpace shipped this MiniMax 01-era default before the native AI
     # workspace existed. Windows upgrades preserve app_settings, so changing
     # _DEFAULTS alone cannot repair an existing installation.
     "abab6.5s-chat",
@@ -274,7 +274,7 @@ def _dpapi(operation: str, data: bytes) -> bytes:
     if operation == "protect":
         ok = crypt32.CryptProtectData(
             ctypes.byref(source_blob),
-            "SpendShape AI key",
+            "SignalSpace AI key",
             None,
             None,
             None,
@@ -351,10 +351,10 @@ def _ensure_table(conn) -> None:
 
 
 def _repair_retired_minimax_model(conn, stored: dict[str, str]) -> str:
-    """Replace only SpendShape's known retired MiniMax default.
+    """Replace only SignalSpace's known retired MiniMax default.
 
     Existing settings are normally user-owned and must survive an upgrade.
-    This one value is different: SpendShape itself shipped it, MiniMax now
+    This one value is different: SignalSpace itself shipped it, MiniMax now
     rejects it, and leaving it in place makes the upgraded app unusable.
     Custom endpoints and every other model remain untouched.
     """
@@ -974,7 +974,7 @@ def _base_response_error(answer: dict) -> Optional[AiProviderError]:
         )
     if code in {1000, 1001, 1002, 1024, 1033}:
         return AiProviderError(
-            "MiniMax is temporarily unavailable. SpendShape will retry once.",
+            "MiniMax is temporarily unavailable. SignalSpace will retry once.",
             kind="transient",
             retryable=True,
         )
@@ -984,7 +984,7 @@ def _base_response_error(answer: dict) -> Optional[AiProviderError]:
             kind="safety",
         )
     return AiProviderError(
-        "MiniMax returned an error SpendShape could not classify.",
+        "MiniMax returned an error SignalSpace could not classify.",
         kind="provider_error",
     )
 
@@ -1005,20 +1005,20 @@ def _http_provider_error(exc, *, host: str) -> AiProviderError:
     if code == 429:
         return AiProviderError(
             "The AI provider is busy or rate-limited this account. "
-            "SpendShape will retry once.",
+            "SignalSpace will retry once.",
             kind="rate_limit",
             retryable=True,
         )
     if code >= 500:
         return AiProviderError(
-            "The AI provider is temporarily unavailable. SpendShape will "
+            "The AI provider is temporarily unavailable. SignalSpace will "
             "retry once.",
             kind="transient",
             retryable=True,
         )
     if code == 400 and host == "api.minimax.io":
         return AiProviderError(
-            "MiniMax rejected the selected model or request. SpendShape's "
+            "MiniMax rejected the selected model or request. SignalSpace's "
             "current preset is MiniMax-M3. Choose MiniMax again in Settings, "
             "then select Save and test connection.",
             kind="invalid_request",
@@ -1254,13 +1254,13 @@ def _perform(request, *, settings: dict, host: str, timeout: int,
         # Also unchained: a decode error quotes the bytes it choked on, and
         # those bytes are the provider's response.
         raise AiProviderError(
-            "The AI provider returned a response SpendShape could not read.",
+            "The AI provider returned a response SignalSpace could not read.",
             kind="unreadable",
         ) from None
 
     if not isinstance(answer, dict):
         raise AiProviderError(
-            "The AI provider returned a response SpendShape could not read.",
+            "The AI provider returned a response SignalSpace could not read.",
             kind="unreadable",
         )
     return normalize(answer)
@@ -1355,7 +1355,7 @@ def test_connection(conn: Optional[sqlite3.Connection] = None,
         if "NORTHSTAR_CONNECTION_OK" not in result.text.upper():
             raise ValueError(
                 "The provider responded, but the selected model did not "
-                "complete SpendShape's connection check."
+                "complete SignalSpace's connection check."
             )
         return {
             "ok": True,
@@ -1489,7 +1489,7 @@ def ask(question: str, conn: Optional[sqlite3.Connection] = None,
         text = result.text
         grounding_status = "figures_matched"
         grounding_note = (
-            "Dollar and percentage figures were matched to SpendShape's local "
+            "Dollar and percentage figures were matched to SignalSpace's local "
             "payload. Wording and conclusions still require your judgment."
         )
         if (
@@ -1526,7 +1526,7 @@ def ask(question: str, conn: Optional[sqlite3.Connection] = None,
             text = _replace_unsupported_figures(text, payload)
             grounding_status = "figures_removed"
             grounding_note = (
-                "SpendShape removed suggested financial targets that were not "
+                "SignalSpace removed suggested financial targets that were not "
                 "part of your local calculations."
             )
         return {

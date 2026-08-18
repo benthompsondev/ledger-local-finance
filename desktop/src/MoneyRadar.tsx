@@ -3,7 +3,7 @@ import { money, moneyCents } from "./money";
 import type { TxPrefill, UpcomingItem, UpcomingMoney } from "./types";
 
 /**
- * The next few weeks of money SpendShape already recognises.
+ * The next few weeks of money SignalSpace already recognises.
  *
  * Everything here is an *expectation drawn from a rhythm*, never a
  * prediction. The wording is deliberate throughout: "expected around", never
@@ -174,7 +174,7 @@ export function MoneyRadar({
         <div>
           <h3>The next few weeks</h3>
           <p className="chart-explainer">
-            Bills and paydays SpendShape has strong reason to expect, placed on
+            Bills and paydays SignalSpace has strong reason to expect, placed on
             the dates their rhythm suggests. These are expectations, not
             scheduled payments.
           </p>

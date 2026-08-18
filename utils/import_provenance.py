@@ -13,7 +13,7 @@ transaction it shared with the first, silently doubling a month.
 
 The whole file supplies stronger evidence than one row, but it still cannot
 prove whether shared activity is the same activity. Even full containment can
-describe two real purchases repeated on a later statement. SpendShape therefore
+describe two real purchases repeated on a later statement. SignalSpace therefore
 uses the exact file hash when it can prove a re-import and asks the user for
 every other overlap rather than making an invisible guess:
 

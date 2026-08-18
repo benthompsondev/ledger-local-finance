@@ -48,7 +48,7 @@ test("weeks start on Monday unless Sunday was chosen", () => {
   assert.equal(readWeekStart(), "sunday");
 });
 
-// ── the SpendShape rename ────────────────────────────────────────────────
+// ── the SignalSpace rename ────────────────────────────────────────────────
 // The storage namespace moved from northstar.* to spendshape.*. Without the
 // migration below, upgrading would silently reset every preference and look
 // like the update had lost them.

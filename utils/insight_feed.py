@@ -1,6 +1,6 @@
-"""What SpendShape noticed, ranked, with the numbers already worked out.
+"""What SignalSpace noticed, ranked, with the numbers already worked out.
 
-The point of this module is a division of labour. **SpendShape computes every
+The point of this module is a division of labour. **SignalSpace computes every
 figure. A language model, if one is switched on at all, only writes prose about
 figures it was handed.** The previous design asked a model to find insights in
 a JSON dump of someone's finances, which meant it invented numbers, the
@@ -892,7 +892,7 @@ def insight_feed(conn=None, share_view: str = "personal") -> dict:
         gap = None
         if len(complete) < 2:
             gap = (
-                "Two complete months are needed before SpendShape can compare "
+                "Two complete months are needed before SignalSpace can compare "
                 "anything fairly. Import another statement."
             )
 

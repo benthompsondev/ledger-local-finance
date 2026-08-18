@@ -142,7 +142,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
               something rather than drawing what you already asked for. The
               charts below are the evidence you go to next. */}
           {feed && <>
-            <h3 className="insight-section">What SpendShape noticed</h3>
+            <h3 className="insight-section">What SignalSpace noticed</h3>
             {noticed.length ? (
               <>
                 <p className="chart-explainer noticed-intro">
@@ -348,7 +348,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
                       <strong>{moneyCents(r.avg_amount)}/mo</strong>
                     </button>
                     {/* Two states, not three: a cost either recurs or it
-                        does not. "Automatic" described how SpendShape found
+                        does not. "Automatic" described how SignalSpace found
                         it, which is a detail, so it is a badge now. */}
                     <div className="button-row compact-actions">{r.recurring_status==="automatic"&&<span className="suggested-badge">Suggested</span>}<button type="button" className={r.recurring_status==="recurring"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewRecurring(r.merchant_normalized,"recurring")}>Recurring</button><button type="button" className={r.recurring_status==="not_recurring"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewRecurring(r.merchant_normalized,"not_recurring")}>Not recurring</button></div>
                   </div>

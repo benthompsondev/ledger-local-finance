@@ -154,7 +154,7 @@ def read_csv_text(
         except (LookupError, UnicodeDecodeError) as exc:
             failures.append(f"{candidate}: {exc}")
     raise ValueError(
-        "SpendShape could not read this CSV's text encoding. Export it as "
+        "SignalSpace could not read this CSV's text encoding. Export it as "
         "UTF-8, UTF-16, or Windows CSV (CP1252), then try again."
     )
 
@@ -302,7 +302,7 @@ def parse_csv(
             else:
                 dialect.problems.append(
                     "This file has no column headings and does not match a "
-                    "bank SpendShape knows. Confirm which column is which, or "
+                    "bank SignalSpace knows. Confirm which column is which, or "
                     "choose your bank."
                 )
                 return _empty_result(
@@ -452,7 +452,7 @@ def _row_width_problems(header: list[str], body: list[list[str]],
             f"{len(long_rows)} row(s) have more values than the file has "
             f"column headings (line {_lines(long_rows)}). That usually means a "
             "description contains an unquoted separator, which shifts every "
-            "value after it. SpendShape will not guess which value is the "
+            "value after it. SignalSpace will not guess which value is the "
             "amount."
         )
     if short_rows:
@@ -477,7 +477,7 @@ def _column_role_problems(
         problems.append(
             "This file repeats the column heading "
             + ", ".join(f"'{name}'" for name in duplicate_names)
-            + ". SpendShape cannot tell those columns apart."
+            + ". SignalSpace cannot tell those columns apart."
         )
 
     unique_roles = {
@@ -523,7 +523,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
         )
         if not signed_amount_populated and not split_amount_populated:
             dialect.problems.append(
-                "SpendShape could not find any transaction amounts in this file."
+                "SignalSpace could not find any transaction amounts in this file."
             )
             return _empty_result(
                 filepath, statement_period, dialect, dialect.problems,
@@ -539,7 +539,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
                 break
         if not date_field:
             dialect.problems.append(
-                "SpendShape could not find a date column in this file."
+                "SignalSpace could not find a date column in this file."
             )
             return _empty_result(
                 filepath, statement_period, dialect, dialect.problems,
@@ -640,7 +640,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
                 f"'{direction_column}' column."
             )
 
-        # Money in two currencies cannot be added up. SpendShape has no
+        # Money in two currencies cannot be added up. SignalSpace has no
         # conversion, so summing them would produce a total that means
         # nothing at all.
         currencies = {
@@ -650,7 +650,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
         if len(currencies) > 1:
             dialect.problems.append(
                 "This file mixes " + " and ".join(sorted(currencies))
-                + ". SpendShape cannot convert between currencies, so these "
+                + ". SignalSpace cannot convert between currencies, so these "
                 "cannot be combined. Import one currency per file."
             )
             return _empty_result(
@@ -850,7 +850,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
             if len(unreadable_dates) > 3 else ""
         )
         dialect.problems.append(
-            f"{len(unreadable_dates)} row(s) have a date SpendShape cannot "
+            f"{len(unreadable_dates)} row(s) have a date SignalSpace cannot "
             f"read ({shown}{more}). A statement must use one readable date "
             "format throughout, so nothing was imported."
         )
@@ -862,7 +862,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
             if len(unreadable_amounts) > 3 else ""
         )
         dialect.problems.append(
-            f"{len(unreadable_amounts)} row(s) have an amount SpendShape "
+            f"{len(unreadable_amounts)} row(s) have an amount SignalSpace "
             f"cannot read ({shown}{more}). Importing them as $0.00 would "
             "understate your spending, so nothing was imported."
         )
@@ -871,7 +871,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
         shown = ", ".join(contradictory_amounts[:3])
         dialect.problems.append(
             f"{len(contradictory_amounts)} row(s) contain both a debit and "
-            f"a credit value ({shown}). SpendShape will not choose one and "
+            f"a credit value ({shown}). SignalSpace will not choose one and "
             "discard the other."
         )
 
@@ -890,7 +890,7 @@ def _parse_rows(filepath, statement_period, dialect, rows, col_map, *,
         )
     if errors and not unreadable_dates:
         dialect.problems.append(
-            f"{len(errors)} row(s) could not be read. SpendShape does not "
+            f"{len(errors)} row(s) could not be read. SignalSpace does not "
             "partially import a statement because the missing rows would "
             "make its totals wrong."
         )
@@ -1054,7 +1054,7 @@ def _redundant_amount_layout_problem(
         credit = parse_amount_with(credit_raw or "0", decimal)
         if signed is None or debit is None or credit is None:
             return (
-                "SpendShape could not reconcile the repeated amount columns "
+                "SignalSpace could not reconcile the repeated amount columns "
                 f"on data row {index}."
             )
         if debit != 0 and credit != 0:
@@ -1111,7 +1111,7 @@ def _direction_column(
             shown = unknown[0] or "blank"
             return "", (
                 f"The '{column}' column mixes recognized directions with "
-                f"the unknown value '{shown}'. SpendShape will not guess "
+                f"the unknown value '{shown}'. SignalSpace will not guess "
                 "whether that row is money in or money out."
             )
         if all(v in known for v in values):

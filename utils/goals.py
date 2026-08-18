@@ -2,7 +2,7 @@
 
 This module keeps goal progress separate from plan math and then exposes one
 small bridge: ``goal_plan_summary``. A saved monthly savings target and the
-sum of included goal allocations are never added together. SpendShape reserves
+sum of included goal allocations are never added together. SignalSpace reserves
 the larger value, so named goals can explain the target without double-counting
 the same savings intention.
 """
@@ -221,7 +221,7 @@ def goal_progress(goals: Optional[list[dict]] = None,
                     else:
                         current = max(0.0, linked_balance)
 
-                    # list_accounts has already capped this at SpendShape's
+                    # list_accounts has already capped this at SignalSpace's
                     # supported data date.
                     latest_value = account.get("last_activity")
                     if latest_value:

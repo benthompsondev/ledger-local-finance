@@ -25,11 +25,11 @@ APP_ROOT = Path(
 def _configured_data_root() -> Optional[Path]:
     """Return the explicit persistent-data root, when configured.
 
-    Packaged SpendShape sets LEDGER_DATA_DIR to ``%LOCALAPPDATA%\\Ledger``. The
+    Packaged SignalSpace sets LEDGER_DATA_DIR to ``%LOCALAPPDATA%\\Ledger``. The
     variable is also useful for tests and portable troubleshooting. An empty
     value means normal repository mode.
 
-    That folder keeps its old name on purpose. The product is now SpendShape,
+    That folder keeps its old name on purpose. The product is now SignalSpace,
     but renaming the directory would orphan every existing database, so the
     path stays where the data already is.
     """
@@ -40,7 +40,7 @@ def _configured_data_root() -> Optional[Path]:
 
 
 def get_data_dir() -> Path:
-    """Directory containing SpendShape's SQLite databases and watcher state."""
+    """Directory containing SignalSpace's SQLite databases and watcher state."""
     return _configured_data_root() or (APP_ROOT / "data")
 
 

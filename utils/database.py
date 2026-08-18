@@ -754,7 +754,7 @@ def _initialize_schema():
 
         # Seed default score weights row if empty.
         # Pass 36: defaults are 40/30/15/15. Existing rows are migrated
-        # only when they are one of SpendShape's known historical defaults,
+        # only when they are one of SignalSpace's known historical defaults,
         # preserving truly custom user choices.
         count = conn.execute("SELECT COUNT(*) FROM score_weights").fetchone()[0]
         if count == 0:
@@ -1124,7 +1124,7 @@ def _backfill_categorization_metadata(conn) -> None:
     """Populate only newly-added matcher metadata on historical rows.
 
     Existing categories are intentionally untouched: an old manual correction
-    is financial history even when SpendShape cannot prove where it came from.
+    is financial history even when SignalSpace cannot prove where it came from.
     """
     from utils.categorizer import normalize_merchant
 
@@ -3683,7 +3683,7 @@ _CURRENT_COLUMNS = {
 
 
 def _schema_requires_migration(path) -> bool:
-    """Return True when an existing SpendShape DB predates the current schema.
+    """Return True when an existing SignalSpace DB predates the current schema.
 
     This is intentionally read-only and conservative. A database containing
     any Ledger-era tables but missing a current table or additive column gets

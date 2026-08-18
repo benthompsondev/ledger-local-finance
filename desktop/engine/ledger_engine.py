@@ -1,4 +1,4 @@
-"""One-request JSON bridge from the Tauri shell to SpendShape's Python engine.
+"""One-request JSON bridge from the Tauri shell to SignalSpace's Python engine.
 
 The process reads exactly one JSON request from stdin, writes exactly one JSON
 response to stdout, and exits. It never opens a socket or launches a browser.
@@ -49,9 +49,9 @@ def _logger(data_root: Path) -> logging.Logger:
 
 
 def _bind_database() -> None:
-    """Point SpendShape's database module at the desktop data directory.
+    """Point SignalSpace's database module at the desktop data directory.
 
-    SpendShape resolves DB_PATH at import time for normal app performance. The
+    SignalSpace resolves DB_PATH at import time for normal app performance. The
     desktop bridge makes its process boundary explicit so isolated launches
     and tests always use the directory supplied by the Tauri shell.
     """
@@ -505,7 +505,7 @@ def _sample_rows(txs: list[dict]) -> list[dict[str, Any]]:
 
 
 def _preview_totals(txs: list[dict]) -> dict[str, Any]:
-    """Summarize parsed rows using SpendShape's cashflow exclusions."""
+    """Summarize parsed rows using SignalSpace's cashflow exclusions."""
     from utils.financial_semantics import cashflow_totals
     dates = sorted(
         str(tx.get("transaction_date") or "")
@@ -527,7 +527,7 @@ def _checked_paths(params: dict[str, Any]) -> list[Path]:
         raise ValueError("No files were selected.")
     if len(raw_paths) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SignalSpace imports at most {MAX_IMPORT_FILES} files at a time."
         )
     paths = []
     for raw in raw_paths:
@@ -546,7 +546,7 @@ def _preview_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("No files were selected.")
     if len(raw_specs) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SignalSpace imports at most {MAX_IMPORT_FILES} files at a time."
         )
     specs = []
     for raw in raw_specs:
@@ -763,7 +763,7 @@ def preview_import_action(params: dict[str, Any]) -> dict[str, Any]:
                     entry["provenance_note"] = (
                         "Some rows match an earlier import, but not enough to "
                         "tell whether this is an updated export or separate "
-                        "activity. SpendShape will not guess."
+                        "activity. SignalSpace will not guess."
                     )
                 entry["statement_period"] = result.get("statement_period", "") or ""
                 entry["sample"] = _sample_rows(txs)
@@ -808,7 +808,7 @@ def preview_import_action(params: dict[str, Any]) -> dict[str, Any]:
                 if entry["blocked"]:
                     problems = (result.get("receipt") or {}).get("problems") or []
                     entry["error"] = problems[0] if problems else (
-                        "SpendShape could not read this file safely."
+                        "SignalSpace could not read this file safely."
                     )
                 elif not txs:
                     if entry["needs_mapping"]:
@@ -891,7 +891,7 @@ def confirm_import_action(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("No files were confirmed for import.")
     if len(raw_files) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SignalSpace imports at most {MAX_IMPORT_FILES} files at a time."
         )
 
     conn = _connection()
@@ -966,7 +966,7 @@ def confirm_import_action(params: dict[str, Any]) -> dict[str, Any]:
                 # into the database in the first place.
                 problems = (result.get("receipt") or {}).get("problems") or []
                 detail = problems[0] if problems else (
-                    "SpendShape could not read this file safely."
+                    "SignalSpace could not read this file safely."
                 )
                 raise ValueError(
                     f"“{path.name}” was not imported. {detail}"
@@ -1446,7 +1446,7 @@ def correct_transaction_action(params: dict[str, Any]) -> dict[str, Any]:
     if tx_id <= 0:
         raise ValueError("No transaction was selected.")
     if category not in CATEGORIES:
-        raise ValueError(f"“{category}” is not a SpendShape category.")
+        raise ValueError(f"“{category}” is not a SignalSpace category.")
     from utils.financial_semantics import (
         BULK_CATEGORY_TYPES, MANUAL_TRANSACTION_TYPES,
         classify_transaction_type,
@@ -1916,7 +1916,7 @@ def add_manual_transaction_action(params: dict[str, Any]) -> dict[str, Any]:
     if direction not in {"debit", "credit"}:
         raise ValueError("Direction must be money out or money in.")
     if category not in CATEGORIES:
-        raise ValueError(f"“{category}” is not a SpendShape category.")
+        raise ValueError(f"“{category}” is not a SignalSpace category.")
     if amount <= 0:
         raise ValueError("Amount must be greater than zero.")
 
@@ -2217,7 +2217,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
                 else "One full month of history makes this more accurate"
             ),
             "detail": (
-                "SpendShape needs about 28 days of activity before its income "
+                "SignalSpace needs about 28 days of activity before its income "
                 "baseline settles."
             ),
             "action": "Add data",
@@ -2439,7 +2439,7 @@ def _plan_amount(value: Any, label: str) -> float:
 def _planning_income(conn) -> dict[str, Any]:
     """The one planning-income basis every Plan surface must use.
 
-    SpendShape had two. The screen showed `typical_monthly_income` — the
+    SignalSpace had two. The screen showed `typical_monthly_income` — the
     average of complete months, which is also what Safe to Spend and the
     planner read — while `save_plan` validated the submitted figure against
     `reliable_income_summary`, which sums a median per source across only the
@@ -2632,7 +2632,7 @@ def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
         reserve_conn.close()
     if values["income_target"] <= 0:
         raise ValueError(
-            "SpendShape cannot work out a monthly income yet. Import at least "
+            "SignalSpace cannot work out a monthly income yet. Import at least "
             "one complete month of statements and the plan can be saved."
         )
     # The reserve is derived from live commitments on every read, so it is
@@ -2886,7 +2886,7 @@ def insights_summary_action(params: dict[str, Any]) -> dict[str, Any]:
 
     conn = _connection()
     try:
-        # SpendShape has one visible amount basis. Only explicit transaction
+        # SignalSpace has one visible amount basis. Only explicit transaction
         # splits reduce it; the former automatic household lens is retired.
         share_view = "personal"
         month = analysis_anchor(conn=conn)
@@ -3143,7 +3143,7 @@ def upcoming_money_action(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def insight_feed_action(params: dict[str, Any]) -> dict[str, Any]:
-    """What SpendShape noticed. Works with no AI configured at all."""
+    """What SignalSpace noticed. Works with no AI configured at all."""
     from utils.insight_feed import insight_feed
 
     conn = _connection()
@@ -3368,7 +3368,7 @@ def add_account_balance_action(params: dict[str, Any]) -> dict[str, Any]:
     as_of = str(params.get("as_of_date") or "").strip()
     balance = float(params.get("balance") or 0)
     if account_ref <= 0:
-        raise ValueError("Choose an existing SpendShape account.")
+        raise ValueError("Choose an existing SignalSpace account.")
     if balance < 0:
         raise ValueError("Enter the balance as a positive magnitude.")
     try:
@@ -3380,7 +3380,7 @@ def add_account_balance_action(params: dict[str, Any]) -> dict[str, Any]:
     try:
         account = get_account(account_ref, conn=conn)
         if not account or account.get("is_archived"):
-            raise ValueError("That SpendShape account is unavailable.")
+            raise ValueError("That SignalSpace account is unavailable.")
         insert_account_balance({
             "account_ref": account_ref,
             "account_name": account["name"],
@@ -3401,7 +3401,7 @@ def _planning_balances_payload(conn) -> dict[str, Any]:
 
     Deliberately no totals. These are planning inputs for Safe to Spend and
     Plan, not a second measurement of what someone is worth: summing them
-    into an "assets" or "net worth" figure is exactly the duplicate SpendShape
+    into an "assets" or "net worth" figure is exactly the duplicate SignalSpace
     just removed, and it would disagree with the monthly readings the moment
     an account was missing.
     """
@@ -3617,7 +3617,7 @@ def _legacy_sources_for_paths(paths: list[Path]) -> dict[int, list[dict]]:
             account = get_account(int(batch["account_ref"] or 0), conn=conn)
             if not account:
                 raise ValueError(
-                    f"The account for “{path.name}” is missing. SpendShape "
+                    f"The account for “{path.name}” is missing. SignalSpace "
                     "stopped without changing the database."
                 )
             detected, _confidence = detect_with_confidence(path)
@@ -3750,7 +3750,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
     action = request.get("action")
     handler = ACTIONS.get(str(action))
     if handler is None:
-        raise ValueError("Unsupported SpendShape desktop action.")
+        raise ValueError("Unsupported SignalSpace desktop action.")
     params = request.get("params")
     if params is None:
         params = {}

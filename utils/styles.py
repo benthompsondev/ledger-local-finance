@@ -1,5 +1,5 @@
 """
-styles.py — global CSS injection for SpendShape.
+styles.py — global CSS injection for SignalSpace.
 Call inject_styles() at the top of every page (after set_page_config).
 
 Safe rules only — avoid selectors that fight Streamlit's own component internals:
@@ -223,7 +223,7 @@ hr {{
 
 
 def inject_styles():
-    """Inject SpendShape's global CSS. Call once per page, after set_page_config.
+    """Inject SignalSpace's global CSS. Call once per page, after set_page_config.
 
     Pass 29: also surfaces the global Demo Mode banner here so EVERY
     page that calls inject_styles automatically gets the banner when

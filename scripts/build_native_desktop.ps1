@@ -30,7 +30,7 @@ try {
 
     if (-not $SkipSidecar) {
         & $Python -m scripts.build_native_icon --out "build\native-icon.png"
-        if ($LASTEXITCODE -ne 0) { throw "SpendShape icon build failed." }
+        if ($LASTEXITCODE -ne 0) { throw "SignalSpace icon build failed." }
         & npm.cmd run tauri -- icon "build\native-icon.png"
         if ($LASTEXITCODE -ne 0) { throw "Tauri icon generation failed." }
 
@@ -41,7 +41,7 @@ try {
             --workpath "build\native-sidecar-work" `
             --specpath "build\native-sidecar-spec" `
             "desktop\engine\ledger_engine.py"
-        if ($LASTEXITCODE -ne 0) { throw "SpendShape Python sidecar build failed." }
+        if ($LASTEXITCODE -ne 0) { throw "SignalSpace Python sidecar build failed." }
     }
 
     if (-not (Test-Path -LiteralPath (Join-Path $SidecarDir "ledger-engine.exe") -PathType Leaf)) {
@@ -54,7 +54,7 @@ try {
     $Config = Get-Content (Join-Path $RepoRoot "src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json
     $Version = [string]$Config.version
     $BundleDir = [IO.Path]::GetFullPath((Join-Path $RepoRoot "src-tauri\target\release\bundle\nsis"))
-    $FinalInstaller = [IO.Path]::GetFullPath((Join-Path $BundleDir "SpendShape_${Version}_x64-setup.exe"))
+    $FinalInstaller = [IO.Path]::GetFullPath((Join-Path $BundleDir "SignalSpaceFinance_${Version}_x64-setup.exe"))
     if (-not $FinalInstaller.StartsWith($BundleDir, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Resolved installer path escaped the NSIS bundle directory."
     }
@@ -106,7 +106,7 @@ try {
             "before building a release.")
     }
 
-    Write-Host "SpendShape installer: $FinalInstaller"
+    Write-Host "SignalSpace installer: $FinalInstaller"
 }
 finally {
     Pop-Location

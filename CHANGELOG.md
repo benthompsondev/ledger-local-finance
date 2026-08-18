@@ -2,13 +2,13 @@
 
 ## 3.0.0 - Unreleased
 
-Northstar Ledger is now SpendShape. This is a product-name and interface
+Northstar Ledger is now SignalSpace. This is a product-name and interface
 release, not a change to the finance math.
 
 ### What changed
 
 - The native app, installer, taskbar icon, update panel and current public docs
-  now use the SpendShape name and the new chart-shaped mark.
+  now use the SignalSpace name and the new chart-shaped mark.
 - The interface uses one navy, green, blue, violet and amber system across
   navigation, cards, charts, buttons, focus states and the Insights patterns.
 - Existing installs update in place. The app identifier, program directory,
@@ -17,8 +17,8 @@ release, not a change to the finance math.
 - Preferences saved under the old `northstar.*` browser-storage keys move to
   `spendshape.*` once, without overwriting a newer choice.
 - Upgrade cleanup now removes both `Ledger` and `Northstar Ledger` Installed
-  Apps entries and shortcuts after SpendShape installs successfully.
-- Remaining native errors and current setup guidance use the SpendShape name.
+  Apps entries and shortcuts after SignalSpace installs successfully.
+- Remaining native errors and current setup guidance use the SignalSpace name.
 
 ## 2.9.1 - 2026-08-18
 

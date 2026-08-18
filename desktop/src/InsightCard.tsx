@@ -3,7 +3,7 @@ import { DayOfWeekBars } from "./charts";
 import type { Insight, InsightExplanation, SpendingPatterns } from "./types";
 
 /**
- * One thing SpendShape noticed.
+ * One thing SignalSpace noticed.
  *
  * The claim is rendered exactly as the engine wrote it, figures included, and
  * it stands on its own with no AI configured. "Explain this" is additive: it

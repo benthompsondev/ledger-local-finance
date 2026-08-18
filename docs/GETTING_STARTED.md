@@ -1,6 +1,6 @@
-# Getting started with SpendShape
+# Getting started with SignalSpace
 
-This is the beginner path for running SpendShape on your own machine.
+This is the beginner path for running SignalSpace on your own machine.
 
 It is a local-first finance app for Windows. It runs on your computer, stores
 everything in a local SQLite database, and does not need an account or an
@@ -19,7 +19,7 @@ administrator rights.
 The installer is not Authenticode signed, so Windows SmartScreen may warn you
 the first time. Check the SHA-256 value on the release page before running it.
 
-The sections below are for running SpendShape from source. For that you need:
+The sections below are for running SignalSpace from source. For that you need:
 
 - [Python 3.13+](https://www.python.org/downloads/) — tick **Add Python to
   PATH** during install if the installer offers it

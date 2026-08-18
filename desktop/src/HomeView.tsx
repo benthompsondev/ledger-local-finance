@@ -140,7 +140,7 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
     <>
       {error && (
         <section className="error-panel" role="alert">
-          <strong>SpendShape could not load your Home summary.</strong>
+          <strong>SignalSpace could not load your Home summary.</strong>
           <span>{error}</span>
           <button type="button" onClick={() => void refresh()}>
             Try again
@@ -278,7 +278,7 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
           {feed && teasers.length > 0 && <article className="chart-card">
             <div className="chart-card-head">
               <div>
-                <h3>What SpendShape noticed</h3>
+                <h3>What SignalSpace noticed</h3>
                 <p className="chart-explainer">
                   Worked out from your imported transactions.
                 </p>

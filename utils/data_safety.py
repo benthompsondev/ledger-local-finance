@@ -1,4 +1,4 @@
-"""Safe repair and reset operations for SpendShape's local database.
+"""Safe repair and reset operations for SignalSpace's local database.
 
 Legacy CSV batches imported before the signed-amount contract stored positive
 magnitudes and incomplete derived semantics. Exact signs cannot be invented
@@ -104,7 +104,7 @@ def _source_index(rows: Iterable[Mapping[str, Any]]) -> dict[tuple, dict]:
         if key in signs and signs[key] != sign:
             raise ValueError(
                 "The selected statement contains indistinguishable rows with "
-                "opposite signs. SpendShape stopped before changing the database."
+                "opposite signs. SignalSpace stopped before changing the database."
             )
         signs[key] = sign
         index.setdefault(key, row)
@@ -233,7 +233,7 @@ def repair_legacy_data(
     if not plan["ready"]:
         raise ValueError(
             "Repair preview is incomplete. Choose the original file for every "
-            "listed batch; SpendShape has not changed the database."
+            "listed batch; SignalSpace has not changed the database."
         )
 
     backup_path = create_backup(reason="before-data-repair", db_path=target)
@@ -270,7 +270,7 @@ def repair_legacy_data(
         if len(new_hashes) != len(set(new_hashes)):
             raise ValueError(
                 "The repaired rows would create duplicate transaction keys. "
-                "SpendShape rolled back without changing the database."
+                "SignalSpace rolled back without changing the database."
             )
         ids = {row_id for row_id, _, _ in updates}
         placeholders = ",".join("?" for _ in new_hashes)
@@ -280,7 +280,7 @@ def repair_legacy_data(
         ).fetchall() if new_hashes else []
         if any(int(row["id"]) not in ids for row in conflicts):
             raise ValueError(
-                "A corrected transaction already exists. SpendShape rolled "
+                "A corrected transaction already exists. SignalSpace rolled "
                 "back instead of double-counting it."
             )
 

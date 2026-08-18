@@ -12,7 +12,7 @@ interface Props {
 }
 
 // Starting points, because a blank box is the hardest thing to answer. Each
-// one is phrased so the model is asked to interpret SpendShape's figures
+// one is phrased so the model is asked to interpret SignalSpace's figures
 // rather than to work anything out for itself.
 const suggestionsFor = (monthLabel: string) => [
   {
@@ -113,10 +113,10 @@ function AiView({ onOpenSettings, onDrill }: Props) {
     <div className="panel-head">
       <div>
         <span className="eyebrow">Coach <em className="beta-tag">Beta</em></span>
-        <h2>What SpendShape noticed</h2>
+        <h2>What SignalSpace noticed</h2>
         <p className="warning-text">
           Beta: provider compatibility and AI answers may be incomplete or
-          occasionally fail. SpendShape's financial figures are still
+          occasionally fail. SignalSpace's financial figures are still
           calculated locally.
         </p>
         <p>
@@ -135,7 +135,7 @@ function AiView({ onOpenSettings, onDrill }: Props) {
     {nothing ? <div className="calm-empty">
       <strong>Nothing stands out in {monthLabel}</strong>
       <p>
-        SpendShape checked your weekday pattern, merchant visits, category
+        SignalSpace checked your weekday pattern, merchant visits, category
         ranges, recurring prices, and the same month a year earlier. Nothing crossed
         the threshold worth interrupting you for.
       </p>
@@ -159,7 +159,7 @@ function AiView({ onOpenSettings, onDrill }: Props) {
       <div className="chart-card-head">
         <div>
           <span className="eyebrow">Personalize the advice</span>
-          <h3>What should SpendShape help with?</h3>
+          <h3>What should SignalSpace help with?</h3>
         </div>
         {savingProfile && <span className="badge">Saving…</span>}
       </div>
@@ -259,7 +259,7 @@ function AiView({ onOpenSettings, onDrill }: Props) {
       {error && <div className="inline-error">{error}</div>}
       {result && <div className="insight-explain" aria-live="polite">
         <span className="from-ai">
-          Written by {result.provider} · {result.model} from figures SpendShape
+          Written by {result.provider} · {result.model} from figures SignalSpace
           calculated
         </span>
         {result.answer}

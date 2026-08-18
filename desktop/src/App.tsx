@@ -43,7 +43,7 @@ export default function App(){
   const goTo=(target:string)=>{const[base,anchor=""]=target.split("#");const[next,queryString=""]=base.split("?") as [Screen,string?];if(next==="add-data")setAddDataMounted(true);if(next==="transactions"&&queryString){const params=new URLSearchParams(queryString);setTxPrefill({quickReview:params.get("quickReview")==="1",flaggedOnly:params.get("flaggedOnly")==="1",suggestedOnly:params.get("suggestedOnly")==="1"});}setFocusAnchor(anchor);setFocusToken(v=>v+1);setScreen(next);};
   const drill=(p:TxPrefill)=>{setTxPrefill(p);setScreen("transactions");};
   return <main className={`app-shell density-${density}`}>
-    <header className="app-header"><button className="brand-button" type="button" onClick={()=>setScreen("home")} aria-label="SpendShape Home"><img src={brandIcon} alt=""/>{/* "Spend" white, "Shape" green. The span already carried that split for
+    <header className="app-header"><button className="brand-button" type="button" onClick={()=>setScreen("home")} aria-label="SignalSpace Home"><img src={brandIcon} alt=""/>{/* "Spend" white, "Shape" green. The span already carried that split for
         the old two-word name, so the lockup is the same mechanism, not a new
         one. */}
     <div><h1><span>Spend</span>Shape</h1><p>Private, local-first personal finance.</p></div></button><div className="header-actions"><span className="native-badge">Native · local-first</span><button className={screen==="settings"?"icon-button nav-active":"icon-button"} onClick={()=>setScreen("settings")} aria-label="Settings">⚙</button></div></header>

@@ -134,7 +134,7 @@ def _employment_income_months(
 ) -> list[dict]:
     """Aggregate payroll history without assuming legacy rows were migrated.
 
-    Older SpendShape databases can have a blank ``transaction_type`` even when
+    Older SignalSpace databases can have a blank ``transaction_type`` even when
     the signed amount, description, category, and account type are intact. Use
     the shared semantic classifier for those rows so an upgraded profile gets
     the same payroll suggestion as a freshly imported profile.
@@ -983,7 +983,7 @@ def income_confirmation_candidates(
             "cadence": "about every two weeks" if per_month >= 1.5 else "monthly",
             "reason": (
                 f"{deposits} similar deposits across {len(source_rows)} months; "
-                "confirm before SpendShape uses this for planning."
+                "confirm before SignalSpace uses this for planning."
             ),
         })
     if close:
@@ -1375,7 +1375,7 @@ def compute_score(conn: Optional[sqlite3.Connection] = None, weights: Optional[d
     # This dimension is exact-statement only. Transaction-row guessing produced
     # false confidence when finance-charge rows disagreed with the Mastercard
     # summary. If no saved Mastercard summary overlaps the scoring window, the
-    # dimension is neutral until SpendShape can read the bank summary directly.
+    # dimension is neutral until SignalSpace can read the bank summary directly.
     close_c = False
     if conn is None:
         conn = get_connection()
@@ -1436,7 +1436,7 @@ def compute_score(conn: Optional[sqlite3.Connection] = None, weights: Optional[d
     else:
         debt_reason = (
             f"No Mastercard statement summary saved for {score_period_label}. "
-            "Debt & fees is held at a neutral placeholder until SpendShape can "
+            "Debt & fees is held at a neutral placeholder until SignalSpace can "
             "read the bank-provided Interest charges and Fees lines. "
             "Transaction rows are not used for this score."
         )

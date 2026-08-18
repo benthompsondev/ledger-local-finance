@@ -1,1 +1,1 @@
-"""Packaged Python engine used by the SpendShape Tauri shell."""
+"""Packaged Python engine used by the SignalSpace Tauri shell."""

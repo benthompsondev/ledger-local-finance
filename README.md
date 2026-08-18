@@ -1,6 +1,6 @@
-# SpendShape
+# SignalSpace
 
-[![SpendShape validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
+[![SignalSpace validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/benthompsondev/ledger-local-finance)](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Local-first](https://img.shields.io/badge/local--first-no%20account%2C%20no%20server-brightgreen.svg)](SECURITY.md)
@@ -18,7 +18,7 @@ had, which was some version of "am I okay, and what changed."
 **[Download the installer](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - one .exe, no Python needed ·
 **[Read the setup guide](docs/GETTING_STARTED.md)**
 
-![SpendShape Home screen using synthetic demo data](site/assets/home.png)
+![SignalSpace Home screen using synthetic demo data](site/assets/home.png)
 
 The questions it is built to answer:
 
@@ -33,7 +33,7 @@ The questions it is built to answer:
 Download the installer from the
 [latest release](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
 and run it. That is the whole thing. You do not need Python, Node or Rust to
-use SpendShape; the installer bundles everything, including the Python engine.
+use SignalSpace; the installer bundles everything, including the Python engine.
 
 The latest published installer is still:
 
@@ -41,7 +41,7 @@ The latest published installer is still:
 NorthstarLedger_2.9.1_x64-setup.exe
 ```
 
-SpendShape 3.0.0 is prepared on `main`, but it will not replace that download
+SignalSpace 3.0.0 is prepared on `main`, but it will not replace that download
 until its updater signature can be generated and verified.
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -64,7 +64,7 @@ latest release by hand this once.
 ## Status
 
 **Version on `main`: 3.0.0. Latest signed public beta: 2.9.1.** Northstar Ledger
-is becoming SpendShape. The name, icon and interface changed; the local
+is becoming SignalSpace. The name, icon and interface changed; the local
 database, updater identity and finance rules did not. The 3.0.0 installer will
 not be published until its updater signature is available.
 
@@ -94,7 +94,7 @@ There are six tabs:
 | **Home** | The weekly check-in. Safe to Spend, the next few weeks of recurring money, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
-| **Insights** | What SpendShape noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |
+| **Insights** | What SignalSpace noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
@@ -126,7 +126,7 @@ look more cautious than other apps:
 
 ## Building it from source
 
-**You do not need any of this to use SpendShape.** Skip to
+**You do not need any of this to use SignalSpace.** Skip to
 [Importing your own statements](#importing-your-own-statements) unless you want
 to work on the code.
 
@@ -195,7 +195,7 @@ The app works completely without AI, and nothing in the finance math depends on
 it. Every figure on every screen is computed locally whether AI is on or off,
 and Coach still reports its deterministic findings with AI disabled.
 
-This part is marked **Beta** because provider compatibility varies. SpendShape
+This part is marked **Beta** because provider compatibility varies. SignalSpace
 speaks the OpenAI chat format and Anthropic's Messages API, but a provider that
 claims compatibility can still differ enough to return an error. If you
 configure a provider key, AI can summarize and explain numbers the local engine
@@ -222,7 +222,7 @@ The useful boundaries are simple:
 ## Privacy
 
 The finance math is entirely local and deterministic. There is no telemetry,
-no analytics and no account. SpendShape makes exactly two kinds of outbound
+no analytics and no account. SignalSpace makes exactly two kinds of outbound
 request, and you have to start both:
 
 - An **AI request** you triggered, to a provider you configured, carrying the

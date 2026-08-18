@@ -1,4 +1,4 @@
-"""SQLite-safe backup and restore helpers for SpendShape's local database."""
+"""SQLite-safe backup and restore helpers for SignalSpace's local database."""
 from __future__ import annotations
 
 import os
@@ -28,7 +28,7 @@ _LEGACY_TABLES = _REQUIRED_TABLES | {
 
 
 class BackupValidationError(ValueError):
-    """Raised when a selected file is not a usable SpendShape database."""
+    """Raised when a selected file is not a usable SignalSpace database."""
 
 
 def _active_db_path(db_path: Optional[Path] = None) -> Path:
@@ -49,7 +49,7 @@ def _safe_reason(reason: str) -> str:
 
 
 def validate_database(path: Path, *, allow_legacy: bool = False) -> dict:
-    """Validate SQLite integrity and the minimum SpendShape schema read-only."""
+    """Validate SQLite integrity and the minimum SignalSpace schema read-only."""
     candidate = Path(path).resolve()
     if not candidate.is_file() or candidate.stat().st_size == 0:
         raise BackupValidationError("The selected backup is missing or empty.")
@@ -69,11 +69,11 @@ def validate_database(path: Path, *, allow_legacy: bool = False) -> dict:
         missing = sorted(_REQUIRED_TABLES - tables)
         if allow_legacy and not (tables & _LEGACY_TABLES):
             raise BackupValidationError(
-                "This SQLite file does not contain a recognizable SpendShape table."
+                "This SQLite file does not contain a recognizable SignalSpace table."
             )
         if missing and not allow_legacy:
             raise BackupValidationError(
-                "This is not a SpendShape backup. Missing tables: "
+                "This is not a SignalSpace backup. Missing tables: "
                 + ", ".join(missing)
             )
         if not allow_legacy:
@@ -86,7 +86,7 @@ def validate_database(path: Path, *, allow_legacy: bool = False) -> dict:
                 missing_columns = sorted(required - columns)
                 if missing_columns:
                     raise BackupValidationError(
-                        "This backup is missing required SpendShape fields in "
+                        "This backup is missing required SignalSpace fields in "
                         f"{table}: {', '.join(missing_columns)}"
                     )
             dedup_is_unique = False
@@ -105,7 +105,7 @@ def validate_database(path: Path, *, allow_legacy: bool = False) -> dict:
                     break
             if not dedup_is_unique:
                 raise BackupValidationError(
-                    "This backup is missing SpendShape's transaction duplicate "
+                    "This backup is missing SignalSpace's transaction duplicate "
                     "protection. It was not restored."
                 )
             invalid = conn.execute(
@@ -176,7 +176,7 @@ def create_backup(*, reason: str = "manual",
     """Create an atomic, validated backup using SQLite's online API."""
     source_path = _active_db_path(db_path)
     if not source_path.is_file():
-        raise FileNotFoundError(f"SpendShape database not found: {source_path}")
+        raise FileNotFoundError(f"SignalSpace database not found: {source_path}")
     target_dir = backup_dir(source_path)
     target_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -257,7 +257,7 @@ def restore_database(candidate: Path, *, db_path: Optional[Path] = None) -> dict
     selected = Path(candidate).resolve()
     if selected == live:
         raise BackupValidationError(
-            "Choose a backup file, not the active SpendShape database."
+            "Choose a backup file, not the active SignalSpace database."
         )
     validate_database(selected)
     live.parent.mkdir(parents=True, exist_ok=True)

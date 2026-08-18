@@ -1,4 +1,4 @@
-"""Draw the SpendShape app mark and build the Tauri icon source.
+"""Draw the SignalSpace app mark and build the Tauri icon source.
 
 The mark used to be a hand-supplied raster that this script only cropped and
 centred. That was fine until it had to survive 32px on a Windows taskbar: the
@@ -35,7 +35,7 @@ SCALE = 4
 SIZE = 1024
 CANVAS = SIZE * SCALE
 
-# SpendShape palette. These are the same values the app's CSS tokens use, so
+# SignalSpace palette. These are the same values the app's CSS tokens use, so
 # the icon and the header lockup cannot drift apart.
 INK_TOP = (19, 36, 55)
 INK_MID = (13, 26, 40)
@@ -106,7 +106,7 @@ def _thick_polyline(draw, points, width):
 
 
 def draw_mark(size: int = SIZE) -> Image.Image:
-    """Render the SpendShape mark on a transparent square canvas."""
+    """Render the SignalSpace mark on a transparent square canvas."""
     canvas = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
 
     # ── Field ────────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ def build_icon(destination: Path, source: Path | None = None) -> Path:
         image = Image.open(source).convert("RGBA")
         alpha_bbox = image.getchannel("A").getbbox()
         if not alpha_bbox:
-            raise ValueError("SpendShape icon source is fully transparent.")
+            raise ValueError("SignalSpace icon source is fully transparent.")
         mark = image.crop(alpha_bbox)
         mark.thumbnail((900, 900), Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
@@ -216,7 +216,7 @@ def main() -> int:
     args = parser.parse_args()
     source = args.source.resolve() if args.source else None
     output = build_icon(args.out.resolve(), source)
-    print(f"Built SpendShape Tauri icon source: {output}")
+    print(f"Built SignalSpace Tauri icon source: {output}")
     return 0
 
 

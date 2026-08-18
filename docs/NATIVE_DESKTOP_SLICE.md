@@ -1,8 +1,8 @@
-# SpendShape native desktop
+# SignalSpace native desktop
 
-SpendShape's Windows product is a Tauri 2 desktop application. It covers
+SignalSpace's Windows product is a Tauri 2 desktop application. It covers
 the core weekly workflow natively: Home, Add Data, Plan, Insights,
-Transactions, and secondary Settings. It runs on SpendShape's existing
+Transactions, and secondary Settings. It runs on SignalSpace's existing
 deterministic Python finance engine.
 
 ## Architecture
@@ -65,7 +65,7 @@ From the repository root:
 
 The script builds the onedir Python engine, builds the React frontend, and
 asks Tauri to create the current-user NSIS installer at
-`src-tauri\target\release\bundle\nsis\SpendShape_<version>_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\SignalSpaceFinance_<version>_x64-setup.exe`.
 
 ## Legacy Windows prototype (retired)
 
@@ -78,8 +78,8 @@ not be used to migrate more pages. Their build scripts
 
 ## Rollback
 
-1. Close SpendShape.
-2. Uninstall `SpendShape` from Windows Installed Apps, or run
+1. Close SignalSpace.
+2. Uninstall `SignalSpace` from Windows Installed Apps, or run
    `& "$env:LOCALAPPDATA\Programs\Ledger\uninstall.exe"`.
 3. Confirm `%LOCALAPPDATA%\Ledger\finance.db` still exists. Do not delete the
    `%LOCALAPPDATA%\Ledger` folder.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SpendShape",
+  "productName": "SignalSpace Finance",
   "version": "3.0.0",
   "identifier": "dev.benthompson.ledger",
   "build": {
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "SpendShape",
+        "title": "SignalSpace Finance",
         "width": 1180,
         "height": 800,
         "minWidth": 900,
@@ -33,7 +33,7 @@
     "publisher": "Ben Thompson",
     "homepage": "https://github.com/benthompsondev/ledger-local-finance",
     "shortDescription": "Private, local-first personal finance.",
-    "longDescription": "SpendShape is a private, local-first personal finance application. The native desktop app runs the existing deterministic Python finance engine as a packaged sidecar without opening a browser or exposing a localhost service.",
+    "longDescription": "SignalSpace is a private, local-first personal finance application. The native desktop app runs the existing deterministic Python finance engine as a packaged sidecar without opening a browser or exposing a localhost service.",
     "windows": {
       "allowDowngrades": false,
       "webviewInstallMode": {

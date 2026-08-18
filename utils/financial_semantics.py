@@ -1,4 +1,4 @@
-"""Authoritative financial meaning for SpendShape transactions.
+"""Authoritative financial meaning for SignalSpace transactions.
 
 Storage contract
 ----------------

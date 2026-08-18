@@ -3,7 +3,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  /* -- SpendShape design tokens ------------------------------------------
+  /* -- SignalSpace design tokens ------------------------------------------
      Before this block the stylesheet carried 113 distinct hex values,
      including nine near-identical greys that nobody could have chosen on
      purpose. That is what made the UI feel assembled rather than designed.
@@ -525,7 +525,7 @@ select, input {
 
 textarea { font: inherit; }
 
-/* ── SpendShape product shell ────────────────────────────────── */
+/* ── SignalSpace product shell ────────────────────────────────── */
 
 .brand-button {
   display: flex;
@@ -932,7 +932,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .inline-check{display:flex;align-items:center;gap:7px;white-space:nowrap}
 @media(max-width:900px){.rule-row{grid-template-columns:1fr}.rule-row .ghost-button{justify-self:start}}
 
-/* SpendShape 0.7 daily-use clarity */
+/* SignalSpace 0.7 daily-use clarity */
 .plan-source-row,.cash-summary-grid,.outlook-grid,.goal-numbers{display:grid;gap:14px}
 .plan-source-row{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:16px}
 .plan-source-row>div{padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.025)}
@@ -952,7 +952,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .settings-list{display:grid;gap:10px;margin:14px 0}.setting-row{align-items:center;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.09);border-radius:12px;cursor:pointer;display:flex;gap:16px;justify-content:space-between;padding:12px 14px}.setting-row span,.setting-row small{display:block}.setting-row small{color:var(--text-muted);margin-top:3px}.formula-total{border-top:1px solid rgba(255,255,255,.12);margin-top:3px;padding-top:8px}
 .text-button{background:transparent;border:0;color:inherit;flex:1;padding:0;text-align:left}.text-button:hover{background:transparent;color:var(--text);transform:none}.compact-actions{flex-wrap:wrap;justify-content:flex-end;margin:0}.compact-actions .ghost-button{font-size:.75rem;padding:6px 9px}.compact-actions .selected{border-color:rgba(0, 208, 132,.65);color:var(--accent-text)}.inline-warning{background:rgba(227, 179, 65,.09);border:1px solid rgba(227, 179, 65,.34);border-radius:12px;margin:14px 0;padding:13px 15px}.inline-warning p{color:var(--text-soft);margin:5px 0 10px}
 
-/* ── what SpendShape noticed ─────────────────────────────────────────── */
+/* ── what SignalSpace noticed ─────────────────────────────────────────── */
 .insight-list { display: grid; gap: 12px; }
 .insight-card {
   border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
@@ -978,7 +978,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
 }
 
-/* ── what SpendShape noticed, on Insights ────────────────────────────── */
+/* ── what SignalSpace noticed, on Insights ────────────────────────────── */
 /* These carry a figure and their own working, so they are wider and quieter
    than the Coach cards above. The first one spans the row: the ranking has
    already decided which finding matters most, and the layout should say so
@@ -1464,7 +1464,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 
 /* Derived: a label and a value, deliberately not a field. A read-only box
    reads as "a field you are not allowed to use" rather than "a number
-   SpendShape worked out". */
+   SignalSpace worked out". */
 .plan-facts { display: grid; gap: 12px; margin: 0 0 18px; }
 .plan-fact {
   display: grid; grid-template-columns: minmax(0,1fr) auto;

@@ -171,7 +171,7 @@ def test_unsupported_action_returns_one_json_error(engine_env) -> None:
     assert code == 1
     assert payload == {
         "ok": False,
-        "error": "Unsupported SpendShape desktop action.",
+        "error": "Unsupported SignalSpace desktop action.",
     }
 
 
@@ -519,7 +519,7 @@ def test_correct_transaction_rejects_unknown_category(engine_env) -> None:
         }
     )
     assert code == 1
-    assert "not a SpendShape category" in payload["error"]
+    assert "not a SignalSpace category" in payload["error"]
 
 
 def test_native_plan_goal_insights_and_manual_entry(engine_env) -> None:
