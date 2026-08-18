@@ -20,6 +20,22 @@ from utils.analysis_period import reset_supported_bounds_cache
 from utils.checkin import weekly_checkin
 
 
+# The check-in changes verdict once the gap since the newest transaction
+# passes FRESH_STALE_DAYS (21). This fixture's newest row is dated the 27th
+# of last month, so that gap is 21 days when the suite runs on the 17th and
+# 22 days when it runs on the 18th. The tests below passed locally on the
+# 17th and failed in CI forty minutes later, because CI runs in UTC and the
+# date had rolled over. Nothing about the product was wrong; the test was
+# measuring the calendar. Pin the day the check-in is asked about so these
+# tests keep measuring the month rollover they are named for.
+REFERENCE_DAY = 10
+
+
+def _reference() -> date:
+    """Today, as these tests ask about it: a fixed day of the real month."""
+    return date.today().replace(day=REFERENCE_DAY)
+
+
 def _previous_month(today: date) -> date:
     return (today.replace(day=1) - timedelta(days=1)).replace(day=1)
 
@@ -54,7 +70,8 @@ def imports_end_last_month(ledger_db):
 def test_plan_targets_the_current_month_not_the_last_imported_one(
     imports_end_last_month,
 ) -> None:
-    packet = weekly_checkin(conn=imports_end_last_month)
+    packet = weekly_checkin(conn=imports_end_last_month,
+                            today=_reference().isoformat())
     verdict = packet["verdict"]
 
     assert verdict["state"] != "period_ended", (
@@ -66,9 +83,10 @@ def test_plan_targets_the_current_month_not_the_last_imported_one(
 def test_the_headline_names_the_month_being_planned(
     imports_end_last_month,
 ) -> None:
-    packet = weekly_checkin(conn=imports_end_last_month)
+    packet = weekly_checkin(conn=imports_end_last_month,
+                            today=_reference().isoformat())
     headline = packet["verdict"]["headline"]
-    this_month = date.today().strftime("%B")
+    this_month = _reference().strftime("%B")
 
     assert this_month in headline, (
         f"{headline!r} does not name {this_month}"
@@ -79,9 +97,10 @@ def test_the_headline_names_the_month_being_planned(
 def test_the_closed_month_is_context_not_the_headline(
     imports_end_last_month,
 ) -> None:
-    packet = weekly_checkin(conn=imports_end_last_month)
+    packet = weekly_checkin(conn=imports_end_last_month,
+                            today=_reference().isoformat())
     verdict = packet["verdict"]
-    closed = _previous_month(date.today()).strftime("%B")
+    closed = _previous_month(_reference()).strftime("%B")
 
     assert closed not in verdict["headline"], (
         "the finished month took over the headline"
@@ -93,8 +112,10 @@ def test_the_closed_month_is_context_not_the_headline(
 def test_the_sentence_says_no_current_data_has_been_imported(
     imports_end_last_month,
 ) -> None:
-    sentence = weekly_checkin(conn=imports_end_last_month)["verdict"]["sentence"]
-    this_month = date.today().strftime("%B")
+    sentence = weekly_checkin(
+        conn=imports_end_last_month,
+        today=_reference().isoformat())["verdict"]["sentence"]
+    this_month = _reference().strftime("%B")
 
     assert this_month in sentence
     assert "import" in sentence.lower() or "no " in sentence.lower()
