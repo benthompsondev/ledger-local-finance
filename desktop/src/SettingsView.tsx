@@ -60,6 +60,7 @@ import type {
 
 interface Props {
   onDataChanged: () => void;
+  onProfileChanged: () => void;
   focusAnchor?: string;
   focusToken?: number;
 }
@@ -68,7 +69,7 @@ function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
+function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken }: Props) {
   const [data, setData] = useState<BackupPayload | null>(null);
   const [safety, setSafety] = useState<DataSafetyPayload | null>(null);
   const [version, setVersion] = useState("");
@@ -408,7 +409,7 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           screen means. */}
       <h3 className="insight-section" id="profiles">Profiles</h3>
       <article className="chart-card">
-        <ProfilesPanel onSwitched={onDataChanged} />
+        <ProfilesPanel onSwitched={onProfileChanged} />
       </article>
       {error && <div className="inline-error" role="alert">{error}</div>}
       <div className="settings-grid">

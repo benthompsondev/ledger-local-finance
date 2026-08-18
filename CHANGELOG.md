@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.1.0 - Unreleased
+## 3.1.0 - 2026-08-18
 
 The app is called SignalSpace Finance, it can hold more than one set of
 finances, and it puts a shortcut back in your Start Menu.
@@ -8,10 +8,11 @@ finances, and it puts a shortcut back in your Start Menu.
 ### What changed
 
 - **More than one set of finances in one installation.** Profiles keep their
-  own transactions, accounts, imports, plans, preferences, net worth and
-  backups in their own database. Nothing is shared, and only the profile you
-  are in is open. Manage them in Settings; once you have a second one, the
-  header names the one you are using.
+  own transactions, accounts, imports, plans, saved financial rules, net worth
+  and backups in their own database. Only the profile you are in is open.
+  Visual preferences remain shared across the installation. Manage profiles
+  in Settings; once you have a second one, the header names the one you are
+  using.
 - **Your existing finances become the first profile,** exactly where they
   already are. Nothing is moved, copied or rewritten, and you do not import
   anything again. Rename it to whatever you like. New profiles start empty.
@@ -31,7 +32,7 @@ finances, and it puts a shortcut back in your Start Menu.
   small to support one, and what counts as a material change now scales with
   what you actually spend in a month.
 
-## 3.0.0 - Superseded before release
+## 3.0.0 - 2026-08-18
 
 Northstar Ledger is now SignalSpace. This is a product-name and interface
 release, not a change to the finance math.

@@ -81,9 +81,10 @@ export function ProfilesPanel({ onSwitched }: { onSwitched: () => void }) {
   return (
     <div className="profiles-panel">
       <p className="guidance">
-        Each profile keeps its own transactions, accounts, plans, net worth
-        and imports in its own database. Nothing is shared between them, and
-        only the profile you are in is open.
+        Each profile keeps its own transactions, accounts, plans, net worth,
+        imports and saved financial rules in its own database. Only the
+        profile you are in is open. App appearance stays shared across the
+        installation.
       </p>
 
       {error && <div className="inline-error">{error}</div>}

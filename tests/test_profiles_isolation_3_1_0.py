@@ -63,10 +63,21 @@ def test_a_missing_registry_is_read_as_one_default_profile(tmp_path):
     assert profiles.active_profile_dir(tmp_path) == tmp_path
 
 
-def test_a_corrupt_registry_falls_back_rather_than_stranding_the_user(tmp_path):
+def test_a_corrupt_registry_fails_closed_instead_of_opening_the_default(tmp_path):
     (tmp_path / profiles.REGISTRY_NAME).write_text("{not json", encoding="utf-8")
 
-    assert profiles.active_profile_id(tmp_path) == profiles.DEFAULT_PROFILE_ID
+    with pytest.raises(profiles.ProfileError, match="No profile was opened"):
+        profiles.active_profile_id(tmp_path)
+
+
+def test_a_profile_override_cannot_escape_the_profiles_directory(
+    tmp_path, monkeypatch,
+):
+    profiles.ensure_registry(tmp_path)
+    monkeypatch.setenv(profiles.ACTIVE_OVERRIDE_ENV, "../..")
+
+    with pytest.raises(profiles.ProfileError):
+        profiles.active_profile_dir(tmp_path)
 
 
 def test_a_new_profile_gets_its_own_directory_and_starts_empty(tmp_path):
@@ -198,17 +209,22 @@ def two_profiles(tmp_path, monkeypatch):
         from utils.net_worth import save_entry
         save_entry("2026-08", cash=payload["balance"], investments=0,
                    other_assets=0, liabilities=0, note="", conn=conn)
+        db.upsert_learned_rule(
+            payload["rule_merchant"], payload["rule_category"], conn=conn,
+        )
         conn.commit()
         conn.close()
 
     seed(profiles.DEFAULT_PROFILE_ID, {
         "account": "BEN CHEQUING", "balance": 5000.0, "savings": 500.0,
+        "rule_merchant": "BEN RULE ONLY", "rule_category": "Groceries",
         "transactions": [dict(day="2026-08-04", desc="BEN ONLY MERCHANT",
                               amount=111.11, direction="debit",
                               category="Groceries")],
     })
     seed(second["id"], {
         "account": "TORI CHEQUING", "balance": 900.0, "savings": 90.0,
+        "rule_merchant": "TORI RULE ONLY", "rule_category": "Shopping",
         "transactions": [dict(day="2026-08-05", desc="TORI ONLY MERCHANT",
                               amount=222.22, direction="debit",
                               category="Shopping")],
@@ -297,6 +313,22 @@ def test_accounts_plans_and_net_worth_do_not_leak(two_profiles):
     assert ben_net == [5000.0] and tori_net == [900.0]
 
 
+def test_saved_financial_rules_do_not_leak(two_profiles):
+    root, second = two_profiles["root"], two_profiles["second"]
+    mp = two_profiles["monkeypatch"]
+
+    seen = {}
+    for profile_id in (profiles.DEFAULT_PROFILE_ID, second):
+        db = _open(root, profile_id, mp)
+        seen[profile_id] = {
+            row["merchant_normalized"]: row["category"]
+            for row in db.list_learned_rules()
+        }
+
+    assert seen[profiles.DEFAULT_PROFILE_ID] == {"BEN RULE ONLY": "Groceries"}
+    assert seen[second] == {"TORI RULE ONLY": "Shopping"}
+
+
 def test_home_and_insights_figures_do_not_leak(two_profiles):
     """The screens, not just the tables underneath them."""
     root, second = two_profiles["root"], two_profiles["second"]
@@ -354,6 +386,82 @@ def test_backups_and_exports_land_inside_the_open_profile(two_profiles):
     # The AI provider and key describe the installation, not one set of
     # finances, so that file stays at the root.
     assert pu.get_config_path().parent == root
+
+
+def test_restoring_one_profile_cannot_replace_the_other(two_profiles):
+    """Restore targets the open profile's database and no other file.
+
+    The backup API accepts a selected SQLite file, so the decisive boundary
+    is the destination: restoring Tori must never rewrite Ben's root database.
+    """
+    root, second = two_profiles["root"], two_profiles["second"]
+    mp = two_profiles["monkeypatch"]
+
+    default_db = _open(root, profiles.DEFAULT_PROFILE_ID, mp)
+    default_path = Path(default_db.DB_PATH)
+    default_before = default_path.read_bytes()
+
+    second_db = _open(root, second, mp)
+    from utils.backups import create_backup, restore_database
+    backup = create_backup(reason="profile-isolation", db_path=second_db.DB_PATH)
+    conn = second_db.get_connection()
+    from tests.conftest import add_tx
+    add_tx(conn, day="2026-08-10", desc="REMOVE ON RESTORE", amount=33.0,
+           direction="debit", category="Shopping")
+    conn.commit()
+    conn.close()
+
+    restore_database(backup, db_path=second_db.DB_PATH)
+
+    assert default_path.read_bytes() == default_before
+    conn = second_db.get_connection()
+    descriptions = [
+        str(row[0]) for row in conn.execute(
+            "SELECT raw_description FROM transactions ORDER BY id"
+        ).fetchall()
+    ]
+    conn.close()
+    assert any("TORI ONLY MERCHANT" in value for value in descriptions)
+    assert not any("REMOVE ON RESTORE" in value for value in descriptions)
+    assert not any("BEN ONLY MERCHANT" in value for value in descriptions)
+
+
+def test_ai_payload_uses_only_the_open_profiles_financial_context(two_profiles):
+    root, second = two_profiles["root"], two_profiles["second"]
+    mp = two_profiles["monkeypatch"]
+
+    seen = {}
+    for profile_id in (profiles.DEFAULT_PROFILE_ID, second):
+        db = _open(root, profile_id, mp)
+        import utils.ai_assist as ai_assist
+        importlib.reload(ai_assist)
+        conn = db.get_connection()
+        payload = ai_assist.build_payload(
+            conn=conn, scope="transactions", months=3,
+        )
+        conn.close()
+        seen[profile_id] = {
+            str(row.get("merchant") or "")
+            for row in payload.get("transactions", [])
+        }
+
+    assert any("BEN ONLY MERCHANT" in value for value in seen[profiles.DEFAULT_PROFILE_ID])
+    assert not any("TORI ONLY MERCHANT" in value for value in seen[profiles.DEFAULT_PROFILE_ID])
+    assert any("TORI ONLY MERCHANT" in value for value in seen[second])
+    assert not any("BEN ONLY MERCHANT" in value for value in seen[second])
+
+
+def test_switching_profiles_discards_profile_bound_frontend_state():
+    """Settings actions and import previews must not survive a switch."""
+    source = (
+        Path(__file__).resolve().parents[1] / "desktop" / "src" / "App.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const[profileVersion,setProfileVersion]=useState(0)" in source
+    assert "setProfileVersion(v=>v+1)" in source
+    assert "<AddDataView key={profileVersion}" in source
+    assert "<SettingsView key={profileVersion}" in source
+    assert "onProfileChanged={profileChanged}" in source
 
 
 def test_the_engine_binding_opens_the_active_profile(two_profiles):

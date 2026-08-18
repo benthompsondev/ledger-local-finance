@@ -63,10 +63,9 @@ latest release by hand this once.
 
 ## Status
 
-**Version on `main`: 3.0.0. Latest signed public beta: 2.9.1.** Northstar Ledger
-is becoming SignalSpace. The name, icon and interface changed; the local
-database, updater identity and finance rules did not. The 3.0.0 installer will
-not be published until its updater signature is available.
+**Version on `main`: 3.1.0. Latest signed public beta: 3.1.0.** The app is now
+SignalSpace Finance. Existing installs update in place, keep their current
+database, and can add separate profiles for another set of finances.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.

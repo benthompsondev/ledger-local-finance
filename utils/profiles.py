@@ -38,6 +38,7 @@ DEFAULT_PROFILE_ID = "default"
 DEFAULT_PROFILE_NAME = "My Finances"
 
 MAX_NAME_LENGTH = 60
+_PROFILE_ID = re.compile(r"^[0-9a-f]{12}$")
 
 # An override for one process, used by tests and by any tool that needs to
 # read a specific profile without disturbing which one the app has active.
@@ -71,39 +72,67 @@ def _blank_registry() -> dict[str, Any]:
 def _read_registry(root: Path) -> dict[str, Any]:
     """The registry, or a fresh one describing the installation as it is.
 
-    A missing or unreadable registry is not an error. Every installation
-    before profiles existed has no registry and a database sitting at the
-    root, and the correct reading of that is "one profile, the default one".
-    Refusing to start would strand exactly the users this has to work for.
+    A missing registry is not an error. Every installation before profiles
+    existed has no registry and a database sitting at the root, and the
+    correct reading of that is "one profile, the default one".
+
+    An existing but unreadable registry is different. Falling back to the
+    default in that case can open the wrong person's finances after a profile
+    was selected, so corruption fails closed instead of silently changing
+    identity.
     """
     path = _registry_path(root)
+    if not path.exists():
+        return _blank_registry()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return _blank_registry()
-    if not isinstance(raw, dict) or not isinstance(raw.get("profiles"), list):
-        return _blank_registry()
+    except (OSError, ValueError) as exc:
+        raise ProfileError(
+            "SignalSpace could not read the profile registry safely. "
+            "No profile was opened."
+        ) from exc
+    if (
+        not isinstance(raw, dict)
+        or raw.get("version") != 1
+        or not isinstance(raw.get("profiles"), list)
+    ):
+        raise ProfileError(
+            "SignalSpace's profile registry is invalid. No profile was opened."
+        )
 
     seen: set[str] = set()
     profiles: list[dict[str, Any]] = []
     for entry in raw["profiles"]:
         if not isinstance(entry, dict):
-            continue
+            raise ProfileError(
+                "SignalSpace's profile registry is invalid. No profile was opened."
+            )
         pid = str(entry.get("id") or "").strip()
-        if not pid or pid in seen:
-            continue
+        if not _valid_profile_id(pid) or pid in seen:
+            raise ProfileError(
+                "SignalSpace's profile registry is invalid. No profile was opened."
+            )
         seen.add(pid)
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            raise ProfileError(
+                "SignalSpace's profile registry is invalid. No profile was opened."
+            )
         profiles.append({
             "id": pid,
-            "name": str(entry.get("name") or pid).strip() or pid,
+            "name": name,
             "created_at": str(entry.get("created_at") or ""),
         })
     if not any(p["id"] == DEFAULT_PROFILE_ID for p in profiles):
-        profiles.insert(0, _blank_registry()["profiles"][0])
+        raise ProfileError(
+            "SignalSpace's first profile is missing. No profile was opened."
+        )
 
     active = str(raw.get("active") or DEFAULT_PROFILE_ID)
     if not any(p["id"] == active for p in profiles):
-        active = DEFAULT_PROFILE_ID
+        raise ProfileError(
+            "SignalSpace's selected profile is invalid. No profile was opened."
+        )
     return {"version": 1, "active": active, "profiles": profiles}
 
 
@@ -124,6 +153,10 @@ def _write_registry(root: Path, registry: dict[str, Any]) -> None:
     os.replace(temp, path)
 
 
+def _valid_profile_id(profile_id: str) -> bool:
+    return profile_id == DEFAULT_PROFILE_ID or bool(_PROFILE_ID.fullmatch(profile_id))
+
+
 def profile_dir(root: Path, profile_id: str) -> Path:
     """Where one profile's finances live.
 
@@ -131,6 +164,8 @@ def profile_dir(root: Path, profile_id: str) -> Path:
     migration story: an existing ``finance.db`` is already in the right
     place.
     """
+    if not _valid_profile_id(profile_id):
+        raise ProfileError("That profile id is not valid.")
     if profile_id == DEFAULT_PROFILE_ID:
         return root
     return root / PROFILES_DIRNAME / profile_id
@@ -139,6 +174,9 @@ def profile_dir(root: Path, profile_id: str) -> Path:
 def active_profile_id(root: Path) -> str:
     override = os.environ.get(ACTIVE_OVERRIDE_ENV, "").strip()
     if override:
+        registry = _read_registry(root)
+        if not any(p["id"] == override for p in registry["profiles"]):
+            raise ProfileError("The requested profile does not exist.")
         return override
     return _read_registry(root)["active"]
 

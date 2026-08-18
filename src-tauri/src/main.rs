@@ -15,11 +15,25 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
+use tokio::sync::RwLock;
 
 /// Ordinary engine requests read the local SQLite database.
 const ENGINE_TIMEOUT_SECS: u64 = 45;
 /// Statement parsing (PDF extraction across several files) needs longer.
 const IMPORT_TIMEOUT_SECS: u64 = 180;
+
+/// Profile changes are a boundary between databases. Ordinary requests may
+/// run together, but a create/rename/switch/delete waits for every financial
+/// request already in flight and prevents a new one from choosing a profile
+/// until the registry mutation is complete.
+static PROFILE_GATE: RwLock<()> = RwLock::const_new(());
+
+fn changes_profiles(action: &str) -> bool {
+    matches!(
+        action,
+        "create_profile" | "rename_profile" | "switch_profile" | "delete_profile"
+    )
+}
 
 fn ledger_data_dir() -> Result<PathBuf, String> {
     if let Some(override_path) = std::env::var_os("LEDGER_DATA_DIR") {
@@ -81,7 +95,13 @@ async fn run_engine(
     params: Value,
     timeout_secs: u64,
 ) -> Result<Value, String> {
-    let result = run_engine_inner(app, action, params, timeout_secs).await;
+    let result = if changes_profiles(action) {
+        let _guard = PROFILE_GATE.write().await;
+        run_engine_inner(app, action, params, timeout_secs).await
+    } else {
+        let _guard = PROFILE_GATE.read().await;
+        run_engine_inner(app, action, params, timeout_secs).await
+    };
     if let Err(error) = &result {
         log_shell_error(action, error);
     }
@@ -1264,7 +1284,19 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_engine_response;
+    use super::{changes_profiles, decode_engine_response};
+
+    #[test]
+    fn profile_mutations_are_the_only_exclusive_engine_requests() {
+        for action in [
+            "create_profile", "rename_profile", "switch_profile", "delete_profile",
+        ] {
+            assert!(changes_profiles(action), "{action}");
+        }
+        for action in ["home_dashboard", "confirm_import", "restore_backup"] {
+            assert!(!changes_profiles(action), "{action}");
+        }
+    }
 
     #[test]
     fn extracts_home_data_from_success_response() {

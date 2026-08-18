@@ -37,6 +37,7 @@ export default function App(){
   const[density,setDensity]=useState(readDensity);
   const[reviewCount,setReviewCount]=useState(0);
   const[profile,setProfile]=useState<{name:string;count:number}|null>(null);
+  const[profileVersion,setProfileVersion]=useState(0);
   useEffect(()=>{const update=()=>setDensity(readDensity());window.addEventListener("spendshape-preferences-changed",update);return()=>window.removeEventListener("spendshape-preferences-changed",update);},[]);
   // Home owns first-run database initialization. Delay this small secondary
   // badge request so two new sidecars never race while a schema is migrating.
@@ -45,6 +46,7 @@ export default function App(){
   useEffect(()=>{void loadProfiles().then(p=>{const active=p.profiles.find(x=>x.active);setProfile(active?{name:active.name,count:p.profiles.length}:null);}).catch(()=>setProfile(null));},[dataVersion]);
   useEffect(()=>{const timer=window.setTimeout(()=>{void loadReviewSummary().then(v=>setReviewCount(v.count)).catch(()=>setReviewCount(0));},dataVersion===0?1500:0);return()=>window.clearTimeout(timer);},[dataVersion]);
   const changed=()=>setDataVersion(v=>v+1);
+  const profileChanged=()=>{setTxPrefill(null);setProfileVersion(v=>v+1);setDataVersion(v=>v+1);};
   const goTo=(target:string)=>{const[base,anchor=""]=target.split("#");const[next,queryString=""]=base.split("?") as [Screen,string?];if(next==="add-data")setAddDataMounted(true);if(next==="transactions"&&queryString){const params=new URLSearchParams(queryString);setTxPrefill({quickReview:params.get("quickReview")==="1",flaggedOnly:params.get("flaggedOnly")==="1",suggestedOnly:params.get("suggestedOnly")==="1"});}setFocusAnchor(anchor);setFocusToken(v=>v+1);setScreen(next);};
   const drill=(p:TxPrefill)=>{setTxPrefill(p);setScreen("transactions");};
   return <main className={`app-shell density-${density}`}>
@@ -54,11 +56,11 @@ export default function App(){
     <div><h1><span>Signal</span>Space Finance</h1><p>Private, local-first personal finance.</p></div></button><div className="header-actions">{profile&&profile.count>1&&<button type="button" className="profile-chip" onClick={()=>{setScreen("settings");setFocusAnchor("profiles");setFocusToken(v=>v+1);}} title="Switch profile">{profile.name}</button>}<span className="native-badge">Native · local-first</span><button className={screen==="settings"?"icon-button nav-active":"icon-button"} onClick={()=>setScreen("settings")} aria-label="Settings">⚙</button></div></header>
     <nav className="app-nav" aria-label="Main">{SCREENS.map(s=><button key={s.id} type="button" className={screen===s.id?"nav-button nav-active":"nav-button"} onClick={()=>goTo(s.id)}>{s.label}{s.id==="transactions"&&reviewCount>0&&<span className="nav-count">{reviewCount>99?"99+":reviewCount}</span>}</button>)}</nav>
     {screen==="home"&&<HomeView onAddData={()=>goTo("add-data")} onNavigate={goTo} onDrill={drill} refreshToken={dataVersion}/>}
-    {addDataMounted&&<div hidden={screen!=="add-data"}><AddDataView onGoHome={()=>setScreen("home")} onGoTransactions={()=>setScreen("transactions")} onDataChanged={changed}/></div>}
+    {addDataMounted&&<div hidden={screen!=="add-data"}><AddDataView key={profileVersion} onGoHome={()=>setScreen("home")} onGoTransactions={()=>setScreen("transactions")} onDataChanged={changed}/></div>}
     {screen==="plan"&&<PlanView refreshToken={dataVersion} onDataChanged={changed} onNavigate={goTo}/>}
     {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed}/>}
     {screen==="transactions"&&<TransactionsView refreshToken={dataVersion} onDataChanged={changed} prefill={txPrefill} onPrefillApplied={()=>setTxPrefill(null)}/>}
     {screen==="ai"&&<AiView onOpenSettings={()=>goTo("settings#ai-assist")} onDrill={d=>drill({category:d.category,search:d.merchant,startDate:d.start_date,endDate:d.end_date})}/>}
-    {screen==="settings"&&<SettingsView onDataChanged={changed} focusAnchor={focusAnchor} focusToken={focusToken}/>}
+    {screen==="settings"&&<SettingsView key={profileVersion} onDataChanged={changed} onProfileChanged={profileChanged} focusAnchor={focusAnchor} focusToken={focusToken}/>}
   </main>;
 }
