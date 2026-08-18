@@ -816,6 +816,74 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
   text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
 }
 
+/* ── what Northstar noticed, on Insights ────────────────────────────── */
+/* These carry a figure and their own working, so they are wider and quieter
+   than the Coach cards above. The first one spans the row: the ranking has
+   already decided which finding matters most, and the layout should say so
+   rather than presenting three equal tiles. */
+.noticed-intro { margin: 6px 0 14px; }
+.noticed-grid {
+  display: grid; gap: 14px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+}
+.noticed-grid > :first-child:not(:last-child) { grid-column: 1 / -1; }
+.noticed-card {
+  background: var(--panel, rgba(255,255,255,.02));
+  border: 1px solid var(--line); border-left: 3px solid #8957e5;
+  border-radius: 14px; padding: 16px 18px;
+}
+.noticed-card.good { border-left-color: #2ea043; }
+.noticed-card h4 {
+  margin: 0; font-size: .95rem; color: #eef4f8; letter-spacing: .01em;
+}
+.noticed-figure {
+  align-items: baseline; display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 10px 0 8px;
+}
+.noticed-figure strong {
+  color: #fff; font-size: 1.9rem; font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.noticed-card.good .noticed-figure strong { color: #71e49a; }
+.noticed-figure span { color: #8794a1; font-size: .82rem; line-height: 1.4; }
+.noticed-claim {
+  margin: 0; color: #c9d3dd; font-size: .88rem; line-height: 1.6;
+}
+.noticed-working { margin-top: 12px; }
+.noticed-working summary {
+  color: #8794a1; cursor: pointer; font-size: .78rem; font-weight: 650;
+  list-style-position: outside;
+}
+.noticed-working summary:hover { color: #c9d3dd; }
+.noticed-working[open] summary { color: #c9d3dd; }
+.noticed-evidence {
+  border-top: 1px solid rgba(255,255,255,.07); margin: 8px 0 0; padding-top: 4px;
+}
+.noticed-evidence > div {
+  display: flex; gap: 16px; justify-content: space-between;
+  padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.045);
+}
+.noticed-evidence > div:last-child { border-bottom: 0; }
+.noticed-evidence dt { color: #c9d3dd; font-size: .82rem; margin: 0; }
+.noticed-evidence dt small {
+  display: block; color: #7f8c99; font-size: .74rem; margin-top: 2px;
+}
+.noticed-evidence dd {
+  color: #eef4f8; font-size: .84rem; font-variant-numeric: tabular-nums;
+  margin: 0; white-space: nowrap;
+}
+.noticed-foot {
+  align-items: flex-end; display: flex; gap: 16px;
+  justify-content: space-between; margin-top: 12px;
+}
+.noticed-basis {
+  color: #7f8c99; flex: 1; font-size: .74rem; line-height: 1.45; margin: 0;
+}
+.noticed-foot .ghost-button { flex: none; font-size: .78rem; padding: 7px 11px; }
+.noticed-more { margin-top: 14px; }
+.noticed-more .noticed-grid { margin-top: 12px; }
+.noticed-more .noticed-grid > :first-child:not(:last-child) { grid-column: auto; }
+
 /* ── spending calendar ──────────────────────────────────────────────── */
 /* Sized so three months still sit side by side in a half-width card, which
    is where this now lives: stretched across a whole row it was mostly empty

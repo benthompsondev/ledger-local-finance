@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnalysisContextNote } from "./AnalysisContextNote";
 import {
-  loadInsights, loadNetWorthTrend, loadSpendingPatterns,
+  loadInsights, loadInsightFeed, loadNetWorthTrend, loadSpendingPatterns,
   deleteNetWorthEntry, setIncomeSourcePreference,
   setRecurringPreference,
 } from "./api";
+import { NoticedCard } from "./NoticedCard";
 import {
   CashflowChart, CategoryBars, CategoryDonut, DayOfWeekBars, IncomeSourceDonut,
   IncomeSteadiness, KeptChart, NetWorthTrendChart, PaceChart, paceComparisonNote,
@@ -21,7 +22,8 @@ import { NetWorthEntryForm } from "./NetWorthEntryForm";
 import { NetWorthFact } from "./NetWorthFact";
 import { describeSpan } from "./netWorthFormat";
 import type {
-  InsightsPayload, NetWorthOverview, SpendingPatterns, TxPrefill,
+  Insight, InsightFeed, InsightsPayload, NetWorthOverview, SpendingPatterns,
+  TxPrefill,
 } from "./types";
 
 interface Props {
@@ -46,6 +48,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
   const [baseline,setBaseline]=useState<CompareBaseline>(readCompareBaseline);
   const [showNetWorth,setShowNetWorth]=useState(readShowNetWorth);
   const [patterns, setPatterns] = useState<SpendingPatterns | null>(null);
+  const [feed, setFeed] = useState<InsightFeed | null>(null);
   const [trend, setTrend] = useState<NetWorthOverview | null>(null);
   const [editingMonth, setEditingMonth] = useState("");
   // A reading is typed by hand and cannot be recovered by importing a
@@ -58,6 +61,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
       // Secondary, and never allowed to break the page: patterns are extra
       // colour on top of the figures, not the figures themselves.
       try { setPatterns(await loadSpendingPatterns(3)); } catch { setPatterns(null); }
+      try { setFeed(await loadInsightFeed()); } catch { setFeed(null); }
       try { setTrend(await loadNetWorthTrend()); } catch { setTrend(null); }
     } catch (c) {
       setError(c instanceof Error ? c.message : String(c));
@@ -100,6 +104,18 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
   const savings = cashflow.filter((m) => m.complete).slice(-6);
   const reviewRecurring=async(merchant:string,status:string)=>{setReviewBusy(`recurring:${merchant}`);setError("");try{await setRecurringPreference(merchant,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
   const reviewIncome=async(source:string,status:"confirmed"|"excluded")=>{setReviewBusy(`income:${source}`);setError("");try{await setIncomeSourcePreference(source,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
+  // The good-news card goes last: a page that opens with "well done" buries
+  // the thing the person came to find out.
+  const noticed: Insight[] = feed
+    ? [...feed.concerns, ...(feed.positive ? [feed.positive] : [])]
+    : [];
+  const drillFinding = (drill: NonNullable<Insight["drill"]>) => onDrill({
+    category: drill.category,
+    search: drill.merchant,
+    startDate: drill.start_date,
+    endDate: drill.end_date,
+    cashflowRole: "spending",
+  });
   const removeEntry=async(month:string)=>{setEntryBusy(true);setError("");try{setTrend(await deleteNetWorthEntry(month));if(editingMonth===month)setEditingMonth("");setConfirmDelete("");}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setEntryBusy(false);}};
 
   return (
@@ -121,6 +137,50 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
       {data && (
         <>
           <AnalysisContextNote analysis={data.analysis} />
+
+          {/* The lead, because it is the one part of this page that finds
+              something rather than drawing what you already asked for. The
+              charts below are the evidence you go to next. */}
+          {feed && <>
+            <h3 className="insight-section">What Northstar noticed</h3>
+            {noticed.length ? (
+              <>
+                <p className="chart-explainer noticed-intro">
+                  Worked out from your imported transactions, ranked by what
+                  they are worth a month. Nothing here is a projection.
+                </p>
+                <div className="noticed-grid">
+                  {noticed.map((insight) => (
+                    <NoticedCard key={insight.id} insight={insight}
+                      onDrill={drillFinding} />
+                  ))}
+                </div>
+                {(feed.also_noticed?.length ?? 0) > 0 && (
+                  <details className="formula-details noticed-more">
+                    <summary>
+                      {feed.also_noticed!.length} more that did not make the top
+                      three
+                    </summary>
+                    <div className="noticed-grid">
+                      {feed.also_noticed!.map((insight) => (
+                        <NoticedCard key={insight.id} insight={insight}
+                          onDrill={drillFinding} />
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </>
+            ) : (
+              <p className="guidance">
+                {feed.missing_data
+                  ?? "Nothing in your history cleared the bar this time. A "
+                     + "finding has to be worth real money and hold across "
+                     + "enough finished months to be a pattern rather than a "
+                     + "single costly week."}
+              </p>
+            )}
+          </>}
+
           <h3 className="insight-section">Spending check-in</h3>
           <div className="insight-grid home-detail-grid home-essentials">
             <article className="chart-card">

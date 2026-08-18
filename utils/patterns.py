@@ -119,6 +119,24 @@ def _spending_rows(c, start: str, end: str,
     return rows
 
 
+def spending_rows(start: str, end: str, conn=None,
+                  share_view: str = "personal",
+                  flexible_only: bool = True) -> list[dict]:
+    """The canonical spending rows between two dates.
+
+    Public form of the reader every detector in this module already uses, so
+    that ``utils/month_trends.py`` can measure finished months against the
+    same exclusions rather than growing a second copy of them. A second copy
+    is how Insights and Home once disagreed about what counted as spending.
+    """
+    c, opened = _conn(conn)
+    try:
+        return _spending_rows(c, start, end, share_view, flexible_only)
+    finally:
+        if opened:
+            c.close()
+
+
 def _months_covered(rows: list[dict]) -> int:
     return len({row["date"][:7] for row in rows})
 

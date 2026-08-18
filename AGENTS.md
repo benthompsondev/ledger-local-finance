@@ -48,7 +48,10 @@ powershell -File scripts/build_native_desktop.ps1
   (canonical amount, direction and transaction type), `insights.py` (aggregates,
   pace, `money_runway`), `checkin.py` (`safe_to_spend_summary`, the one number
   every page must read), `analytics.py` (income baselines), `planner.py`
-  (commitments and readiness), `database.py`.
+  (commitments and readiness), `database.py`. The detectors behind "What
+  Northstar noticed" are `patterns.py` (windows ending at the latest imported
+  day, partial month included) and `month_trends.py` (finished complete months
+  only); `insight_feed.py` ranks them and decides which few get shown.
 - `parsers/` — statement import. `csv_dialect.py` decides a file's shape once;
   `csv_import.py` applies it.
 - `tests/` — mostly engine-level integration tests that assert real financial

@@ -527,7 +527,20 @@ export interface Insight {
   /** Which engine function produced this, so two copies cannot drift. */
   basis: string;
   chart: string;
+  /** Impact in dollars a month, normalised by the engine so a yearly and a
+   *  two-month figure can be ordered against each other. */
+  monthly_impact?: number;
+  /** monthly_impact times a documented evidence-and-actionability weight. */
   rank: number;
+  /** The one number worth reading before the sentence. Never pre-formatted:
+   *  the engine sends the amount, this app decides how currency looks. */
+  figure?: number | null;
+  figure_kind?: "money" | "count" | "";
+  figure_caption?: string;
+  /** The rows the claim was computed from. */
+  evidence?: InsightEvidence[];
+  /** Sample size, timeframe, and what the comparison left out. */
+  evidence_note?: string;
   drill?: {
     page?: string;
     category?: string;
@@ -547,9 +560,22 @@ export interface Insight {
   detail?: Record<string, unknown>;
 }
 
+/** One line of the working behind a finding. */
+export interface InsightEvidence {
+  label: string;
+  value: number | null;
+  kind: "money" | "count" | "text";
+  note: string;
+  /** A change rather than a level, so it is shown with a direction. */
+  signed?: boolean;
+}
+
 export interface InsightFeed {
   analysis: AnalysisContext;
   concerns: Insight[];
+  /** True findings that lost the ranking. Offered behind a click, never in
+   *  the main list, so the page stays a few things rather than a report. */
+  also_noticed?: Insight[];
   positive: Insight | null;
   missing_data: string | null;
   complete_months: number;
