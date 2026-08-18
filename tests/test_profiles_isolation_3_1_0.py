@@ -444,3 +444,40 @@ def test_closing_and_reopening_keeps_the_chosen_profile(two_profiles):
 
     assert profiles.active_profile_id(root) == second
     assert profiles.active_profile(root)["name"] == "Tori's Finances"
+
+
+def test_a_visited_but_empty_profile_does_not_claim_to_have_data(tmp_path):
+    """Opening a profile writes its schema. That is not data.
+
+    Every profile gets a finance.db the first time it is opened, so treating
+    "the file exists" as "has finances" reported an untouched profile as
+    full the moment somebody switched to it and back.
+    """
+    import sqlite3
+
+    profiles.ensure_registry(tmp_path)
+    created = profiles.create_profile(tmp_path, "Visited")
+    database = profiles.profile_dir(tmp_path, created["id"]) / "finance.db"
+    conn = sqlite3.connect(database)
+    conn.execute("CREATE TABLE transactions (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    assert database.stat().st_size > 0
+
+    entry = next(
+        p for p in profiles.list_profiles(tmp_path)["profiles"]
+        if p["id"] == created["id"]
+    )
+    assert entry["has_data"] is False
+    assert entry["transaction_count"] == 0
+
+    conn = sqlite3.connect(database)
+    conn.execute("INSERT INTO transactions (id) VALUES (1)")
+    conn.commit()
+    conn.close()
+    entry = next(
+        p for p in profiles.list_profiles(tmp_path)["profiles"]
+        if p["id"] == created["id"]
+    )
+    assert entry["has_data"] is True
+    assert entry["transaction_count"] == 1

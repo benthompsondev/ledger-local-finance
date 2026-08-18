@@ -164,19 +164,44 @@ def _new_id(existing: set[str]) -> str:
             return candidate
 
 
+def _transaction_count(database: Path) -> int:
+    """How many transactions a profile holds, without disturbing it.
+
+    Opened read-only and never migrated. "Has data" has to mean the profile
+    holds finances, not that a file exists: every profile gets its schema
+    written the first time it is opened, so an empty profile that has merely
+    been visited would otherwise report itself as full.
+    """
+    import sqlite3
+
+    if not database.is_file():
+        return 0
+    try:
+        conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=2.0)
+    except sqlite3.Error:
+        return 0
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0])
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+
+
 def list_profiles(root: Path) -> dict[str, Any]:
-    """Every profile, which is active, and whether each holds any data yet."""
+    """Every profile, which is active, and whether each holds any finances."""
     registry = _read_registry(root)
     active = registry["active"]
     items = []
     for entry in registry["profiles"]:
         directory = profile_dir(root, entry["id"])
-        database = directory / "finance.db"
+        count = _transaction_count(directory / "finance.db")
         items.append({
             **entry,
             "active": entry["id"] == active,
             "is_default": entry["id"] == DEFAULT_PROFILE_ID,
-            "has_data": database.is_file() and database.stat().st_size > 0,
+            "has_data": count > 0,
+            "transaction_count": count,
             "path": str(directory),
         })
     return {"active": active, "profiles": items}

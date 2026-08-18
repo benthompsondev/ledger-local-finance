@@ -110,7 +110,8 @@ export function ProfilesPanel({ onSwitched }: { onSwitched: () => void }) {
               )}
               <small>
                 {profile.active ? "Open now" : profile.has_data
-                  ? "Has data" : "Empty"}
+                  ? `${profile.transaction_count.toLocaleString()} transactions`
+                  : "Empty"}
                 {profile.is_default && " · first profile"}
               </small>
             </div>

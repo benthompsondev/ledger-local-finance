@@ -1206,6 +1206,7 @@ export interface Profile {
    *  why it cannot be deleted. */
   is_default: boolean;
   has_data: boolean;
+  transaction_count: number;
   path: string;
 }
 
