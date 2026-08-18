@@ -762,6 +762,38 @@ def monthly_progress(conn: Optional[sqlite3.Connection] = None,
 # ─────────────────────────────────────────────────────────────────────
 # Meaningful changes (max 3, ≥ MATERIALITY_THRESHOLD)
 # ─────────────────────────────────────────────────────────────────────
+
+# A percentage is only informative when the figure underneath it is big
+# enough to carry one. Going from $4 to $60 is "+1400%", which reads as a
+# catastrophe and describes two coffees. Below this baseline the change is
+# reported in dollars alone, which is the honest version of the same fact.
+PERCENT_BASELINE_FLOOR = 60.0
+
+# Materiality has to scale with the person. A flat $25 is a real finding for
+# someone spending $800 a month and noise for someone spending $6,000, and
+# the flat rule is why small movements kept reaching the top of the page.
+# The constant stays as the floor so a light month cannot make everything
+# material.
+MATERIAL_SHARE_OF_SPENDING = 0.015
+
+
+def _material_floor(monthly_spending: float) -> float:
+    """The smallest change worth reporting to someone at this spending level."""
+    scaled = float(monthly_spending or 0) * MATERIAL_SHARE_OF_SPENDING
+    return max(MATERIALITY_THRESHOLD, round(scaled, 2))
+
+
+def _change_phrase(current: float, previous: float) -> str:
+    """State a month-on-month move, with a percentage only when it earns one."""
+    if previous <= 0:
+        return f"New this month: ${current:,.0f}."
+    body = f"${current:,.0f} this month vs ${previous:,.0f} last month"
+    if previous < PERCENT_BASELINE_FLOOR:
+        return f"{body}."
+    pct = (current - previous) / previous * 100
+    return f"{body} ({pct:+.0f}%)."
+
+
 def _dominant_merchant(category: str, month: str) -> str:
     """Name the single merchant behind a category's month, or '' if none.
 
@@ -807,6 +839,11 @@ def meaningful_changes(conn: Optional[sqlite3.Connection] = None,
         _close(c, opened)
 
     findings: list[dict] = []
+    # What counts as material depends on how much money moves in a normal
+    # month for this person, not on a number chosen once for everybody.
+    floor = _material_floor(
+        float(mr.get("spending") or mr.get("prev_spending") or 0)
+    )
     # Behavioral findings require two genuinely complete months. When
     # monthly_review fell back to partial data (uses_complete_months False),
     # this month's incomplete totals get compared against a full prior month
@@ -831,20 +868,18 @@ def meaningful_changes(conn: Optional[sqlite3.Connection] = None,
             if mv.get("kind") == "fixed":
                 continue
             delta = abs(float(mv.get("abs_change") or 0))
-            if delta < MATERIALITY_THRESHOLD:
+            if delta < floor:
                 continue
             cat = mv.get("category") or "Uncategorized"
             current_val = float(mv.get("current") or 0)
             previous_val = float(mv.get("previous") or 0)
             # Both months are complete here, so a $0 prior month is a genuine
-            # new expense, not missing coverage — surface it factually.
+            # new expense, not missing coverage — surface it factually. A
+            # percentage is only quoted when the baseline can carry one.
             if previous_val <= 0:
                 why = f"New this month: ${current_val:,.0f} in {cat}."
             else:
-                why = (
-                    f"${current_val:,.0f} this month vs ${previous_val:,.0f} "
-                    f"last month ({mv.get('pct_change') or 0:+.0f}%)."
-                )
+                why = _change_phrase(current_val, previous_val)
             lead = _dominant_merchant(cat, month)
             if lead:
                 why += f" Mostly {lead}."
@@ -867,7 +902,7 @@ def meaningful_changes(conn: Optional[sqlite3.Connection] = None,
             if mv.get("kind") == "fixed":
                 continue
             delta = abs(float(mv.get("abs_change") or 0))
-            if delta < MATERIALITY_THRESHOLD:
+            if delta < floor:
                 continue
             cat = mv.get("category") or "Uncategorized"
             current_val = float(mv.get("current") or 0)
@@ -885,17 +920,14 @@ def meaningful_changes(conn: Optional[sqlite3.Connection] = None,
                 # Factual only. A lower number is not automatically a win: it
                 # may be timing, a skipped bill, or an incomplete category, so
                 # state the numbers and let the user decide.
-                "why_it_matters": (
-                    f"${current_val:,.0f} this month vs ${previous_val:,.0f} "
-                    f"last month ({mv.get('pct_change') or 0:+.0f}%)."
-                ),
+                "why_it_matters": _change_phrase(current_val, previous_val),
                 "drill": {"category": cat, "cashflow_role": "spending",
                           "start_date": drill_start, "end_date": drill_end},
             })
             break  # one decrease finding is enough
 
         net_delta = float(mr.get("net_delta") or 0)
-        if net_delta >= MATERIALITY_THRESHOLD:
+        if net_delta >= floor:
             findings.append({
                 "id": "improved_savings",
                 "kind": "improved_savings",
