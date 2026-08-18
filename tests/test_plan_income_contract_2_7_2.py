@@ -299,11 +299,18 @@ def test_reliable_income_overstates_an_intermittent_source(ledger_db):
     assert round(float(reliable["monthly_amount"]), 2) > typical
 
 
-def test_the_planning_amount_ignores_review_state_entirely(ledger_db):
-    """Confirming or excluding a source must not move the planning figure.
+def test_confirming_a_source_does_not_move_the_planning_amount(ledger_db):
+    """Confirming a source must not move the planning figure.
 
-    `reliable_income_summary` owns review state. If review state could also
-    move the amount, the two would be coupled again by a different route.
+    `reliable_income_summary` owns review state. If confirmation could also
+    move the amount, the two would be coupled again by a different route: a
+    whole-month average has no eligibility gate for a confirmation to open,
+    so the deposits are already in it.
+
+    Exclusion is the deliberate exception, covered in
+    `test_income_source_exclusion.py`. It does not recouple the two figures —
+    it removes deposits from the one figure's input, and
+    `reliable_income_summary` still prices nothing.
     """
     from desktop.engine.ledger_engine import _plan_payload
     from utils.database import set_income_source_preference
@@ -318,3 +325,38 @@ def test_the_planning_amount_ignores_review_state_entirely(ledger_db):
     after = _plan_payload(ledger_db, today=TODAY)["equation"]["income"]
 
     assert after == pytest.approx(before)
+
+
+def test_excluding_a_source_still_leaves_one_planning_figure(ledger_db):
+    """The exclusion moves the amount without reviving the second opinion.
+
+    2.7.1 failed because `save_plan` priced the month with
+    `reliable_income_summary` while the screen showed
+    `typical_monthly_income`. An exclusion must not reopen that gap: after
+    it, display, preview and save must still agree, and they must agree on
+    the complete-month average rather than on the reliable figure.
+    """
+    from desktop.engine.ledger_engine import _plan_payload
+    from utils.analytics import reliable_income_summary, typical_monthly_income
+    from utils.database import set_income_source_preference
+
+    _mismatched_income(ledger_db)
+    set_income_source_preference(
+        "CONTRACT CLIENT PAYOUT", "excluded", conn=ledger_db,
+    )
+    ledger_db.commit()
+
+    payload = _plan_payload(ledger_db, today=TODAY)
+    typical = round(float(typical_monthly_income(conn=ledger_db)["amount"]), 2)
+    reliable = reliable_income_summary(conn=ledger_db)
+
+    assert payload["equation"]["income"] == pytest.approx(typical)
+    assert payload["income_basis"]["amount"] == pytest.approx(typical)
+    # The excluded source is gone from both, and the plan still prices the
+    # month from the average rather than from the source-median figure.
+    assert all(
+        source["source_normalized"] != "CONTRACT CLIENT PAYOUT"
+        for source in reliable["sources"]
+    )
+    _save_what_the_screen_shows(ledger_db, payload)
+    assert _plan_payload(ledger_db, today=TODAY)["saved"] is not None

@@ -272,6 +272,11 @@ def test_insights_has_one_income_card_and_inline_review_controls():
         / "desktop" / "src" / "InsightsView.tsx"
     ).read_text(encoding="utf-8")
     assert "Ranked income sources" not in source
-    assert "Stable: Yes" in source
+    # Named for what the choice does, not for how steady the deposits look.
+    # "Stable: Yes / No" read as a judgement about variability while the
+    # exclusion moved no number; it now removes the source from planning
+    # income, so the button has to say that.
+    assert "Use as income" in source
+    assert "Exclude" in source
     assert "Automatic" in source
     assert "Not recurring" in source

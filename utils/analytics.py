@@ -444,11 +444,36 @@ def _planning_income_deposits(conn) -> list[dict]:
     card payments and transfers are excluded by the ``planning_income`` role;
     recurring interest and incoming e-transfers are included, because for
     many people they are real income.
+
+    A source the user marked "exclude from stable income" is dropped here,
+    which is the only place that decision is applied. Through 2.8.0 the
+    control wrote its row and nothing read it for planning:
+    `reliable_income_summary` honoured it, but that function stopped pricing
+    anything in 2.7.2, so the only visible effect of saying a deposit was not
+    income was the button changing colour. Dropping the deposit here keeps one
+    planning
+    figure — the exclusion changes the input to `typical_monthly_income`, it
+    does not add a second opinion about the amount — and keeps the baseline
+    and the arrival outlook agreeing about what income is.
+
+    Confirming a source deliberately does nothing here. Its deposits are in
+    the data either way, and a whole-month average has no eligibility gate to
+    open. Only exclusion removes money.
     """
     from utils.financial_semantics import (
         classify_transaction_type, transaction_types_for_role,
     )
 
+    # Uppercased on both sides: `merchant_normalized` is already an uppercase
+    # key, but a source recorded from a bare merchant or description is not,
+    # and the preference row stores whatever key the screen showed.
+    excluded = {
+        str(row["source_normalized"] or "").strip().upper()
+        for row in conn.execute(
+            "SELECT source_normalized FROM income_source_preferences "
+            "WHERE status='excluded'"
+        ).fetchall()
+    }
     planning_types = set(transaction_types_for_role("planning_income"))
     deposits: list[dict] = []
     rows = conn.execute(
@@ -473,10 +498,12 @@ def _planning_income_deposits(conn) -> list[dict]:
         source = str(
             row["merchant_normalized"] or row["merchant"]
             or row["raw_description"] or ""
-        ).strip().upper()
+        ).strip().upper() or "UNKNOWN"
+        if source in excluded:
+            continue
         deposits.append({
             "date": day,
-            "source": source or "UNKNOWN",
+            "source": source,
             "label": str(row["merchant"] or row["raw_description"] or source),
             "amount": abs(float(row["amount"] or 0)),
         })
@@ -844,6 +871,12 @@ def typical_monthly_income(
     The average of every complete month, including months that earned
     nothing. The current partial month is never included, and the months
     actually used are returned so a screen can show its work.
+
+    A source the user excluded is gone from every month in the window, past
+    ones included, because this is a rolling read of history rather than a
+    stored figure. Saved plans keep the income they were saved with, so Last
+    Plan Result still compares the intention that was actually made against
+    the money that actually arrived.
     """
     import calendar as _cal
 
