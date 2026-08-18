@@ -232,6 +232,12 @@ _SCHEMA_SQL = """
 
         -- v7 new tables ----------------------------------------------------
 
+        -- Stored timestamps below are UTC: the `datetime('now')` default and
+        -- every writer that touches these columns must agree, or `updated_at`
+        -- can land earlier than `created_at` for a single write. Tables that
+        -- deliberately store local time (accounts, review_log, shared_expense_*)
+        -- use datetime('now','localtime') in BOTH places for the same reason.
+
         -- User-taught merchant→category mappings. Consulted by categorizer
         -- BEFORE the static ruleset so user corrections are durable.
         CREATE TABLE IF NOT EXISTS learned_rules (
@@ -2143,14 +2149,14 @@ def upsert_learned_rule(merchant_normalized: str, category: str,
         "INSERT INTO learned_rules "
         "(merchant_normalized, category, subcategory, source, enabled, "
         " example_description, source_transaction_id, source_import_batch_id, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,datetime('now','localtime')) "
+        "VALUES (?,?,?,?,?,?,?,?,datetime('now')) "
         "ON CONFLICT(merchant_normalized) DO UPDATE SET "
         "category=excluded.category, subcategory=excluded.subcategory, "
         "source=excluded.source, enabled=excluded.enabled, "
         "example_description=COALESCE(excluded.example_description, learned_rules.example_description), "
         "source_transaction_id=COALESCE(excluded.source_transaction_id, learned_rules.source_transaction_id), "
         "source_import_batch_id=COALESCE(excluded.source_import_batch_id, learned_rules.source_import_batch_id), "
-        "updated_at=datetime('now','localtime')",
+        "updated_at=datetime('now')",
         (matcher, category, subcategory, source, 1 if enabled else 0,
          example_description, source_transaction_id, source_import_batch_id),
     )
@@ -2171,7 +2177,7 @@ def set_learned_rule_enabled(merchant_normalized: str, enabled: bool,
         conn = get_connection()
         close = True
     cur = conn.execute(
-        "UPDATE learned_rules SET enabled=?, updated_at=datetime('now','localtime') "
+        "UPDATE learned_rules SET enabled=?, updated_at=datetime('now') "
         "WHERE merchant_normalized=?",
         (1 if enabled else 0, normalize_merchant(merchant_normalized)),
     )
@@ -2212,7 +2218,7 @@ def update_learned_rule_by_id(rule_id: int, *, category: str,
         close = True
     cur = conn.execute(
         "UPDATE learned_rules SET category=?, subcategory=?, enabled=?, "
-        "example_description=?, updated_at=datetime('now','localtime') "
+        "example_description=?, updated_at=datetime('now') "
         "WHERE id=?",
         (category, subcategory, 1 if enabled else 0,
          example_description, int(rule_id)),
@@ -3614,7 +3620,12 @@ def update_goal(goal_id: int, updates: dict,
         conn = get_connection()
         close = True
     updates = dict(updates)
-    updates["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # UTC, matching the column default. Kept in the unmarked
+    # "YYYY-MM-DD HH:MM:SS" shape because get_goals orders by created_at as
+    # text, and a second shape would sort ahead of every existing row.
+    updates["updated_at"] = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     sets = ", ".join(f"{k}=?" for k in updates.keys())
     conn.execute(
         f"UPDATE goal_targets SET {sets} WHERE id=?",
@@ -3776,7 +3787,7 @@ def record_goal_contribution(goal_id: int, amount: float,
         )
         conn.execute(
             "UPDATE goal_targets SET current_amount="
-            "COALESCE(current_amount,0)+?, updated_at=datetime('now','localtime') "
+            "COALESCE(current_amount,0)+?, updated_at=datetime('now') "
             "WHERE id=?",
             (amount, int(goal_id)),
         )
