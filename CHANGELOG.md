@@ -1,6 +1,37 @@
 # Changelog
 
-## 3.0.0 - Unreleased
+## 3.1.0 - Unreleased
+
+The app is called SignalSpace Finance, it can hold more than one set of
+finances, and it puts a shortcut back in your Start Menu.
+
+### What changed
+
+- **More than one set of finances in one installation.** Profiles keep their
+  own transactions, accounts, imports, plans, preferences, net worth and
+  backups in their own database. Nothing is shared, and only the profile you
+  are in is open. Manage them in Settings; once you have a second one, the
+  header names the one you are using.
+- **Your existing finances become the first profile,** exactly where they
+  already are. Nothing is moved, copied or rewritten, and you do not import
+  anything again. Rename it to whatever you like. New profiles start empty.
+- The first profile cannot be deleted, because everything else lives inside
+  it, and the profile you are currently using cannot be deleted either.
+- **The Start Menu shortcut is back.** Upgrading to 3.0.0 could leave the app
+  with no entry in Start or Windows Search, launchable only by finding the
+  program folder yourself. The installer now creates the shortcut itself
+  rather than relying on the packaging tool to do it during an upgrade, and
+  clears out entries left behind by the older names.
+- Cash flow by month, income and spending by month, and the net worth chart
+  are a fraction of their old height, and Estimated left for everyday
+  spending keeps the amount prominent with the arithmetic one click away.
+- The next few weeks drops its timeline strip; the totals and the dated list
+  carry the same information in less space.
+- Findings no longer quote a percentage when the amount underneath is too
+  small to support one, and what counts as a material change now scales with
+  what you actually spend in a month.
+
+## 3.0.0 - Superseded before release
 
 Northstar Ledger is now SignalSpace. This is a product-name and interface
 release, not a change to the finance math.

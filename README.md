@@ -38,7 +38,7 @@ use SignalSpace; the installer bundles everything, including the Python engine.
 The latest published installer is still:
 
 ```
-NorthstarLedger_2.9.1_x64-setup.exe
+SignalSpaceFinance_3.1.0_x64-setup.exe
 ```
 
 SignalSpace 3.0.0 is prepared on `main`, but it will not replace that download
