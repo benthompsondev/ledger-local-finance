@@ -275,8 +275,21 @@ h1 { font-size: 1.55rem; letter-spacing: -0.02em; }
 .metric-negative { border-color: rgba(240, 136, 62, .5); background: rgba(68, 38, 18, .42); }
 .metric-negative strong { color: var(--caution-soft); }
 .metric-card small { display: block; margin-top: 8px; color: var(--text-faint); line-height: 1.4; }
-.safe-secondary-card { min-height: 0; margin-top: 14px; }
-.safe-secondary-card > strong { font-size: 1.35rem; }
+/* The amount is the point of this card; the arithmetic behind it is support.
+   It used to run open by default, which pushed a twelve-row formula into the
+   middle of Home and left the figure competing with its own explanation. */
+.safe-secondary-card { min-height: 0; margin-top: 14px; padding-bottom: 14px; }
+.safe-secondary-card > strong { font-size: 1.9rem; line-height: 1.1; }
+.safe-secondary-card > p { margin: 4px 0 0; }
+.safe-secondary-card .formula-details { margin-top: 10px; }
+.safe-secondary-card .formula-list { gap: 5px; margin: 8px 0; }
+
+/* A hard stop on chart height. These render at width:100%, so a viewBox that
+   is nearly square becomes a nearly square chart on a wide card. The geometry
+   in charts.tsx is tuned for this, and the cap keeps an unusual month count
+   from undoing it. */
+.chart-card svg { max-height: 300px; }
+.donut-chart svg, .radar-timeline { max-height: none; }
 .home-actions-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 
 .local-note, .loading-panel, .error-panel {

@@ -67,11 +67,15 @@ export function CashflowChart({ months, onDrill }: { months: CashflowMonth[]; on
   // card instead of huddling on the left of a twelve-month canvas. Bars are
   // then a share of their slot rather than a fixed cap, which stops a short
   // range rendering as pinstripes in a field of empty space.
-  const W = Math.max(340, 96 + shown.length * 58);
-  const H = 250;
+  // Width floor and height chosen together so the natural aspect ratio stays
+  // wide. These render at width:100%, so a near-square viewBox becomes a
+  // near-square chart: the previous 340x250 turned three months into roughly
+  // 800px of vertical space on a full-width card.
+  const W = Math.max(660, 96 + shown.length * 58);
+  const H = 168;
   const padL = 46;
-  const padB = 32;
-  const padT = 14;
+  const padB = 26;
+  const padT = 12;
   const plotW = W - padL - 8;
   const plotH = H - padT - padB;
   const max = niceMax(
@@ -1129,9 +1133,9 @@ export function NetWorthTrendChart({ overview }: { overview: NetWorthOverview })
       </p>
     );
   }
-  const W = Math.max(360, 80 + points.length * 46);
-  const H = 240;
-  const padL = 62, padR = 14, padT = 16, padB = 30;
+  const W = Math.max(680, 80 + points.length * 46);
+  const H = 170;
+  const padL = 62, padR = 14, padT = 14, padB = 26;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 

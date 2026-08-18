@@ -47,6 +47,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
   const [showAllCategories,setShowAllCategories]=useState(readCategoryExpanded);
   const [baseline,setBaseline]=useState<CompareBaseline>(readCompareBaseline);
   const [showNetWorth,setShowNetWorth]=useState(readShowNetWorth);
+  const [showAllKept,setShowAllKept]=useState(false);
   const [patterns, setPatterns] = useState<SpendingPatterns | null>(null);
   const [feed, setFeed] = useState<InsightFeed | null>(null);
   const [trend, setTrend] = useState<NetWorthOverview | null>(null);
@@ -101,7 +102,12 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
   // here as "any month before the current one" is what made Insights and
   // Home disagree about which months counted.
   const cashflow = data?.monthly ?? [];
-  const savings = cashflow.filter((m) => m.complete).slice(-6);
+  // Three finished months by default. Six made the card a wall of bars
+  // and buried the comparison it exists to show; the rest stay one
+  // click away.
+  const completeMonths = cashflow.filter((m) => m.complete);
+  const savings = showAllKept ? completeMonths.slice(-12)
+    : completeMonths.slice(-3);
   const reviewRecurring=async(merchant:string,status:string)=>{setReviewBusy(`recurring:${merchant}`);setError("");try{await setRecurringPreference(merchant,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
   const reviewIncome=async(source:string,status:"confirmed"|"excluded")=>{setReviewBusy(`income:${source}`);setError("");try{await setIncomeSourcePreference(source,status);await refresh();onDataChanged();}catch(c){setError(c instanceof Error?c.message:String(c));}finally{setReviewBusy("");}};
   // The good-news card goes last: a page that opens with "well done" buries
@@ -270,8 +276,18 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
               <CashflowChart months={cashflow.slice(-chartPeriod)} onDrill={(month,role)=>{const[y,m]=month.split("-").map(Number);onDrill({cashflowRole:role,startDate:`${month}-01`,endDate:`${month}-${new Date(y,m,0).getDate().toString().padStart(2,"0")}`});}} />
             </article>
             <article className="chart-card">
-              <h3>What you kept</h3>
-              <p className="chart-explainer">Every finished month, drawn against what came in that month, so the rate is visible and not just the amount.</p>
+              <div className="chart-card-head">
+                <div>
+                  <h3>What you kept</h3>
+                  <p className="chart-explainer">The same months as the chart beside this one, with what came in, what went out, and what was left of it.</p>
+                </div>
+                {completeMonths.length > 3 && (
+                  <button className="ghost-button" type="button"
+                    onClick={() => setShowAllKept(!showAllKept)}>
+                    {showAllKept ? "Last 3 months" : "Show more"}
+                  </button>
+                )}
+              </div>
               <KeptChart months={savings} onDrill={(month,role)=>{const[y,monthNumber]=month.split("-").map(Number);onDrill({cashflowRole:role,startDate:`${month}-01`,endDate:`${month}-${new Date(y,monthNumber,0).getDate().toString().padStart(2,"0")}`});}} />
             </article>
           </div>

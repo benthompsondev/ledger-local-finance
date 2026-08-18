@@ -103,43 +103,6 @@ function EventRow({
   );
 }
 
-/** The timeline. Income above the line, outgoings below, position by date
- *  and height by amount relative to the largest thing in view. */
-function Timeline({ data }: { data: UpcomingMoney }) {
-  const start = new Date(`${data.window_start}T00:00:00`).getTime();
-  const end = new Date(`${data.window_end}T00:00:00`).getTime();
-  const span = Math.max(1, end - start);
-  const biggest = data.items.reduce((top, i) => Math.max(top, i.amount), 0) || 1;
-
-  const width = 100;
-  const axis = 34;
-  const maxBar = 26;
-
-  return (
-    <svg className="radar-timeline" viewBox="0 0 100 68"
-      preserveAspectRatio="none" role="img"
-      aria-label={`Expected money between ${data.window_start} and ${data.window_end}`}>
-      <line x1="0" y1={axis} x2={width} y2={axis} className="radar-axis" />
-      {data.items.map((item, index) => {
-        const at = new Date(`${item.expected_date}T00:00:00`).getTime();
-        const x = ((at - start) / span) * width;
-        const height = Math.max(2, (item.amount / biggest) * maxBar);
-        const income = item.kind === "income";
-        return (
-          <rect
-            key={`${item.key}-${item.expected_date}-${index}`}
-            x={Math.min(width - 0.9, Math.max(0, x - 0.45))}
-            y={income ? axis - height : axis}
-            width="0.9"
-            height={height}
-            className={`radar-mark${income ? " income" : ""}`}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
 export function MoneyRadar({
   data, onDrill,
 }: {
@@ -187,12 +150,6 @@ export function MoneyRadar({
       {data.staleness_note && (
         <p className="radar-stale">{data.staleness_note}</p>
       )}
-
-      <Timeline data={data} />
-      <div className="radar-scale">
-        <span>{dayLabel(data.window_start)}</span>
-        <span>{dayLabel(data.window_end)}</span>
-      </div>
 
       <div className="radar-totals">
         <div>
