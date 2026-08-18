@@ -506,6 +506,7 @@ def _planning_income_deposits(conn) -> list[dict]:
             "source": source,
             "label": str(row["merchant"] or row["raw_description"] or source),
             "amount": abs(float(row["amount"] or 0)),
+            "transaction_type": transaction_type,
         })
     deposits.sort(key=lambda item: item["date"])
     return deposits
@@ -616,20 +617,18 @@ def expected_income_events(
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[dict]:
-    """Paydays expected between two dates, from observed rhythm alone.
+    """Trustworthy paydays expected between two dates.
 
     Reuses the schedule the plan forecast already trusts: the same deposits,
     the same gap classifier, the same refusal to treat an irregular arrival
     as a payday. Nothing here predicts a new source of income; it only says
     when a rhythm that has been running is next due to run.
 
-    Sources marked "No" in Insights are left out. That check lives here
-    rather than in ``_planning_income_deposits`` on purpose. The monthly
-    baseline and Safe to Spend read those same deposits, and changing what
-    they count is a decision about the plan's income contract — not one a
-    forward-looking view should make on their behalf. The narrower rule is
-    that Northstar must not draw a payday marker for a source the user has
-    explicitly said is not dependable.
+    The planning baseline can legitimately include repeating interest or
+    other cash income without claiming it has a scheduled arrival. Radar has
+    a narrower burden: employment income is eligible automatically, while any
+    other source needs an explicit ``confirmed`` / "Use as income" decision.
+    Excluded sources were already removed by ``_planning_income_deposits``.
     """
     close = False
     if conn is None:
@@ -637,22 +636,25 @@ def expected_income_events(
         close = True
     try:
         deposits = _planning_income_deposits(conn)
-        excluded = {
-            str(row["source_normalized"] or "").strip().upper()
+        preferences = {
+            str(row["source_normalized"] or "").strip().upper():
+                str(row["status"] or "")
             for row in conn.execute(
-                "SELECT source_normalized,status FROM income_source_preferences"
+                "SELECT source_normalized,status "
+                "FROM income_source_preferences"
             ).fetchall()
-            if str(row["status"] or "") == "excluded"
         }
     finally:
         if close:
             conn.close()
 
-    if excluded:
-        deposits = [
-            deposit for deposit in deposits
-            if str(deposit["source"]).strip().upper() not in excluded
-        ]
+    deposits = [
+        deposit for deposit in deposits
+        if deposit.get("transaction_type") == "employment_income"
+        or preferences.get(
+            str(deposit["source"]).strip().upper()
+        ) == "confirmed"
+    ]
     schedule = _income_schedule(deposits, before=start)
     if not schedule:
         return []

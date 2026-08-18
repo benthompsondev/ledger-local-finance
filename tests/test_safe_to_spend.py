@@ -77,9 +77,9 @@ def test_negative_amount_maps_to_danger(steady_db):
     upsert_monthly_plan({
         "month": "2026-07", "mode": "tight",
         "income_target": 5000.0, "spending_target": 3400.0,
-        "savings_target": 50000.0, "fixed_obligations": 1890.0,
+        "savings_target": 50000.0, "fixed_obligations": 1905.0,
         "flexible_allowance": 0.0,
-        "detected_commitments_at_save": 1890.0,
+        "detected_commitments_at_save": 1905.0,
         "fixed_override_reason": "", "notes": "stress",
     }, conn=steady_db)
     steady_db.commit()

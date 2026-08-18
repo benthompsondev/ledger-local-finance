@@ -872,7 +872,6 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 .radar-axis { stroke: rgba(255,255,255,.16); stroke-width: .35; }
 .radar-mark { fill: #8b7bd8; }
 .radar-mark.income { fill: #52b788; }
-.radar-mark.missed { fill: #b08a2e; }
 .radar-scale {
   color: #7f8c99; display: flex; font-size: .72rem;
   justify-content: space-between; margin-top: 2px;

@@ -1164,8 +1164,6 @@ export interface UpcomingItem {
   last_seen: string;
   /** The last few real charges behind the estimate. */
   recent: { date: string; amount: number }[];
-  /** The statements cover this date and the charge is not in them. */
-  not_seen_yet: boolean;
   drill?: {
     merchant?: string; search?: string; category?: string;
     start_date?: string; end_date?: string;

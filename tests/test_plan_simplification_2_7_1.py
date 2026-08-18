@@ -196,6 +196,31 @@ def test_monthly_subscription_preference_is_not_bypassed(ledger_db):
     ]
 
 
+def test_steady_subscription_is_reserved_without_needing_a_problem_flag(
+        ledger_db):
+    """A subscription is a bill even when its price has not changed."""
+    from utils.planner import bills_and_commitments
+
+    for day in ("2026-04-04", "2026-05-04", "2026-06-04", "2026-07-04"):
+        add_tx(
+            ledger_db, day=day, desc="STEADY STREAMING", amount=17,
+            direction="debit", category="Subscriptions & Digital",
+            merchant="Steady Streaming",
+        )
+    ledger_db.commit()
+
+    bills = bills_and_commitments(conn=ledger_db)
+    subscriptions = [
+        item for item in bills["active_subscriptions"]
+        if item.get("merchant_normalized") == "STEADY STREAMING"
+    ]
+
+    assert len(subscriptions) == 1
+    assert subscriptions[0]["included_in_forecast"] is True
+    assert subscriptions[0]["monthly_setaside"] == pytest.approx(17)
+    assert bills["commitment_monthly_estimate"] >= 17
+
+
 def test_nonmonthly_bill_is_not_also_presented_as_a_monthly_fixed_cost(ledger_db):
     """Plan provenance must match the equation's single-charge treatment."""
     from desktop.engine.ledger_engine import _plan_payload

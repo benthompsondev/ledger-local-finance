@@ -158,7 +158,7 @@ def test_safe_to_spend_is_the_same_number_after_the_move(ledger_db):
     assert summary["reserved"]["balance_checked"] is True, (
         "the balance path stopped being used"
     )
-    assert summary["amount"] == pytest.approx(3147.4, abs=0.01), (
+    assert summary["amount"] == pytest.approx(3132.4, abs=0.01), (
         "Safe to Spend changed when the balance controls moved screens"
     )
 

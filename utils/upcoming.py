@@ -26,9 +26,11 @@ two dates are both reported, and the gap between them is disclosed rather
 than smoothed over. A stale import must not be made to look current merely
 because the wall clock moved.
 
-**Only what the user has not waved off.** A merchant marked "not recurring"
-and an income source marked "No" are both absent from the result, whatever
-the arithmetic says about them.
+**Cadence is not obligation.** A merchant belongs here only when the Plan
+commitment classifier treats it as money owed. A regular restaurant visit is
+still just a habit, even when the user correctly confirms that it repeats.
+Income is equally narrow: automatic payday markers are payroll only, while a
+different source needs an explicit "Use as income" decision.
 """
 from __future__ import annotations
 
@@ -38,15 +40,15 @@ from typing import Any, Optional
 
 from config.constants import FRESH_CURRENT_DAYS, FRESH_STALE_DAYS
 
-# How far ahead the radar looks. Five weeks: long enough to cover a monthly
-# cycle plus the next payday, short enough that the estimates are still
+# How far ahead the radar looks. Four weeks: long enough to cover the next
+# payday and most monthly bills, short enough that the estimates are still
 # drawn from a rhythm rather than extrapolated into fiction.
-HORIZON_DAYS = 35
+HORIZON_DAYS = 28
 
 # Beyond this, a repeating charge is being projected further than its own
-# evidence reasonably carries. A weekly bill fills a five-week window with
-# five occurrences; anything claiming more than that is padding.
-MAX_OCCURRENCES_PER_SOURCE = 6
+# evidence reasonably carries. A weekly bill fills a four-week window with
+# at most four occurrences; anything claiming more than that is padding.
+MAX_OCCURRENCES_PER_SOURCE = 4
 
 # Data-age bands come from config.constants, so the radar and Home's
 # freshness badge cannot drift into two vocabularies for one idea.
@@ -147,10 +149,10 @@ def _cadence_note(cadence: str, gap_days: float) -> str:
     return "repeats on a regular rhythm"
 
 
-def _bill_items(c, *, today: date, window_end: date,
-                data_through: Optional[date]) -> list[dict]:
-    """Recurring outgoings whose next turn falls inside the window."""
+def _bill_items(c, *, today: date, window_end: date) -> list[dict]:
+    """Trustworthy obligations whose next turn falls inside the window."""
     from utils.recurring_cadence import merchant_cadences
+    from utils.planner import bills_and_commitments
 
     preferences = {
         str(row["merchant_normalized"] or ""): str(row["status"] or "")
@@ -158,13 +160,28 @@ def _bill_items(c, *, today: date, window_end: date,
             "SELECT merchant_normalized, status FROM recurring_preferences"
         ).fetchall()
     }
+    commitments = bills_and_commitments(conn=c)
+    automatic_obligations = {
+        str(item.get("merchant_normalized") or "").upper(): item
+        for item in (
+            commitments.get("fixed_commitments", [])
+            + commitments.get("active_subscriptions", [])
+            + commitments.get("nonmonthly_commitments", [])
+        )
+        if item.get("included_in_forecast")
+    }
 
     items: list[dict] = []
     for row in merchant_cadences(conn=c, today=today.isoformat()):
         key = str(row.get("merchant_normalized") or "")
-        # An explicit rejection is final. Northstar does not get to keep
-        # expecting something the user has said is not a recurring cost.
-        if preferences.get(key) == "not_recurring":
+        preference = preferences.get(key, "")
+        # A cadence only says that spending repeated. The Plan classifier is
+        # the canonical boundary between fixed obligations/subscriptions and
+        # variable retail habits. The existing recurring preference confirms
+        # repetition, not that money is owed, so it cannot bypass that line.
+        if preference == "not_recurring":
+            continue
+        if key not in automatic_obligations:
             continue
         # Cancelled, paid off, or moved elsewhere. The cadence engine has
         # already decided it is no longer running; drawing it on a forward
@@ -192,22 +209,19 @@ def _bill_items(c, *, today: date, window_end: date,
             last_seen=_as_date(row.get("last_seen")),
             end=window_end,
         ):
-            # A cycle that has already come and gone is only worth showing
-            # when the statements actually cover the date and the charge is
-            # not among them. Anything after the data cutoff is unknown
-            # rather than missing, and calling it missing would turn a stale
-            # import into a false alarm.
-            missed = bool(
-                data_through is not None
-                and when < today
-                and when < data_through
-            )
-            if when < today and not missed:
+            # Radar answers what is likely coming next. Missed-bill detection
+            # is a different product question, and old guesses must never
+            # dominate this forward-looking surface or its totals.
+            if when < today:
                 continue
+            commitment = automatic_obligations.get(key, {})
             items.append({
                 "kind": "bill",
                 "key": key or str(row.get("merchant") or ""),
-                "label": str(row.get("merchant") or key or "Recurring cost"),
+                "label": str(
+                    commitment.get("merchant") or row.get("merchant")
+                    or key or "Recurring cost"
+                ),
                 "amount": amount,
                 "expected_date": when.isoformat(),
                 "days_away": (when - today).days,
@@ -219,7 +233,6 @@ def _bill_items(c, *, today: date, window_end: date,
                 "confidence": confidence,
                 "last_seen": str(row.get("last_seen") or ""),
                 "recent": recent,
-                "not_seen_yet": missed,
                 "drill": {
                     "merchant": str(row.get("merchant") or ""),
                     "start_date": "", "end_date": "",
@@ -262,7 +275,6 @@ def _income_items(c, *, today: date, window_end: date) -> list[dict]:
                  "amount": round(float(item.get("amount") or 0), 2)}
                 for item in (row.get("recent") or [])
             ],
-            "not_seen_yet": False,
             "drill": {
                 "search": str(row.get("label") or ""),
                 "start_date": "", "end_date": "",
@@ -277,7 +289,7 @@ def _money(value: float) -> str:
 
 def upcoming_money(conn=None, today=None,
                    horizon_days: int = HORIZON_DAYS) -> dict[str, Any]:
-    """Recurring money expected in the next few weeks.
+    """Trustworthy bills and planning income expected in the next few weeks.
 
     ``today`` is injectable so the window is testable; it defaults to the
     real local date, because someone asking what is coming means the
@@ -318,8 +330,7 @@ def upcoming_money(conn=None, today=None,
             staleness = "stale"
 
         items = (
-            _bill_items(c, today=anchor, window_end=window_end,
-                        data_through=data_through)
+            _bill_items(c, today=anchor, window_end=window_end)
             + _income_items(c, today=anchor, window_end=window_end)
         )
 
@@ -351,15 +362,15 @@ def upcoming_money(conn=None, today=None,
             out_before = round(sum(
                 row["amount"] for row in bills
                 if row["expected_date"] <= next_income["expected_date"]
-                and not row["not_seen_yet"]
             ), 2)
 
         return {
             "available": bool(items),
             "reason": "" if items else (
-                "Nothing in your history repeats regularly enough yet for "
-                "Northstar to say when it is next due. A few more months of "
-                "statements usually settles that."
+                "Northstar does not have enough evidence for a trustworthy "
+                "bill or payday in this window. Review merchant categories, "
+                "recurring status, and income sources in Settings when they "
+                "need correction."
             ),
             "window_start": anchor.isoformat(),
             "window_end": window_end.isoformat(),
@@ -412,11 +423,11 @@ def _summary(expected_out: float, next_income: Optional[dict],
         return ""
     if next_income is not None and out_before is not None:
         return (
-            f"About {_money(out_before)} of recurring costs are expected "
+            f"About {_money(out_before)} of bills are expected "
             f"before your next expected payday."
         )
     return (
-        f"About {_money(expected_out)} of recurring costs are expected in "
+        f"About {_money(expected_out)} of bills are expected in "
         f"the next {int(horizon_days)} days."
     )
 

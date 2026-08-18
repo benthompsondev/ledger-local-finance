@@ -214,7 +214,9 @@ def test_june_is_charged_for_neither_slow_bill(slow_bills) -> None:
     """The reproduction: $2,940 of other months' bills, and a danger verdict."""
     forecast = forecast_month("2026-06", conn=slow_bills, today="2026-06-06")
 
-    assert forecast["upcoming_bills_total"] == pytest.approx(0.0)
+    # The ordinary $15 subscription seeded in every history month is still
+    # due; only the quarterly and annual bills belong elsewhere.
+    assert forecast["upcoming_bills_total"] == pytest.approx(15.0)
     assert forecast["overdue_bills_total"] == pytest.approx(0.0)
     assert forecast["projected_spending"] < 3000.0, (
         "a November bill and a July bill were charged against June"
@@ -227,8 +229,8 @@ def test_july_is_charged_for_the_quarterly_premium_once(slow_bills) -> None:
     forecast = forecast_month("2026-07", conn=slow_bills, today="2026-07-02")
 
     assert forecast["upcoming_bills_total"] == pytest.approx(
-        QUARTERLY_PREMIUM + RENT + 90.0
-    ), "July owes rent, hydro and the premium — nothing else"
+        QUARTERLY_PREMIUM + RENT + 90.0 + 15.0
+    ), "July owes rent, hydro, its subscription and the premium"
     due = {row["merchant"] for row in forecast["upcoming_bills"]}
     assert "INVENTED INSURANCE CO" in due
     assert "INVENTED CITY PROPERTY TAX" not in due
@@ -261,13 +263,14 @@ def test_the_full_occurrence_and_the_monthly_reserve_are_never_both_charged(
 
     # July carries the invoice at face value and nothing on top of it.
     assert july["upcoming_bills_total"] == pytest.approx(
-        QUARTERLY_PREMIUM + RENT + 90.0
+        QUARTERLY_PREMIUM + RENT + 90.0 + 15.0
     )
-    # June carries neither the invoice nor the reserve.
-    assert june["upcoming_bills_total"] == pytest.approx(0.0)
+    # June carries neither the invoice nor the reserve; only its subscription.
+    assert june["upcoming_bills_total"] == pytest.approx(15.0)
     assert june["projected_spending"] == pytest.approx(
         june["fixed_paid_so_far"] + june["flexible_so_far"]
-        + june["projected_remaining_flexible"], abs=0.02,
+        + june["projected_remaining_flexible"]
+        + june["upcoming_bills_total"], abs=0.02,
     )
 
 

@@ -347,8 +347,11 @@ def bills_and_commitments(conn: Optional[sqlite3.Connection] = None) -> dict:
     today = date.today()
 
     sub = subscription_detective(conn=conn) or {}
-    sub_active   = list(sub.get("active_candidates")  or [])
-    sub_stale    = list(sub.get("stale_candidates")   or [])
+    # Plan reserves every active subscription. ``active_candidates`` is only
+    # the cancellation-review shortlist, so a steady unchanged service can be
+    # active without appearing there.
+    sub_active   = list(sub.get("active_subs")  or [])
+    sub_stale    = list(sub.get("stale_subs")   or [])
     rec          = recurring_merchants(min_months=3, conn=conn) or []
     recurring_preferences = {
         str(row["merchant_normalized"]): dict(row)

@@ -53,10 +53,10 @@ def test_missing_card_balance_falls_back_to_flow_number(ledger_db):
     )
     upsert_monthly_plan({
         "month": "2026-07", "mode": "normal",
-        "income_target": 5000, "spending_target": 3490,
-        "fixed_obligations": 1890, "flexible_allowance": 1600,
+        "income_target": 5000, "spending_target": 3505,
+        "fixed_obligations": 1905, "flexible_allowance": 1600,
         "savings_target": 750, "safety_buffer": 250,
-        "detected_commitments_at_save": 1890,
+        "detected_commitments_at_save": 1905,
         "fixed_override_reason": "",
     }, conn=ledger_db)
     ledger_db.commit()
@@ -280,3 +280,12 @@ def test_insights_has_one_income_card_and_inline_review_controls():
     assert "Exclude" in source
     assert "Automatic" in source
     assert "Not recurring" in source
+
+    settings = (
+        Path(__file__).resolve().parents[1]
+        / "desktop" / "src" / "SettingsView.tsx"
+    ).read_text(encoding="utf-8")
+    assert "Use as stable income" not in settings
+    assert "Exclude from stable income" not in settings
+    assert "Use as income" in settings
+    assert "Excluded from planning income" in settings

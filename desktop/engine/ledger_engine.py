@@ -3129,14 +3129,14 @@ def upcoming_money_action(params: dict[str, Any]) -> dict[str, Any]:
     asking what is coming means the calendar rather than the last day their
     statements happen to reach.
     """
-    from utils.upcoming import upcoming_money
+    from utils.upcoming import HORIZON_DAYS, upcoming_money
 
     conn = _connection()
     try:
         return upcoming_money(
             conn=conn,
             today=params.get("as_of_date") or None,
-            horizon_days=int(params.get("horizon_days") or 35),
+            horizon_days=int(params.get("horizon_days") or HORIZON_DAYS),
         )
     finally:
         conn.close()

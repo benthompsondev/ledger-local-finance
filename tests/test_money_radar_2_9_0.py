@@ -67,7 +67,131 @@ def _labels(result, kind=None):
     ]
 
 
+def _fast_rhythm(db, merchant, *, gap_days, count, last, amount, category):
+    """A weekly/fortnightly habit ending shortly before the Radar window."""
+    when = last
+    for _ in range(count):
+        add_tx(db, day=when.isoformat(), desc=merchant, amount=amount,
+               direction="debit", category=category)
+        when -= timedelta(days=gap_days)
+
+
 # ── the window itself ───────────────────────────────────────────────────
+
+
+def test_radar_shows_obligations_not_repeat_shopping_habits(ledger_db):
+    """Cadence is evidence of repetition, not evidence that money is owed.
+
+    This reproduces the installed 2.9.0 failure with invented data: ordinary
+    restaurant, grocery and delivery habits all have clean rhythms, but none
+    is a future financial obligation. Real fixed bills, subscriptions and
+    payroll remain useful. Incidental interest and refunds do not become
+    paydays merely because their dates happen to repeat.
+    """
+    _fast_rhythm(
+        ledger_db, "BISTRO HABIT", gap_days=14, count=7,
+        last=TODAY - timedelta(days=5), amount=42.0,
+        category="Food & Convenience",
+    )
+    _fast_rhythm(
+        ledger_db, "WAREHOUSE SHOP", gap_days=7, count=10,
+        last=TODAY - timedelta(days=2), amount=135.0,
+        category="Groceries",
+    )
+    _bill(
+        ledger_db, "DELIVERY HABIT", day=25, months=7, amount=38.0,
+        category="Food & Convenience",
+    )
+
+    _bill(ledger_db, "CITY UTILITY", day=20, months=8, amount=96.0)
+    _bill(
+        ledger_db, "STREAMING SERVICE", day=28, months=8, amount=17.0,
+        category="Subscriptions & Digital",
+    )
+    _bill(
+        ledger_db, "HOME LOAN", day=27, months=10, amount=1750.0,
+        category="Housing / Mortgage",
+    )
+    _payroll(ledger_db, desc="EXPECTED PAYROLL", amount=2400.0)
+
+    interest_day = date(2026, 8, 15)
+    for _ in range(7):
+        add_tx(
+            ledger_db, day=interest_day.isoformat(),
+            desc="SMALL INTEREST CREDIT", amount=0.83,
+            direction="credit", category="Interest Income",
+        )
+        previous = interest_day.month - 2
+        interest_day = date(
+            interest_day.year + previous // 12,
+            previous % 12 + 1,
+            15,
+        )
+    add_tx(
+        ledger_db, day=(TODAY - timedelta(days=9)).isoformat(),
+        desc="ONE OFF REFUND", amount=64.0,
+        direction="credit", category="Refund / Credit",
+    )
+
+    result = _radar(ledger_db)
+    bill_labels = set(_labels(result, "bill"))
+    income_labels = set(_labels(result, "income"))
+
+    assert not {
+        "BISTRO HABIT", "WAREHOUSE SHOP", "DELIVERY HABIT",
+    } & bill_labels
+    assert {
+        "CITY UTILITY", "STREAMING SERVICE", "HOME LOAN",
+    } <= bill_labels
+    assert "EXPECTED PAYROLL" in income_labels
+    assert "SMALL INTEREST CREDIT" not in income_labels
+    assert "ONE OFF REFUND" not in income_labels
+    assert result["horizon_days"] == 28
+    assert all(item["expected_date"] >= TODAY.isoformat()
+               for item in result["items"])
+    assert result["expected_out_total"] == pytest.approx(sum(
+        item["amount"] for item in result["items"]
+        if item["kind"] == "bill"
+    ))
+    assert result["expected_in_total"] == pytest.approx(sum(
+        item["amount"] for item in result["items"]
+        if item["kind"] == "income"
+    ))
+
+
+def test_confirmed_repeat_spending_is_not_mistaken_for_an_obligation(ledger_db):
+    from utils.database import set_recurring_preference
+
+    _fast_rhythm(
+        ledger_db, "CONFIRMED MEAL PLAN", gap_days=14, count=7,
+        last=TODAY - timedelta(days=5), amount=60.0,
+        category="Food & Convenience",
+    )
+    ledger_db.commit()
+    set_recurring_preference(
+        "CONFIRMED MEAL PLAN", "recurring", conn=ledger_db,
+    )
+
+    result = _radar(ledger_db)
+
+    assert "CONFIRMED MEAL PLAN" not in _labels(result, "bill")
+
+
+def test_category_corrected_recurring_cost_can_become_an_obligation(ledger_db):
+    from utils.database import set_recurring_preference
+
+    _fast_rhythm(
+        ledger_db, "CORRECTED UTILITY", gap_days=30, count=7,
+        last=TODAY - timedelta(days=5), amount=60.0,
+        category="Food & Convenience",
+    )
+    ledger_db.commit()
+    set_recurring_preference(
+        "CORRECTED UTILITY", "recurring", display_name="Corrected Utility",
+        category="Utilities / Bills", conn=ledger_db,
+    )
+
+    assert "Corrected Utility" in _labels(_radar(ledger_db), "bill")
 
 def test_an_empty_database_offers_nothing_and_says_why(ledger_db):
     result = upcoming_money(conn=ledger_db, today=TODAY)
@@ -84,7 +208,7 @@ def test_the_window_runs_from_the_real_day_not_the_last_statement(ledger_db):
     result = _radar(ledger_db)
 
     assert result["window_start"] == TODAY.isoformat()
-    assert result["window_end"] == (TODAY + timedelta(days=35)).isoformat()
+    assert result["window_end"] == (TODAY + timedelta(days=28)).isoformat()
     assert result["data_through"] < result["window_start"]
     assert result["data_age_days"] > 0
 
@@ -288,6 +412,28 @@ def test_an_income_source_marked_no_is_not_drawn_as_a_payday(ledger_db):
     assert any("PAYROLL" in label for label in labels)
 
 
+def test_a_non_payroll_source_needs_use_as_income_before_it_is_drawn(
+        ledger_db):
+    from utils.database import set_income_source_preference
+
+    when = date(2026, 8, 15)
+    for _ in range(7):
+        add_tx(
+            ledger_db, day=when.isoformat(), desc="MONTHLY INTEREST",
+            amount=25.0, direction="credit", category="Interest Income",
+        )
+        previous = when.month - 2
+        when = date(when.year + previous // 12, previous % 12 + 1, 15)
+    ledger_db.commit()
+
+    assert "MONTHLY INTEREST" not in _labels(_radar(ledger_db), "income")
+
+    set_income_source_preference(
+        "MONTHLY INTEREST", "confirmed", conn=ledger_db,
+    )
+    assert "MONTHLY INTEREST" in _labels(_radar(ledger_db), "income")
+
+
 def test_an_expected_payday_shows_what_its_figure_came_from(ledger_db):
     """An amount with nothing behind it has to be taken on faith, and this
     one is a guess about a date that has not happened."""
@@ -355,10 +501,8 @@ def test_stale_data_is_disclosed_and_lowers_confidence(ledger_db):
             assert ranks[item["confidence"]] <= ranks[match[0]["confidence"]]
 
 
-def test_a_charge_the_statements_should_have_caught_is_marked_not_seen(
-        ledger_db):
-    """The only honest form of "missing": the import covers the date and the
-    charge is not in it."""
+def test_a_past_due_guess_never_appears_in_the_forward_radar(ledger_db):
+    """Missed-bill detection is separate from what is likely coming next."""
     when = date(TODAY.year, TODAY.month, 2)
     for _ in range(8):
         add_tx(ledger_db, day=when.isoformat(), desc="EARLY BILL",
@@ -370,28 +514,19 @@ def test_a_charge_the_statements_should_have_caught_is_marked_not_seen(
            desc="CORNER MARKET", amount=11.0, direction="debit",
            category="Food & Convenience")
     result = _radar(ledger_db)
-    early = [i for i in result["items"] if i["label"] == "EARLY BILL"]
-
-    if early:
-        flagged = [i for i in early if i["not_seen_yet"]]
-        assert not flagged or flagged[0]["expected_date"] < TODAY.isoformat()
+    assert all(item["expected_date"] >= TODAY.isoformat()
+               for item in result["items"])
 
 
-def test_a_gap_after_the_statements_end_is_never_called_missing(ledger_db):
-    """Between the data cutoff and today, nothing is knowable. Calling that
-    a missed charge turns a stale import into a false alarm."""
+def test_a_gap_after_the_statements_end_stays_out_of_the_forward_radar(
+        ledger_db):
+    """Unknown history is omitted rather than promoted to a missed bill."""
     _bill(ledger_db, "HYDRO CO", day=24, months=8)
     ledger_db.commit()
     reset_supported_bounds_cache()
     result = upcoming_money(conn=ledger_db, today=TODAY + timedelta(days=40))
-    through = result["data_through"]
-
-    for item in result["items"]:
-        if item["not_seen_yet"]:
-            assert item["expected_date"] < through, (
-                f"{item['label']} called missing for a date the statements "
-                "never reached"
-            )
+    assert all(item["expected_date"] >= result["window_start"]
+               for item in result["items"])
 
 
 # ── what the radar refuses to say ───────────────────────────────────────

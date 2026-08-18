@@ -25,21 +25,19 @@ function dayLabel(iso: string): string {
 /**
  * Three buckets, not five. Grouping strictly by calendar week gave a heading
  * for every one or two rows, which is more furniture than structure over a
- * five-week window.
+ * four-week window.
  */
 function bucketOf(iso: string, todayIso: string): string {
   const days = Math.round(
     (new Date(`${iso}T00:00:00`).getTime()
       - new Date(`${todayIso}T00:00:00`).getTime()) / DAY_MS,
   );
-  if (days < 0) return "Already due";
   if (days <= 6) return "This week";
   if (days <= 13) return "Next week";
   return "Later this window";
 }
 
-const BUCKET_ORDER = ["Already due", "This week", "Next week",
-                      "Later this window"];
+const BUCKET_ORDER = ["This week", "Next week", "Later this window"];
 
 function EventRow({
   item, onDrill,
@@ -61,7 +59,6 @@ function EventRow({
         <span className="radar-what">
           {item.label}
           <small>
-            {item.not_seen_yet && "not seen yet · "}
             {item.cadence_note} · {item.confidence}
           </small>
         </span>
@@ -135,7 +132,7 @@ function Timeline({ data }: { data: UpcomingMoney }) {
             y={income ? axis - height : axis}
             width="0.9"
             height={height}
-            className={`radar-mark${income ? " income" : ""}${item.not_seen_yet ? " missed" : ""}`}
+            className={`radar-mark${income ? " income" : ""}`}
           />
         );
       })}
@@ -177,8 +174,8 @@ export function MoneyRadar({
         <div>
           <h3>The next few weeks</h3>
           <p className="chart-explainer">
-            Recurring money Northstar recognises from your statements, placed
-            on the dates its rhythm suggests. These are expectations, not
+            Bills and paydays Northstar has strong reason to expect, placed on
+            the dates their rhythm suggests. These are expectations, not
             scheduled payments.
           </p>
         </div>
@@ -206,7 +203,7 @@ export function MoneyRadar({
         <div>
           <span>Expected out</span>
           <strong>{money(data.expected_out_total)}</strong>
-          <small>{data.bill_count} recurring cost{data.bill_count === 1 ? "" : "s"}</small>
+          <small>{data.bill_count} bill{data.bill_count === 1 ? "" : "s"}</small>
         </div>
       </div>
 
