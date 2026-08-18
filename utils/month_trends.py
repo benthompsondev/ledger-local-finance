@@ -444,6 +444,116 @@ def small_spend_accumulation(conn=None, share_view: str = "personal") -> dict:
             c.close()
 
 
+# ── 4. what finished months kept, as a level rather than a pair ──────────
+
+def kept_trend(conn=None, share_view: str = "personal",
+               window: int = MAX_DRIFT_WINDOW) -> dict:
+    """Whether what you keep each month has moved to a different level.
+
+    ``month_difference`` answers "why was last month different from the one
+    before". This answers the larger question behind it: has anything
+    actually changed, or were those two months just two months.
+
+    Same shape of test as ``category_drift_across_months``, applied to what
+    each finished month kept, and with the same consistency rule: every
+    recent month has to sit on the correct side of the earlier average. Two
+    good months and one bad one is not a change of level.
+    """
+    c, opened = _conn(conn)
+    try:
+        from utils.insights import monthly_aggregates
+
+        rows = {
+            row["month"]: row for row in monthly_aggregates(
+                conn=c, share_view=share_view)
+            if row.get("complete")
+        }
+        months = [m for m in _complete_months(c) if m in rows]
+        if len(months) < MIN_COMPLETE_MONTHS_FOR_DRIFT:
+            return _unavailable(
+                f"Needs {MIN_COMPLETE_MONTHS_FOR_DRIFT} finished months to "
+                f"tell a change of level from a good month; there are "
+                f"{len(months)}.", complete_months=len(months),
+            )
+        used = months[-max(MIN_COMPLETE_MONTHS_FOR_DRIFT, int(window)):]
+        split = len(used) // 2
+        earlier, recent = used[:split], used[split:]
+
+        kept = [round(float(rows[m]["net"]), 2) for m in used]
+        earlier_values, recent_values = kept[:split], kept[split:]
+        earlier_avg = sum(earlier_values) / len(earlier_values)
+        recent_avg = sum(recent_values) / len(recent_values)
+        delta = recent_avg - earlier_avg
+
+        incomes = [round(float(rows[m]["income"]), 2) for m in used]
+        spends = [round(float(rows[m]["spending"]), 2) for m in used]
+        reference_income = max(incomes) if incomes else 0.0
+        threshold = max(DIFFERENCE_MIN_DOLLARS,
+                        reference_income * DIFFERENCE_MIN_INCOME_SHARE)
+        if abs(delta) < threshold:
+            return _unavailable(
+                "What these months kept has stayed within "
+                f"{threshold:,.0f} dollars of the same level.",
+                complete_months=len(months), months_used=used,
+                delta_per_month=round(delta, 2),
+            )
+        if delta > 0 and min(recent_values) <= earlier_avg:
+            return _unavailable(
+                "One good month, not a change of level: at least one recent "
+                "month came in below the earlier average.",
+                complete_months=len(months), months_used=used,
+                delta_per_month=round(delta, 2),
+            )
+        if delta < 0 and max(recent_values) >= earlier_avg:
+            return _unavailable(
+                "One poor month, not a change of level: at least one recent "
+                "month came in above the earlier average.",
+                complete_months=len(months), months_used=used,
+                delta_per_month=round(delta, 2),
+            )
+
+        def mean(values: list[float]) -> float:
+            return round(sum(values) / len(values), 2) if values else 0.0
+
+        earlier_income, recent_income = mean(incomes[:split]), mean(incomes[split:])
+        earlier_spend, recent_spend = mean(spends[:split]), mean(spends[split:])
+        return {
+            "available": True,
+            "reason": "",
+            "direction": "higher" if delta > 0 else "lower",
+            "earlier_average": round(earlier_avg, 2),
+            "recent_average": round(recent_avg, 2),
+            "delta_per_month": round(delta, 2),
+            "delta_total": round(delta * len(recent_values), 2),
+            "earlier_months": list(earlier),
+            "recent_months": list(recent),
+            "months": [
+                {"month": month, "kept": value,
+                 "block": "recent" if month in recent else "earlier"}
+                for month, value in zip(used, kept)
+            ],
+            "months_used": len(used),
+            "contiguous": all(
+                _adjacent(used[i], used[i + 1]) for i in range(len(used) - 1)
+            ),
+            # Which side of the equation moved, so the card can say whether
+            # this was earning more or spending less rather than implying it.
+            "income_delta": round(recent_income - earlier_income, 2),
+            "spending_delta": round(recent_spend - earlier_spend, 2),
+            "earlier_income": earlier_income,
+            "recent_income": recent_income,
+            "earlier_spending": earlier_spend,
+            "recent_spending": recent_spend,
+            "income_moved": abs(recent_income - earlier_income)
+            >= INCOME_NOISE_FLOOR,
+            "complete_months": len(months),
+            "share_view": share_view,
+        }
+    finally:
+        if opened:
+            c.close()
+
+
 def latest_complete_month(conn=None) -> Optional[str]:
     """The last finished month, for callers that only need the anchor."""
     c, opened = _conn(conn)
@@ -459,5 +569,6 @@ __all__ = [
     "category_drift_across_months",
     "month_difference",
     "small_spend_accumulation",
+    "kept_trend",
     "latest_complete_month",
 ]

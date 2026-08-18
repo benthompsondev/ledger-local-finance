@@ -15,7 +15,8 @@ import pytest
 from tests.conftest import add_tx, seed_month
 from utils.insight_feed import _EVIDENCE_CLASS, insight_feed
 from utils.month_trends import (
-    category_drift_across_months, month_difference, small_spend_accumulation,
+    category_drift_across_months, kept_trend, month_difference,
+    small_spend_accumulation,
 )
 
 MONTHS_SIX = ("2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06")
@@ -465,6 +466,244 @@ def test_a_broken_finished_month_detector_cannot_take_down_the_feed(
 
     assert isinstance(feed["concerns"], list)
     assert isinstance(feed["also_noticed"], list)
+
+
+# ── 5. what several finished months kept ────────────────────────────────
+
+def test_keeping_more_for_three_months_running_is_found(ledger_db):
+    _seed_months(ledger_db, {
+        "2026-01": 700, "2026-02": 680, "2026-03": 720,
+        "2026-04": 150, "2026-05": 140, "2026-06": 160,
+    })
+    result = kept_trend(conn=ledger_db)
+
+    assert result["available"], result["reason"]
+    assert result["direction"] == "higher"
+    assert result["delta_per_month"] > 0
+    # And it says which side moved, which is the useful half.
+    assert result["income_moved"] is False
+    assert result["spending_delta"] < 0
+    assert len(result["recent_months"]) == 3
+
+
+def test_keeping_less_for_three_months_running_is_found(ledger_db):
+    _seed_months(ledger_db, {
+        "2026-01": 150, "2026-02": 140, "2026-03": 160,
+        "2026-04": 700, "2026-05": 680, "2026-06": 720,
+    })
+    result = kept_trend(conn=ledger_db)
+
+    assert result["available"], result["reason"]
+    assert result["direction"] == "lower"
+    assert result["delta_per_month"] < 0
+
+
+def test_the_kept_figures_are_the_canonical_monthly_ones(ledger_db):
+    from utils.insights import monthly_aggregates
+
+    _seed_months(ledger_db, {
+        "2026-01": 700, "2026-02": 680, "2026-03": 720,
+        "2026-04": 150, "2026-05": 140, "2026-06": 160,
+    })
+    result = kept_trend(conn=ledger_db)
+    months = {row["month"]: row for row in monthly_aggregates(conn=ledger_db)}
+
+    for row in result["months"]:
+        assert row["kept"] == pytest.approx(months[row["month"]]["net"], abs=0.02)
+
+
+def test_one_good_month_is_not_a_change_of_level(ledger_db):
+    """Two ordinary months and one very good one is not "keeping more".
+
+    The averages clear the materiality gate comfortably here. It is the
+    consistency rule that has to reject this, which is the whole point.
+    """
+    _seed_months(ledger_db, {
+        "2026-01": 900, "2026-02": 900, "2026-03": 900,
+        "2026-04": 900, "2026-05": 900, "2026-06": 0,
+    })
+    result = kept_trend(conn=ledger_db)
+
+    assert result["available"] is False
+    assert "not a change of level" in result["reason"]
+    assert abs(result["delta_per_month"]) > 250, (
+        "this profile no longer tests the consistency rule"
+    )
+
+
+def test_months_that_kept_about_the_same_are_not_reported(ledger_db):
+    _seed_months(ledger_db, {
+        "2026-01": 400, "2026-02": 410, "2026-03": 390,
+        "2026-04": 420, "2026-05": 400, "2026-06": 405,
+    })
+    result = kept_trend(conn=ledger_db)
+
+    assert result["available"] is False
+    assert "same level" in result["reason"]
+
+
+def test_three_finished_months_cannot_show_a_change_of_level(ledger_db):
+    _seed_months(ledger_db, {"2026-04": 700, "2026-05": 150, "2026-06": 140})
+    result = kept_trend(conn=ledger_db)
+
+    assert result["available"] is False
+    assert result["complete_months"] == 3
+
+
+def test_keeping_more_is_good_news_and_carries_no_transaction_button(ledger_db):
+    """No filter can represent "what six months kept", so none is offered."""
+    _seed_months(ledger_db, {
+        "2026-01": 700, "2026-02": 680, "2026-03": 720,
+        "2026-04": 150, "2026-05": 140, "2026-06": 160,
+    })
+    feed = insight_feed(conn=ledger_db)
+    good = ([feed["positive"]] if feed["positive"] else []) + [
+        c for c in feed["also_noticed"] if c["tone"] == "good"
+    ]
+    card = next(c for c in good if c["kind"] == "kept_trend")
+
+    assert feed["positive"] is not None
+    assert feed["positive"]["tone"] == "good"
+    assert card["drill"] is None
+    assert "kept more for 3 months running" in card["title"]
+
+
+def test_good_news_that_loses_the_slot_is_still_findable(ledger_db):
+    """Only one improvement is shown, but a second true one is not deleted."""
+    _seed_months(ledger_db, {
+        "2026-01": 700, "2026-02": 680, "2026-03": 720,
+        "2026-04": 150, "2026-05": 140, "2026-06": 160,
+    })
+    feed = insight_feed(conn=ledger_db)
+    good_kinds = {c["kind"] for c in
+                  ([feed["positive"]] if feed["positive"] else [])
+                  + [c for c in feed["also_noticed"] if c["tone"] == "good"]}
+
+    # Shopping fell and what the months kept rose. Both are true, both are
+    # good news, and one of them is the reason for the other.
+    assert {"category_drift", "kept_trend"} <= good_kinds
+
+
+def test_a_sustained_kept_trend_beats_a_two_month_difference(ledger_db):
+    """Both describe what the months kept. Only the stronger one is shown."""
+    _seed_months(ledger_db, {
+        "2026-01": 700, "2026-02": 680, "2026-03": 720,
+        "2026-04": 150, "2026-05": 140, "2026-06": 160,
+    })
+    feed = insight_feed(conn=ledger_db)
+    everywhere = feed["concerns"] + feed["also_noticed"] + (
+        [feed["positive"]] if feed["positive"] else [])
+    kept_cards = [c for c in everywhere if c.get("subject") == "kept"]
+
+    assert len(kept_cards) == 1, "the same run of months was reported twice"
+    assert kept_cards[0]["kind"] == "kept_trend"
+
+
+# ── 6. every detector, on a profile with everything in it ───────────────
+
+def _rich(db) -> None:
+    """Two years of activity carrying every pattern at once."""
+    import calendar
+    import datetime
+
+    shops = ["NORTHSIDE OUTFITTERS", "HARBOUR HOMEWARES", "LEDGER LANE BOOKS"]
+    snacks = ["CORNER MARKET", "PLATFORM COFFEE", "DEPOT SNACKS"]
+    months, year, month = [], 2024, 6
+    for _ in range(26):
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month, year = 1, year + 1
+    for index, label in enumerate(months):
+        spend = 210 if index < len(months) - 3 else 470
+        extra = [
+            dict(day=f"{label}-{6 + n * 6:02d}", desc=shops[n % 3],
+                 amount=round(spend / 3, 2), direction="debit",
+                 category="Shopping") for n in range(3)
+        ]
+        extra += [
+            dict(day=f"{label}-{2 + (n % 26):02d}", desc=snacks[n % 3],
+                 amount=round(9.4 + (n % 5) * 1.35, 2), direction="debit",
+                 category="Food & Convenience") for n in range(19)
+        ]
+        # A subscription that puts its price up partway through.
+        extra.append(dict(
+            day=f"{label}-14", desc="STREAMPLUS", direction="debit",
+            amount=11.99 if label < "2026-03" else 14.49,
+            category="Subscriptions & Digital"))
+        y, m = int(label[:4]), int(label[5:7])
+        for day in range(1, calendar.monthrange(y, m)[1] + 1):
+            if datetime.date(y, m, day).weekday() >= 5:
+                extra.append(dict(day=f"{label}-{day:02d}",
+                                  desc="WEEKEND BISTRO", amount=52.0,
+                                  direction="debit", category="Entertainment"))
+        seed_month(db, label, extra=extra)
+
+
+def test_no_detector_raises_on_a_profile_that_triggers_everything(ledger_db):
+    """The feed swallows detector exceptions so one bug cannot blank the page.
+
+    That guard is right and it is also a place for a dead detector to hide.
+    Two did: the recurring price card read keys its own producer has never
+    returned, and the kept-trend card referenced a constant from another
+    module. Both raised on every call and neither was ever shown.
+    """
+    import utils.insight_feed as module
+
+    _rich(ledger_db)
+    detectors = set(module._CONCERN_DETECTORS) | set(
+        module._POSITIVE_ONLY_DETECTORS)
+
+    for detector in sorted(detectors, key=lambda f: f.__name__):
+        found = detector(ledger_db, "personal")   # must not raise
+        if found is None:
+            continue
+        assert found["title"] and "$" in found["claim"]
+        assert found["basis"] and found["figure"] is not None
+
+
+def test_every_card_that_offers_transactions_can_honestly_filter_to_them(
+        ledger_db):
+    """A button that lands somewhere other than the claim is worse than none."""
+    _rich(ledger_db)
+    feed = insight_feed(conn=ledger_db)
+    cards = feed["concerns"] + feed["also_noticed"] + (
+        [feed["positive"]] if feed["positive"] else [])
+
+    assert cards
+    for card in cards:
+        drill = card["drill"]
+        if drill is None:
+            # Only claims no single filter can express may skip the button.
+            assert card["kind"] in {"weekday_pattern", "year_ago", "kept_trend"}
+            continue
+        assert drill.get("category") or drill.get("merchant"), (
+            f"{card['kind']} offers a button with nothing to filter on"
+        )
+        # A dated claim must carry its dates; a price history is deliberately
+        # unbounded, because the evidence is the whole run of charges.
+        if card["kind"] != "price_rise":
+            assert drill.get("start_date") and drill.get("end_date"), (
+                f"{card['kind']} would open an unbounded list"
+            )
+            assert drill["start_date"] <= drill["end_date"]
+
+
+def test_no_card_shows_a_raw_database_date(ledger_db):
+    """"Against 2025-07" is the database talking, not Northstar."""
+    import re
+
+    _rich(ledger_db)
+    feed = insight_feed(conn=ledger_db)
+    cards = feed["concerns"] + feed["also_noticed"] + (
+        [feed["positive"]] if feed["positive"] else [])
+
+    raw = re.compile(r"\d{4}-\d{2}(-\d{2})?")
+    for card in cards:
+        for field in ("title", "claim", "figure_caption", "evidence_note"):
+            assert not raw.search(card[field] or ""), (
+                f"{card['kind']} shows a raw date in {field}: {card[field]}"
+            )
 
 
 def test_an_empty_database_says_so_rather_than_guessing(ledger_db):

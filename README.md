@@ -36,7 +36,7 @@ and run it. That is the whole thing. You do not need Python, Node or Rust to
 use Northstar; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.7.2_x64-setup.exe
+NorthstarLedger_2.8.0_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,11 +58,13 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.7.2. Windows public beta.** It works, it is tested, and it
-is still a beta. This release fixes Plan saving: one consistent definition of
-monthly income, so a valid plan is no longer refused by a hidden second
-calculation, and the figures Northstar works out are clearly separated from
-the amounts you choose.
+**Current release: 2.8.0. Windows public beta.** It works, it is tested, and it
+is still a beta. This release is about Insights finding things you would not
+go looking for. It reads your finished months as a run instead of one at a
+time, so it can tell you when a category has moved to a new level, when what
+you keep each month has changed, and what made the last finished month
+different from the one before. Every observation shows the figures behind it
+and takes you to the transactions that back it up.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
@@ -90,7 +92,7 @@ There are six tabs:
 | **Home** | The weekly check-in. Safe to Spend, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
-| **Insights** | Spending pace, category movement, income steadiness, cashflow, and monthly net worth. |
+| **Insights** | What Northstar noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 

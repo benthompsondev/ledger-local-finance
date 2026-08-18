@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.8.0 - 2026-08-17
+
+Insights notices more, and shows its working.
+
+### What changed
+
+- Insights opens with what Northstar noticed. Those observations used to
+  appear only on Home, well down the page, with no way to see what was
+  behind them.
+- Northstar now reads your finished months as a run instead of one at a
+  time, so it can tell a level that moved from one expensive month. It
+  notices a category that has run higher or lower for several months in a
+  row, a change in what you keep each month, and what made the last finished
+  month different from the one before it.
+- It also notices money leaving in amounts too small to spot one at a time,
+  and only mentions it when the total is a real share of what you spent that
+  month.
+- Improvements get the same treatment. A category that has stayed below its
+  old level, or a few months of keeping more, need the same evidence as
+  anything going the wrong way. No scores, streaks or congratulations.
+- Every observation shows the figures it came from, how many months it used
+  and what it left out. Most of them open the exact transactions behind the
+  claim.
+- You get the few strongest observations, not all of them. The rest are one
+  click away, and the same finding can no longer show up twice under two
+  different titles.
+- Home now shows the two strongest headlines and a link through to the rest
+  instead of repeating the whole thing.
+- Fixed an observation about recurring costs that could never appear. It
+  asked the engine for figures under the wrong names, so it failed every
+  time it ran, and the safeguard that stops one broken observation blanking
+  the page had been quietly hiding it.
+
 ## 2.7.2 - 2026-08-17
 
 Plan saves again.

@@ -550,6 +550,9 @@ export interface Insight {
   } | null;
   transaction_ids?: number[];
   superseded_by?: string;
+  /** What this finding is about. Two cards sharing a subject are the same
+   *  news, and only the better-evidenced one is shown. */
+  subject?: string;
   category?: string;
   merchant?: string;
   days?: DayOfWeekRow[];

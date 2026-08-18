@@ -5,7 +5,7 @@ import {
   CashflowChart, CategoryBars, CategoryDonut, IncomeSourceDonut,
   IncomeSteadiness, PaceChart, paceComparisonNote,
 } from "./charts";
-import { money } from "./money";
+import { money, moneyCents } from "./money";
 import {
   readAnalysisPeriod, readChartPeriod, saveAnalysisPeriod, saveChartPeriod,
   readHomeSecondary,
@@ -100,6 +100,17 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
     }),
     [dashboard, onDrill],
   );
+
+  // Home gets the two strongest headlines. Insights gets the same findings
+  // with their working and their transactions, so the split is "there is
+  // something to look at" here and "here is what it was" there.
+  const noticedCount = feed
+    ? feed.concerns.length + (feed.positive ? 1 : 0)
+      + (feed.also_noticed?.length ?? 0)
+    : 0;
+  const teasers = feed
+    ? [...feed.concerns, ...(feed.positive ? [feed.positive] : [])].slice(0, 2)
+    : [];
 
   const changeChartPeriod = (value: ChartPeriod) => {
     setChartPeriod(value);
@@ -244,36 +255,44 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
             {packet.safe_to_spend.available && packet.safe_to_spend.reserved.basis === "flow" && <details className="formula-details" open><summary>Why this number?</summary><div className="formula-list"><span>Typical monthly income <strong>{money(packet.safe_to_spend.reserved.reliable_income||0)}</strong></span><span>− Recurring commitments <strong>−{money(packet.safe_to_spend.reserved.recurring_commitments||0)}</strong></span><span>− Savings target <strong>−{money(packet.safe_to_spend.reserved.savings_target||0)}</strong></span>{(packet.safe_to_spend.reserved.buffer||0)>0&&<span>− Safety buffer <strong>−{money(packet.safe_to_spend.reserved.buffer||0)}</strong></span>}<span className="formula-subtotal">Monthly everyday plan <strong>{money(packet.safe_to_spend.reserved.monthly_plan||0)}</strong></span><span>− Everyday spending so far this month <strong>−{money(packet.safe_to_spend.reserved.flexible_spent||0)}</strong></span><span className="formula-total">Left for everyday spending <strong>{money(packet.safe_to_spend.amount)}</strong></span></div><p className="guidance">Typical monthly income: {packet.safe_to_spend.reserved.income_basis_label||"median of your complete months"}. Recurring bills are already set aside, so they are not counted again in spending so far. Add account balances to check this against real cash.</p></details>}{packet.safe_to_spend.available && packet.safe_to_spend.reserved.basis !== "flow" && <details className="formula-details"><summary>Why this number?</summary><div className="formula-list"><span>Flexible allowance remaining <strong>{money(packet.safe_to_spend.reserved.flexible_remaining||0)}</strong></span><span>Cash cushion after bills <strong>{money(packet.safe_to_spend.reserved.cash_cushion_after_bills||0)}</strong></span><span className="formula-total">Safe now is the lower amount <strong>{money(packet.safe_to_spend.amount)}</strong></span></div><p className="guidance">Cash cushion uses current spendable balances minus complete card liabilities, unpaid confirmed bills, savings still to contribute, and the safety buffer. It is context, not extra spending permission.</p>{packet.safe_to_spend.reserved.reconciliation?.accounts?.map(account=><p className="guidance" key={`${account.account_ref}-${account.account_name}`}>{account.account_name}: balance as of {account.as_of_date||"not entered"}{account.last_activity?` · transactions through ${account.last_activity}`:""}.</p>)}{(packet.safe_to_spend.reserved.excluded_balance||0)>0&&<p className="guidance">{money(packet.safe_to_spend.reserved.excluded_balance||0)} in protected savings or other accounts is not included.</p>}{(packet.safe_to_spend.reserved.future_income_forecast||0)>0&&<p className="guidance">{money(packet.safe_to_spend.reserved.future_income_forecast||0)} of planned income has not arrived. It is forecast separately and is not included here.</p>}</details>}
           </article>
 
-          {feed && (feed.concerns.length > 0 || feed.positive) && <article className="chart-card">
+          {/* Teasers, not the experience. Insights has the same findings
+              with their working, their evidence and a way into the
+              transactions; repeating that here would mean the same three
+              cards twice, and Home would stop being a check-in. Two lines,
+              the headline and its figure, and a way through. */}
+          {feed && teasers.length > 0 && <article className="chart-card">
             <div className="chart-card-head">
               <div>
                 <h3>What Northstar noticed</h3>
                 <p className="chart-explainer">
-                  Worked out from your imported transactions. Open Coach to
-                  have any of these explained.
+                  Worked out from your imported transactions.
                 </p>
               </div>
+              <button className="ghost-button" type="button"
+                onClick={() => onNavigate("insights")}>
+                {noticedCount > teasers.length
+                  ? `See all ${noticedCount} in Insights`
+                  : "See these in Insights"}
+              </button>
             </div>
             <div className="insight-list">
-              {feed.concerns.slice(0, 2).map((insight) => (
-                <article className="insight-card" key={insight.id}>
+              {teasers.map((insight) => (
+                <article
+                  className={`insight-card teaser${insight.tone === "good" ? " good" : ""}`}
+                  key={insight.id}>
                   <h4>{insight.title}</h4>
-                  <p className="insight-claim">{insight.claim}</p>
-                  {insight.drill && <div className="insight-meta">
-                    <button type="button" className="link-button"
-                      onClick={() => onDrill({
-                        category: insight.drill?.category,
-                        search: insight.drill?.merchant,
-                        startDate: insight.drill?.start_date,
-                        endDate: insight.drill?.end_date,
-                      })}>Show the transactions</button>
-                  </div>}
+                  {insight.figure != null && insight.figure_kind !== "" && (
+                    <p className="teaser-figure">
+                      <strong>
+                        {insight.figure_kind === "count"
+                          ? String(insight.figure)
+                          : moneyCents(Math.abs(insight.figure))}
+                      </strong>
+                      <span>{insight.figure_caption}</span>
+                    </p>
+                  )}
                 </article>
               ))}
-              {feed.positive && <article className="insight-card good">
-                <h4>{feed.positive.title}</h4>
-                <p className="insight-claim">{feed.positive.claim}</p>
-              </article>}
             </div>
           </article>}
 

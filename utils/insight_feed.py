@@ -51,6 +51,7 @@ MAX_ALSO_NOTICED = 4
 _WEIGHT = {
     "category_drift": 1.3,     # several finished months, consistent, actionable
     "price_rise": 1.3,         # exact, dated, and something you can cancel
+    "kept_trend": 1.25,        # the broadest true statement about a run of months
     "frequency_creep": 1.2,    # a habit, with the transactions to prove it
     "month_difference": 1.1,   # explains a real swing, less directly actionable
     "small_spend": 1.0,
@@ -71,6 +72,7 @@ _WEEKEND_DAYS_PER_MONTH = 8.7
 # the winner is shown, so this decides which claim gets made, not how many.
 _EVIDENCE_CLASS = {
     "category_drift": 2,      # several finished months, all pointing one way
+    "kept_trend": 2,          # several finished months, and the same rule
     "frequency_creep": 1,     # two equal windows, with the visits counted
     "month_difference": 1,    # two finished months, fully imported
 }
@@ -124,6 +126,13 @@ def _finding(kind: str, title: str, claim: str, *, impact: float,
         "rank": round(abs(float(impact)) * _WEIGHT.get(kind, 1.0), 4),
     }
     finding.update(extra)
+    # What this finding is *about*, which is what decides whether two cards
+    # are the same news. Usually the category; the whole-month cards share
+    # "kept", because "July kept less than June" and "you have kept less for
+    # three months running" are one story told at two lengths.
+    if not finding.get("subject"):
+        category = str(finding.get("category") or "")
+        finding["subject"] = f"category:{category}" if category else ""
     return finding
 
 
@@ -172,9 +181,9 @@ def _weekend_finding(c, share_view: str) -> Optional[dict]:
                  note="dearest day of the week"),
         ],
         evidence_note=(
-            f"{profile['lookback_days']} days to {profile['end']}. Reviewed "
-            "fixed commitments are left out, so a bill falling on a Tuesday "
-            "cannot make Tuesday look expensive."
+            f"{profile['lookback_days']} days to {_day(profile['end'])}. "
+            "Reviewed fixed commitments are left out, so a bill falling on a "
+            "Tuesday cannot make Tuesday look expensive."
         ),
         weekend_average=weekend,
         weekday_average=weekday,
@@ -192,7 +201,7 @@ def _frequency_finding(c, share_view: str) -> Optional[dict]:
     top = rows[0]
     return _finding(
         "frequency_creep",
-        f"{top['merchant']} costs more because you go more often",
+        f"More trips to {top['merchant']}, not bigger ones",
         f"You visited {top['merchant']} {top['now_visits']} times in the last "
         f"two months against {top['was_visits']} in the two before, and spent "
         f"{_money(top['delta'])} more. The basket barely moved "
@@ -246,14 +255,17 @@ def _usual_range_finding(c, share_view: str) -> Optional[dict]:
         f"{top['category']} is at {_money(top['current'])} through day "
         f"{top['through_day']}, against a usual "
         f"{_money(top['low'])} to {_money(top['high'])} at this point in the "
-        f"month. That is {_money(top['delta'])} above your typical "
-        f"{_money(top['typical'])}, measured over {top['months_used']} months.",
+        f"month. That is {_money(top['delta'])} more than usual by this "
+        f"point, measured over {top['months_used']} months.",
         impact=top["delta"],
         tone="watch",
         confidence="high" if top["months_used"] >= 6 else "medium",
         basis="patterns.category_usual_range",
         chart="category_range",
-        drill={"page": "transactions", "category": top["category"]},
+        # Bounded to the days the claim is actually about. Without the dates
+        # this opened the category's entire history, which is not the
+        # evidence for "so far this month".
+        drill=_month_to_date_drill(top),
         figure=top["delta"],
         figure_caption=(
             f"above your usual {_money(top['typical'])} by day "
@@ -261,13 +273,13 @@ def _usual_range_finding(c, share_view: str) -> Optional[dict]:
         ),
         evidence=[
             _row(f"{top['category']} so far", top["current"]),
-            _row("Usual by this day", top["typical"]),
-            _row("Usual range", top["low"],
-                 note=f"up to {_money(top['high'])}"),
+            _row("Usual by this day", top["typical"],
+                 note=f"{_money(top['low'])} to {_money(top['high'])} is normal"),
         ],
         evidence_note=(
             f"Compared against the same first {top['through_day']} days of "
-            f"{_plural(top['months_used'], 'earlier month')}."
+            f"{_plural(top['months_used'], 'earlier month')}. This month is "
+            "not finished, so it can still move."
         ),
         category=top["category"],
         detail=top,
@@ -285,44 +297,53 @@ def _price_change_finding(c, share_view: str) -> Optional[dict]:
         delta = float(change.get("delta") or 0)
         if delta <= 0:
             continue
-        per_year = delta * float(item.get("times_per_year") or 12)
+        # `annual_impact` comes from the cadence detector, which knows how
+        # often this merchant actually bills. Multiplying by twelve here was
+        # wrong for anything quarterly or annual, and it was reading keys
+        # (`previous`, `current`, `times_per_year`) that this producer has
+        # never returned, so every call raised and the feed's own
+        # never-take-the-page-down guard swallowed it. This card had never
+        # once been shown.
+        per_year = float(change.get("annual_impact") or delta * 12)
         changes.append((per_year, item, change))
     if not changes:
         return None
     changes.sort(reverse=True, key=lambda row: row[0])
     per_year, item, change = changes[0]
+    merchant = str(item.get("merchant") or "")
+    cadence = str(item.get("cadence") or "monthly")
+    previous = float(change.get("previous_amount") or 0)
+    current = float(change.get("current_amount") or 0)
+    changed_on = str(change.get("changed_on") or "")
     return _finding(
         "price_rise",
-        f"{item.get('merchant')} put its price up",
-        f"{item.get('merchant')} went from "
-        f"{_money(change.get('previous'))} to {_money(change.get('current'))} "
-        f"around {change.get('changed_on')}. At "
-        f"{item.get('cadence')} billing that is {_money(per_year)} more a year.",
+        f"{merchant} costs more than it used to",
+        f"{merchant} went from {_money(previous)} to {_money(current)} "
+        f"around {_day(changed_on)}, and has stayed there since. On "
+        f"{cadence} billing that is {_money(per_year)} a year at the new "
+        f"amount.",
         impact=per_year / 12,
         tone="watch",
         confidence="high",
         basis="recurring_cadence.merchant_cadences",
         chart="",
-        drill={"page": "transactions", "merchant": item.get("merchant")},
+        # Every charge, deliberately unbounded: the evidence for a price
+        # change is the run of amounts before and after it.
+        drill={"page": "transactions", "merchant": merchant},
         figure=round(float(change.get("delta") or 0), 2),
-        figure_caption=(
-            f"more per {item.get('cadence')} charge, {_money(per_year)} a year "
-            "if it stays there"
-        ),
+        figure_caption=f"more per charge since {_day(changed_on)}",
         evidence=[
-            _row("Was", float(change.get("previous") or 0)),
-            _row("Now", float(change.get("current") or 0),
-                 note=f"from {change.get('changed_on')}"),
+            _row("Was", previous, note=f"before {_day(changed_on)}"),
+            _row("Now", current, note="and since"),
             _row("A year at the new amount", round(per_year, 2)),
         ],
         evidence_note=(
-            f"Billed {item.get('cadence')}. The yearly figure is what the "
-            "increase comes to if the new amount holds, not a prediction that "
-            "it will."
+            f"Billed {cadence}. The yearly figure is what the increase comes "
+            "to if the new amount holds. It is not a forecast that it will."
         ),
-        merchant=item.get("merchant"),
+        merchant=merchant,
         annual_impact=round(per_year, 2),
-        detail={"cadence": item.get("cadence"), **change},
+        detail={"cadence": cadence, **change},
     )
 
 
@@ -336,6 +357,7 @@ def _year_ago_finding(c, share_view: str) -> Optional[dict]:
     if abs(delta) < MATERIAL_AMOUNT or abs(yoy["percent"]) < MATERIAL_PERCENT:
         return None
     direction = "more" if delta > 0 else "less"
+    then = _month_name(yoy["year_ago_month"])
     mover = yoy["categories"][0] if yoy["categories"] else None
     tail = ""
     if mover and abs(mover["delta"]) >= MATERIAL_AMOUNT:
@@ -346,11 +368,11 @@ def _year_ago_finding(c, share_view: str) -> Optional[dict]:
         )
     return _finding(
         "year_ago",
-        f"Against {yoy['year_ago_month']}, you are spending {direction}",
+        f"You are spending {direction} than this time last year",
         f"Through day {yoy['through_day']} you have spent "
         f"{_money(yoy['current_total'])}, against "
         f"{_money(yoy['year_ago_total'])} in the same stretch of "
-        f"{yoy['year_ago_month']}. That is {_money(delta)} {direction}, "
+        f"{then}. That is {_money(delta)} {direction}, "
         f"{abs(yoy['percent']):.1f} per cent.{tail}",
         impact=abs(delta),
         tone="watch" if delta > 0 else "good",
@@ -358,10 +380,10 @@ def _year_ago_finding(c, share_view: str) -> Optional[dict]:
         basis="patterns.same_month_last_year",
         chart="year_over_year",
         figure=round(delta, 2),
-        figure_caption=f"{direction} than the same days of {yoy['year_ago_month']}",
+        figure_caption=f"{direction} than the same days of {then}",
         evidence=[
             _row(f"Through day {yoy['through_day']} now", yoy["current_total"]),
-            _row(f"{yoy['year_ago_month']}, same days", yoy["year_ago_total"]),
+            _row(f"{then}, same days", yoy["year_ago_total"]),
         ] + [
             _row(row["category"], row["delta"],
                  note=f"{_money(row['year_ago'])} then, "
@@ -450,6 +472,83 @@ def _drift_card(top: dict, *, tone: str) -> dict:
     )
 
 
+def _kept_trend_finding(c, share_view: str) -> Optional[dict]:
+    """Not "last month was better" but "you are keeping more than you were"."""
+    from utils.month_trends import INCOME_NOISE_FLOOR, kept_trend
+
+    result = kept_trend(conn=c, share_view=share_view)
+    if not result.get("available"):
+        return None
+
+    higher = result["direction"] == "higher"
+    recent = len(result["recent_months"])
+    recent_span = _span(result["recent_months"])
+    earlier_span = _span(result["earlier_months"])
+    gap = "above" if higher else "below"
+
+    # Which side moved. Saying "you kept more" without saying whether that
+    # was earning or spending leaves the useful half out.
+    spending_delta = result["spending_delta"]
+    if abs(spending_delta) < INCOME_NOISE_FLOOR:
+        cause = "Spending stayed about the same"
+    else:
+        cause = (
+            f"Spending is {_money(spending_delta)} a month "
+            f"{'higher' if spending_delta > 0 else 'lower'}"
+        )
+    if result["income_moved"]:
+        cause += (
+            f" and money in is {_money(result['income_delta'])} a month "
+            f"{'higher' if result['income_delta'] > 0 else 'lower'}"
+        )
+    else:
+        cause += " and money in has barely moved"
+
+    return _finding(
+        "kept_trend",
+        f"You have kept {'more' if higher else 'less'} for "
+        f"{_plural(recent, 'month')} running",
+        f"You kept {_money(result['recent_average'])} a month across "
+        f"{recent_span}, against {_money(result['earlier_average'])} a month "
+        f"across {earlier_span}. {cause}. Every one of those "
+        f"{_plural(recent, 'month')} came in {gap} the earlier average, so "
+        f"this is a level that moved rather than one good month.",
+        impact=abs(result["delta_per_month"]),
+        id="kept_trend_up" if higher else "kept_trend_down",
+        subject="kept",
+        tone="good" if higher else "watch",
+        confidence="high" if result["months_used"] >= 6 else "medium",
+        basis="month_trends.kept_trend",
+        chart="",
+        # No transaction filter can represent "what several months kept".
+        # A button that quietly showed one month's rows would be answering a
+        # different question than the one the card asked.
+        drill=None,
+        figure=result["delta_per_month"],
+        figure_caption=f"a month {gap} {earlier_span}",
+        evidence=[
+            # Levels, not changes, so no sign. The two rows after them are
+            # changes and do carry one.
+            _row(_month_name(row["month"]), row["kept"],
+                 note="recent" if row["block"] == "recent" else "earlier")
+            for row in result["months"]
+        ] + [
+            _row("Money in, a month", result["income_delta"], signed=True,
+                 note=f"{_money(result['earlier_income'])} to "
+                      f"{_money(result['recent_income'])}"),
+            _row("Spending, a month", result["spending_delta"], signed=True,
+                 note=f"{_money(result['earlier_spending'])} to "
+                      f"{_money(result['recent_spending'])}"),
+        ],
+        evidence_note=(
+            f"{_plural(result['months_used'], 'finished month')}"
+            f"{'' if result['contiguous'] else ', not consecutive because a month in between is not fully imported'}"
+            ". Partial months are left out entirely."
+        ),
+        detail=result,
+    )
+
+
 def _month_difference_finding(c, share_view: str) -> Optional[dict]:
     """Not that the month was better, but what made it better."""
     from utils.month_trends import month_difference
@@ -529,10 +628,11 @@ def _month_difference_finding(c, share_view: str) -> Optional[dict]:
         ),
         # When one category carries the whole difference, this card and a
         # card about that category are the same event told twice. Claiming
-        # the category here lets the feed's existing de-duplication see it.
-        # With several contributors the claim is genuinely broader, so it
-        # stays independent and competes on its own.
+        # the category here lets the de-duplication see it. With several
+        # contributors the claim is broader, and its subject is what the
+        # month kept — which is what the multi-month kept card is about too.
         category=named[0]["category"] if len(named) == 1 else "",
+        subject=f"category:{named[0]['category']}" if len(named) == 1 else "kept",
         detail=result,
     )
 
@@ -609,7 +709,7 @@ def _improvement_finding(c, share_view: str) -> Optional[dict]:
         confidence="high" if top["months_used"] >= 6 else "medium",
         basis="patterns.category_usual_range",
         chart="category_range",
-        drill={"page": "transactions", "category": top["category"]},
+        drill=_month_to_date_drill(top),
         figure=abs(top["delta"]),
         figure_caption=(
             f"below your usual {_money(top['typical'])} by day "
@@ -649,6 +749,30 @@ def _span(months: list[str]) -> str:
     return _span_label(months)
 
 
+def _month_to_date_drill(top: dict) -> dict:
+    """The days a "so far this month" claim is measured over, and no more."""
+    month = str(top.get("month") or "")
+    if not month:
+        return {"page": "transactions", "category": top["category"]}
+    return {
+        "page": "transactions",
+        "category": top["category"],
+        "start_date": f"{month}-01",
+        "end_date": f"{month}-{int(top['through_day']):02d}",
+    }
+
+
+def _day(value: str) -> str:
+    """"2026-05-06" reads as "6 May 2026". A raw date is a database talking."""
+    from utils.month_trends import MONTH_NAMES
+
+    try:
+        year, month, day = int(value[:4]), int(value[5:7]), int(value[8:10])
+        return f"{day} {MONTH_NAMES[month - 1]} {year}"
+    except (TypeError, ValueError, IndexError):
+        return str(value)
+
+
 def _join(names: list[str]) -> str:
     if not names:
         return ""
@@ -658,6 +782,7 @@ def _join(names: list[str]) -> str:
 
 
 _CONCERN_DETECTORS = (
+    _kept_trend_finding,
     _month_difference_finding,
     _drift_finding,
     _frequency_finding,
@@ -675,6 +800,37 @@ _POSITIVE_ONLY_DETECTORS = (
     _sustained_win_finding,
     _improvement_finding,
 )
+
+
+def _one_card_per_subject(findings: list[dict]) -> list[dict]:
+    """One card per subject: the best-evidenced claim, then the biggest.
+
+    A category that is both above its usual range and driven by one merchant
+    would otherwise be reported twice under different names, and the two
+    whole-month cards are the same news at two lengths. The loser is dropped
+    rather than demoted, because "also noticed" is for true things that lost
+    the ranking, not for the same finding wearing a different title.
+    """
+    best: dict[str, dict] = {}
+    keep: list[dict] = []
+    for finding in findings:
+        subject = str(finding.get("subject") or "")
+        if not subject:
+            keep.append(finding)
+            continue
+        standing = best.get(subject)
+        if standing is None:
+            best[subject] = finding
+            continue
+        contest = (_EVIDENCE_CLASS.get(finding["kind"], 0), finding["rank"])
+        held = (_EVIDENCE_CLASS.get(standing["kind"], 0), standing["rank"])
+        winner, loser = (
+            (finding, standing) if contest > held else (standing, finding)
+        )
+        loser["superseded_by"] = winner["id"]
+        best[subject] = winner
+    return sorted(keep + list(best.values()),
+                  key=lambda f: f["rank"], reverse=True)
 
 
 def insight_feed(conn=None, share_view: str = "personal") -> dict:
@@ -714,32 +870,22 @@ def insight_feed(conn=None, share_view: str = "personal") -> dict:
         # merchant would otherwise be reported twice under different names.
         # One card per category: the best-evidenced claim, and among equals
         # the one worth the most money a month.
-        best: dict[str, dict] = {}
-        keep: list[dict] = []
-        for finding in concerns:
-            category = str(finding.get("category") or "")
-            if not category:
-                keep.append(finding)
-                continue
-            standing = best.get(category)
-            if standing is None:
-                best[category] = finding
-                continue
-            contest = (_EVIDENCE_CLASS.get(finding["kind"], 0), finding["rank"])
-            held = (_EVIDENCE_CLASS.get(standing["kind"], 0), standing["rank"])
-            winner, loser = (
-                (finding, standing) if contest > held else (standing, finding)
-            )
-            loser["superseded_by"] = winner["id"]
-            best[category] = winner
-        deduped = sorted(keep + list(best.values()),
-                         key=lambda f: f["rank"], reverse=True)
+        deduped = _one_card_per_subject(concerns)
 
-        positives = already_good + [
+        # Good news gets the same test as bad news. Only one is shown, and
+        # "you have kept more for three months" should beat "groceries are
+        # under their usual range six days in" even when the second is the
+        # bigger number, because the first is the one that will still be
+        # true tomorrow.
+        positives = _one_card_per_subject(already_good + [
             f for f in run(_POSITIVE_ONLY_DETECTORS) if f["tone"] == "good"
-        ]
-        positives.sort(key=lambda f: f["rank"], reverse=True)
-        positive = positives[0] if positives else None
+        ])
+        positives.sort(
+            key=lambda f: (_EVIDENCE_CLASS.get(f["kind"], 0), f["rank"]),
+            reverse=True,
+        )
+        shown = positives[:MAX_POSITIVE]
+        positive = shown[0] if shown else None
 
         coverage = statement_coverage(conn=c)
         complete = coverage.get("complete_months") or []
@@ -754,7 +900,13 @@ def insight_feed(conn=None, share_view: str = "personal") -> dict:
             "generated_from": "imported transactions only",
             "analysis": analysis_context(conn=c),
             "concerns": deduped[:MAX_CONCERNS],
-            "also_noticed": deduped[MAX_CONCERNS:MAX_CONCERNS + MAX_ALSO_NOTICED],
+            # Good news that lost the single positive slot lands here rather
+            # than disappearing. Only one improvement is shown up front, but
+            # a second true one should still be findable — otherwise a
+            # detector can be working perfectly and never be seen.
+            "also_noticed": (
+                deduped[MAX_CONCERNS:] + positives[MAX_POSITIVE:]
+            )[:MAX_ALSO_NOTICED],
             "positive": positive,
             "missing_data": gap,
             "complete_months": len(complete),

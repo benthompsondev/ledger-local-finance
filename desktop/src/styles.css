@@ -849,6 +849,19 @@ select:focus, input:focus { outline: 1px solid #2f9d57; }
 .noticed-claim {
   margin: 0; color: #c9d3dd; font-size: .88rem; line-height: 1.6;
 }
+/* Home's compact form of the same finding: headline and figure only. */
+.insight-card.teaser { padding: 12px 14px; }
+.insight-card.teaser h4 { margin: 0; }
+.teaser-figure {
+  align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 6px 0 0;
+}
+.teaser-figure strong {
+  color: #fff; font-size: 1.25rem; font-variant-numeric: tabular-nums;
+}
+.insight-card.teaser.good .teaser-figure strong { color: #71e49a; }
+.teaser-figure span { color: #8794a1; font-size: .78rem; line-height: 1.4; }
+
 .noticed-working { margin-top: 12px; }
 .noticed-working summary {
   color: #8794a1; cursor: pointer; font-size: .78rem; font-weight: 650;
