@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0 - 2026-08-18
+## 3.0.0 - Unreleased
 
 Northstar Ledger is now SpendShape. This is a product-name and interface
 release, not a change to the finance math.

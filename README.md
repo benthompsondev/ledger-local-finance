@@ -35,9 +35,14 @@ Download the installer from the
 and run it. That is the whole thing. You do not need Python, Node or Rust to
 use SpendShape; the installer bundles everything, including the Python engine.
 
+The latest published installer is still:
+
 ```
-SpendShape_3.0.0_x64-setup.exe
+NorthstarLedger_2.9.1_x64-setup.exe
 ```
+
+SpendShape 3.0.0 is prepared on `main`, but it will not replace that download
+until its updater signature can be generated and verified.
 
 It installs for your user only, so no admin prompt. Installing over an older
 version keeps your data.
@@ -58,10 +63,10 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 3.0.0. Windows public beta.** Northstar Ledger is now
-SpendShape. The name, icon and interface changed; the local database, updater
-identity and finance rules did not. Existing installs update in place and keep
-using `%LOCALAPPDATA%\Ledger` so no data or settings are orphaned.
+**Version on `main`: 3.0.0. Latest signed public beta: 2.9.1.** Northstar Ledger
+is becoming SpendShape. The name, icon and interface changed; the local
+database, updater identity and finance rules did not. The 3.0.0 installer will
+not be published until its updater signature is available.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
