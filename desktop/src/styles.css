@@ -1025,6 +1025,32 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   margin: 0; color: var(--text-soft); font-size: .88rem; line-height: 1.6;
   max-width: 82ch;
 }
+/* ── profiles ───────────────────────────────────────────────────────── */
+/* The chip only renders once a second profile exists, so a single-profile
+   installation carries no extra chrome for a feature it is not using. */
+.profile-chip {
+  background: rgba(255,255,255,.04); border: 1px solid var(--line);
+  border-radius: 999px; color: var(--text); cursor: pointer;
+  font-size: .78rem; max-width: 190px; overflow: hidden; padding: 5px 12px;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-chip:hover { border-color: var(--accent-lit); color: #fff; }
+.profiles-panel { margin-top: 4px; }
+.profile-row.active { border-color: rgba(52,208,88,.4); }
+.profile-identity { flex: 1; min-width: 0; }
+.profile-identity strong { color: #eef4f8; display: block; }
+.profile-identity small { color: #8794a1; display: block; margin-top: 3px; }
+.profile-identity input {
+  background: rgba(0,0,0,.25); border: 1px solid var(--accent-lit);
+  border-radius: 8px; color: #fff; font-size: .92rem; padding: 5px 8px;
+  width: 100%;
+}
+.profile-add {
+  align-items: flex-end; display: flex; gap: 12px; margin-top: 14px;
+}
+.profile-add label { flex: 1; }
+.profile-add input { width: 100%; }
+
 /* ── money radar: the next few weeks ────────────────────────────────── */
 /* Expected things are drawn quieter than things that happened. Nothing in
    here may look as solid as a figure on the rest of Home, because none of

@@ -34,6 +34,7 @@ import type {
   InsightExplanation,
   InsightFeed,
   NetWorthOverview,
+  ProfileList,
   SpendingPatterns,
   UpcomingMoney,
 } from "./types";
@@ -221,6 +222,15 @@ export const exportTransactions = (path: string) =>
   );
 export const deleteTransaction = (id: number) =>
   invoke<{ deleted: boolean; id: number }>("delete_transaction", { id });
+export const loadProfiles = () => invoke<ProfileList>("list_profiles");
+export const createProfile = (name: string) =>
+  invoke<ProfileList>("create_profile", { name });
+export const renameProfile = (profileId: string, name: string) =>
+  invoke<ProfileList>("rename_profile", { profileId, name });
+export const switchProfile = (profileId: string) =>
+  invoke<ProfileList>("switch_profile", { profileId });
+export const deleteProfile = (profileId: string) =>
+  invoke<ProfileList>("delete_profile", { profileId });
 export const loadInsightFeed = () =>
   invoke<InsightFeed>("get_insight_feed");
 export const loadUpcomingMoney = (asOfDate?: string) =>

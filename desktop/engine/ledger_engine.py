@@ -49,17 +49,28 @@ def _logger(data_root: Path) -> logging.Logger:
 
 
 def _bind_database() -> None:
-    """Point SignalSpace's database module at the desktop data directory.
+    """Point SignalSpace's database module at the open profile's directory.
 
-    SignalSpace resolves DB_PATH at import time for normal app performance. The
-    desktop bridge makes its process boundary explicit so isolated launches
-    and tests always use the directory supplied by the Tauri shell.
+    SignalSpace resolves DB_PATH at import time for normal app performance.
+    The desktop bridge makes its process boundary explicit so isolated
+    launches and tests always use the directory the shell supplied.
+
+    That directory is the **active profile's**, not the data root. This used
+    to read LEDGER_DATA_DIR directly, which is the root, and it was a second
+    route to the database that knew nothing about profiles: every request
+    went to the default profile's finance.db no matter which profile was
+    open, so switching appeared to do nothing and a second profile's imports
+    landed in a database nobody was reading. Resolving through
+    get_data_dir() keeps one answer to "which finances are open".
     """
     from utils import database
     from utils.analysis_period import reset_supported_bounds_cache
+    from utils.platform_utils import get_data_dir
 
     filename = "finance.demo.db" if database.is_demo_mode() else "finance.db"
-    database.DB_PATH = _data_root() / filename
+    profile_dir = get_data_dir()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    database.DB_PATH = profile_dir / filename
     database.init_db()
     # One request per process, so this is the request boundary. Clearing here
     # keeps the analysis-anchor memo scoped to a single request and stops it
@@ -3142,6 +3153,63 @@ def upcoming_money_action(params: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+# ── profiles ────────────────────────────────────────────────────────────
+# These act on the installation's data root rather than on the open
+# profile's directory, so none of them opens a database. Managing profiles
+# must not require reading anybody's finances.
+
+def _profile_root():
+    from utils.platform_utils import get_base_data_root
+
+    return get_base_data_root()
+
+
+def list_profiles_action(_params: dict[str, Any]) -> dict[str, Any]:
+    """Every profile, which one is open, and whether each holds data yet."""
+    from utils.profiles import ensure_registry, list_profiles
+
+    root = _profile_root()
+    ensure_registry(root)
+    return list_profiles(root)
+
+
+def create_profile_action(params: dict[str, Any]) -> dict[str, Any]:
+    """Add an empty profile. Never touches an existing profile's data."""
+    from utils.profiles import create_profile, list_profiles
+
+    root = _profile_root()
+    create_profile(root, str(params.get("name") or ""))
+    return list_profiles(root)
+
+
+def rename_profile_action(params: dict[str, Any]) -> dict[str, Any]:
+    from utils.profiles import list_profiles, rename_profile
+
+    root = _profile_root()
+    rename_profile(
+        root, str(params.get("profile_id") or ""), str(params.get("name") or ""),
+    )
+    return list_profiles(root)
+
+
+def switch_profile_action(params: dict[str, Any]) -> dict[str, Any]:
+    """Change which finances the next request opens."""
+    from utils.profiles import list_profiles, switch_profile
+
+    root = _profile_root()
+    switch_profile(root, str(params.get("profile_id") or ""))
+    return list_profiles(root)
+
+
+def delete_profile_action(params: dict[str, Any]) -> dict[str, Any]:
+    """Remove a profile and its finances. Refuses the first and the open one."""
+    from utils.profiles import delete_profile, list_profiles
+
+    root = _profile_root()
+    delete_profile(root, str(params.get("profile_id") or ""))
+    return list_profiles(root)
+
+
 def insight_feed_action(params: dict[str, Any]) -> dict[str, Any]:
     """What SignalSpace noticed. Works with no AI configured at all."""
     from utils.insight_feed import insight_feed
@@ -3711,6 +3779,11 @@ ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ai_payload_preview": ai_payload_preview_action,
     "ai_coaching_summary": ai_coaching_summary_action,
     "insight_feed": insight_feed_action,
+    "list_profiles": list_profiles_action,
+    "create_profile": create_profile_action,
+    "rename_profile": rename_profile_action,
+    "switch_profile": switch_profile_action,
+    "delete_profile": delete_profile_action,
     "upcoming_money": upcoming_money_action,
     "net_worth_trend": net_worth_trend_action,
     "save_net_worth_entry": save_net_worth_entry_action,

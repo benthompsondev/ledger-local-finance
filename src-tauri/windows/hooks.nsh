@@ -31,6 +31,15 @@
   Delete "$DESKTOP\SpendShape.lnk"
   Delete "$INSTDIR\ledger-engine.exe"
 
+  ; Tauri's .onInit points $INSTDIR at "$LOCALAPPDATA\${PRODUCTNAME}" before
+  ; the preinstall hook above redirects it, which leaves an empty folder named
+  ; after the product on every install, and a fresh one after every rename.
+  ; RMDir without /r removes a directory only when it is empty, so this can
+  ; clear the abandoned shells and can never touch anything holding data.
+  RMDir "$LOCALAPPDATA\${PRODUCTNAME}"
+  RMDir "$LOCALAPPDATA\SpendShape"
+  RMDir "$LOCALAPPDATA\Northstar Ledger"
+
   ; Unconditionally, because an upgrade is precisely the case Tauri skips.
   ; CreateShortcut overwrites, so doing this on a fresh install where the
   ; shortcut already exists is a no-op rather than a duplicate.

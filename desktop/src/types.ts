@@ -1194,6 +1194,26 @@ export interface UpcomingMoney {
   summary: string;
 }
 
+/** One set of finances. Profiles isolate by directory: each has its own
+ *  database, so a profile that is not active is not open at all. */
+export interface Profile {
+  id: string;
+  name: string;
+  created_at: string;
+  active: boolean;
+  /** The first profile. Its directory is the data root, which is how an
+   *  existing installation became a profile without moving anything, and
+   *  why it cannot be deleted. */
+  is_default: boolean;
+  has_data: boolean;
+  path: string;
+}
+
+export interface ProfileList {
+  active: string;
+  profiles: Profile[];
+}
+
 export interface TxPrefill {
   category?: string;
   search?: string;

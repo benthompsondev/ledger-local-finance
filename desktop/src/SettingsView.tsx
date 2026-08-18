@@ -45,6 +45,7 @@ import {
   type AnalysisPeriod, type Density, type LandingPage, type SavingsStyle,
   type WeekStart,
 } from "./preferences";
+import { ProfilesPanel } from "./ProfilesPanel";
 import type {
   BackupPayload,
   DataSafetyPayload,
@@ -402,6 +403,13 @@ function SettingsView({ onDataChanged, focusAnchor, focusToken }: Props) {
           </p>
         </div>
       </div>
+
+      {/* First, because which finances are open decides what every other
+          screen means. */}
+      <h3 className="insight-section" id="profiles">Profiles</h3>
+      <article className="chart-card">
+        <ProfilesPanel onSwitched={onDataChanged} />
+      </article>
       {error && <div className="inline-error" role="alert">{error}</div>}
       <div className="settings-grid">
         <article className="form-card">

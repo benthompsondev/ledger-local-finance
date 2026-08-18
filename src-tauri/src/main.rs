@@ -373,6 +373,49 @@ async fn get_upcoming_money(app: AppHandle, as_of_date: Option<String>) -> Resul
 }
 
 #[tauri::command]
+async fn list_profiles(app: AppHandle) -> Result<Value, String> {
+    run_engine(&app, "list_profiles", json!({}), ENGINE_TIMEOUT_SECS).await
+}
+
+#[tauri::command]
+async fn create_profile(app: AppHandle, name: String) -> Result<Value, String> {
+    run_engine(&app, "create_profile", json!({ "name": name }), ENGINE_TIMEOUT_SECS).await
+}
+
+#[tauri::command]
+async fn rename_profile(app: AppHandle, profile_id: String, name: String) -> Result<Value, String> {
+    run_engine(
+        &app,
+        "rename_profile",
+        json!({ "profile_id": profile_id, "name": name }),
+        ENGINE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn switch_profile(app: AppHandle, profile_id: String) -> Result<Value, String> {
+    run_engine(
+        &app,
+        "switch_profile",
+        json!({ "profile_id": profile_id }),
+        ENGINE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn delete_profile(app: AppHandle, profile_id: String) -> Result<Value, String> {
+    run_engine(
+        &app,
+        "delete_profile",
+        json!({ "profile_id": profile_id }),
+        ENGINE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+#[tauri::command]
 async fn get_insight_feed(app: AppHandle) -> Result<Value, String> {
     run_engine(&app, "insight_feed", json!({}), ENGINE_TIMEOUT_SECS).await
 }
@@ -1156,6 +1199,11 @@ fn main() {
             ai_payload_preview,
             ai_coaching_summary,
             get_insight_feed,
+            list_profiles,
+            create_profile,
+            rename_profile,
+            switch_profile,
+            delete_profile,
             get_upcoming_money,
             get_spending_patterns,
             explain_insight,

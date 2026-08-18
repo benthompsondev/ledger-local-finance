@@ -39,21 +39,51 @@ def _configured_data_root() -> Optional[Path]:
     return Path(os.path.expandvars(os.path.expanduser(raw))).resolve()
 
 
-def get_data_dir() -> Path:
-    """Directory containing SignalSpace's SQLite databases and watcher state."""
+def get_base_data_root() -> Path:
+    """The installation's data root, before any profile is chosen.
+
+    The profile registry, and every profile directory, live under here. It is
+    also the default profile's own directory, which is what lets an existing
+    installation become a profiled one without moving its database.
+    """
     return _configured_data_root() or (APP_ROOT / "data")
 
 
+def get_data_dir() -> Path:
+    """Directory holding the **active profile's** SQLite database and state.
+
+    Every consumer of this function is scoped by it, which is the point:
+    profiles isolate by directory, so nothing downstream has to remember to
+    filter by profile. ``database.py`` resolves ``DB_PATH`` from this at
+    import time, and the engine runs one process per request, so each request
+    opens exactly one profile's finances and cannot see another's.
+    """
+    from utils.profiles import active_profile_dir
+
+    return active_profile_dir(get_base_data_root())
+
+
 def get_config_path() -> Path:
-    """AI settings path, persistent across packaged-app upgrades."""
+    """AI settings path, persistent across packaged-app upgrades.
+
+    Deliberately global rather than per profile. This file holds the provider
+    choice and the API key, which describe the installation rather than a set
+    of finances; the financial context an answer is built from comes from the
+    active profile's database like everything else.
+    """
     root = _configured_data_root()
     return (root / "config.json") if root else (APP_ROOT / "config.json")
 
 
 def get_exports_dir() -> Path:
-    """Export root. Repo mode keeps the existing ``exports/`` behavior."""
-    root = _configured_data_root()
-    return (root / "exports") if root else (APP_ROOT / "exports")
+    """Export root for the active profile.
+
+    Profile-scoped on purpose: an export is a copy of somebody's finances,
+    so it belongs beside the database it came from rather than in a shared
+    folder where two profiles' exports would sit together.
+    """
+    return get_data_dir() / "exports" if _configured_data_root() \
+        else (APP_ROOT / "exports")
 
 
 def get_logs_dir() -> Path:
