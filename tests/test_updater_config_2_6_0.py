@@ -242,7 +242,7 @@ def test_every_state_the_brief_requires_is_rendered() -> None:
                  "restart", "error"):
         assert f'"{kind}"' in source, f"no {kind} state"
     # Restart is explicit, never automatic.
-    assert "Restart Northstar" in source
+    assert "Restart SpendShape" in source
     assert "relaunch" in source
 
 

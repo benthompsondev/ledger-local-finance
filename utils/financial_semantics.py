@@ -1,4 +1,4 @@
-"""Authoritative financial meaning for Ledger transactions.
+"""Authoritative financial meaning for SpendShape transactions.
 
 Storage contract
 ----------------

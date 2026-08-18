@@ -153,7 +153,7 @@ def detect_date_format(values: list[str]) -> tuple[str, list[str], list[str]]:
     cells = [c for c in all_cells if _looks_like_a_date(c)]
     if not cells:
         return "", [
-            "Northstar could not read any of the dates in this file."
+            "SpendShape could not read any of the dates in this file."
         ], []
 
     def parses_all(fmt: str) -> bool:
@@ -173,7 +173,7 @@ def detect_date_format(values: list[str]) -> tuple[str, list[str], list[str]]:
             return "", [
                 "The dates in this file contradict each other: "
                 f"'{only_month[0]}' can only be month-first while "
-                f"'{only_day[0]}' can only be day-first. Northstar will not "
+                f"'{only_day[0]}' can only be day-first. SpendShape will not "
                 "guess which convention the file uses."
             ], []
 
@@ -236,7 +236,7 @@ def detect_date_format(values: list[str]) -> tuple[str, list[str], list[str]]:
             "Dates read as Excel serial numbers. Check the preview carefully."
         ]
     return "", [
-        "Northstar could not recognise the date format in this file."
+        "SpendShape could not recognise the date format in this file."
     ], []
 
 
@@ -299,7 +299,7 @@ def detect_decimal_separator(
     if comma_decimal and dot_decimal:
         return ".", [], [
             "This file mixes comma-decimal amounts (10,00) with dot-decimal "
-            "amounts (10.00). Northstar will not guess which number "
+            "amounts (10.00). SpendShape will not guess which number "
             "convention applies."
         ]
     if comma_decimal:
@@ -315,7 +315,7 @@ def detect_decimal_separator(
         return ".", [], []
     if len(grouping) > 1:
         return ".", [], [
-            "This file groups thousands with both dots and commas. Northstar "
+            "This file groups thousands with both dots and commas. SpendShape "
             "will not guess which number convention applies."
         ]
     if ambiguous:
@@ -324,7 +324,7 @@ def detect_decimal_separator(
         as_decimal = float(example.replace(separator, "."))
         as_grouped = float(example.replace(separator, ""))
         return ".", [], [
-            f"Northstar cannot tell whether the {name} in '{example}' is a "
+            f"SpendShape cannot tell whether the {name} in '{example}' is a "
             f"decimal point or a thousands separator: it means either "
             f"${as_decimal:,.2f} or ${as_grouped:,.2f}, and nothing else in "
             "this file settles which. Re-export the statement with the cents "

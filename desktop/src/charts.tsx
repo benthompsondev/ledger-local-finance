@@ -4,13 +4,21 @@
  * (the Python engine computes all financial truth), and hand-rolled marks
  * keep the bundle tiny.
  *
- * Color system (validated against the dark surface #0e161e with the dataviz
- * palette checks — lightness band, chroma, CVD separation, contrast):
- *   income  #2ea043 (green)   spending #8957e5 (violet)
- *   accent  #3987e5 (blue, current-month pace / magnitude bars)
+ * Color system (validated against the dark surface with the dataviz palette
+ * checks — lightness band, chroma, CVD separation, contrast):
+ *   income  #22C55E (green)   spending #8B5CF6 (violet)
+ *   accent  #1E9FFF (blue, current-month pace / magnitude bars)
  *   previous-period reference lines use muted ink, not a series color.
  * Identity is never color-alone: every series is directly labeled or
  * legended, and deltas always carry a ▲/▼ symbol and signed text.
+ *
+ * These are the SpendShape tokens from styles.css, repeated as literals
+ * because SVG presentation attributes do not resolve var(). The roles were
+ * already right — green income, violet spending, blue structure — so this is
+ * a retune to the brand values, not a re-assignment. Violet was brightened
+ * rather than pushed toward the mockup's bluer #6C4DFF, which would have
+ * narrowed the hue gap against the blue accent and cost the CVD separation
+ * the original system was validated for.
  */
 import { useState, type MouseEvent } from "react";
 import {
@@ -26,15 +34,15 @@ import type {
 import { niceMax } from "./chartScale";
 import { readWeekStart } from "./preferences";
 
-const AVG_COLOR = "#d29922";
+const AVG_COLOR = "#E3B341";
 
 export const VIZ = {
-  income: "#2ea043",
-  spending: "#8957e5",
-  accent: "#3987e5",
-  previous: "#8b949e",
-  grid: "#243040",
-  ink: "#8794a1",
+  income: "#22C55E",
+  spending: "#8B5CF6",
+  accent: "#1E9FFF",
+  previous: "#8B99AA",
+  grid: "#253449",
+  ink: "#8B99AA",
 };
 
 function shortMonth(month: string): string {
@@ -436,7 +444,7 @@ export function PaceChart({
             </g>
           )}
           {tags.map((t) => (
-            <text key={t.key} x={padL + plotW + 8} y={t.ty + 3} fontSize="10" fontWeight={t.bold ? 700 : 400} fill={t.bold ? "#c9d3dd" : t.color}>
+            <text key={t.key} x={padL + plotW + 8} y={t.ty + 3} fontSize="10" fontWeight={t.bold ? 700 : 400} fill={t.bold ? "#C2CEDC" : t.color}>
               {t.label}
             </text>
           ))}
@@ -550,15 +558,18 @@ export function CategoryBars({
   );
 }
 
+// Eight hues that stay separable on the SpendShape navy and under the
+// common CVD simulations. Ordered so the first four, which is all most
+// breakdowns ever use, are maximally far apart.
 const CATEGORY_COLORS = [
-  "#3987e5",
-  "#8957e5",
-  "#2ea043",
-  "#d29922",
-  "#db6d28",
-  "#db4b69",
-  "#3fb6a8",
-  "#8b949e",
+  "#1E9FFF",
+  "#8B5CF6",
+  "#22C55E",
+  "#E3B341",
+  "#F0883E",
+  "#E05C7E",
+  "#3FB6A8",
+  "#8B99AA",
 ];
 
 /** Spending-only category donut. The engine has already excluded transfers,
@@ -1138,7 +1149,7 @@ export function NetWorthTrendChart({ overview }: { overview: NetWorthOverview })
   const area = `${line} L${x(points.length - 1)},${y(baseline)} L${x(0)},${y(baseline)} Z`;
   const total = overview.since_first?.amount ?? 0;
   const rising = total >= 0;
-  const stroke = rising ? VIZ.income : "#f0883e";
+  const stroke = rising ? VIZ.income : "#F0883E";
   const crossesZero = lo < 0 && hi > 0;
 
   return (

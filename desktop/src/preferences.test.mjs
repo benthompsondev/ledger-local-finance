@@ -14,8 +14,9 @@ globalThis.window = {
   dispatchEvent: () => {},
 };
 
-const { readLandingPage, readWeekStart } = await import("./preferences.ts");
-const KEY = "northstar.landingPage";
+const { readLandingPage, readWeekStart, migrateLegacyPreferences }
+  = await import("./preferences.ts");
+const KEY = "spendshape.landingPage";
 
 test("a saved Goals startup page migrates to Home", () => {
   store.set(KEY, "goals");
@@ -41,8 +42,51 @@ test("an unknown or absent startup page falls back to Home", () => {
 });
 
 test("weeks start on Monday unless Sunday was chosen", () => {
-  store.delete("northstar.weekStart");
+  store.delete("spendshape.weekStart");
   assert.equal(readWeekStart(), "monday");
-  store.set("northstar.weekStart", "sunday");
+  store.set("spendshape.weekStart", "sunday");
   assert.equal(readWeekStart(), "sunday");
+});
+
+// ── the SpendShape rename ────────────────────────────────────────────────
+// The storage namespace moved from northstar.* to spendshape.*. Without the
+// migration below, upgrading would silently reset every preference and look
+// like the update had lost them.
+
+test("preferences saved under the old name survive the rename", () => {
+  store.clear();
+  store.set("northstar.landingPage", "insights");
+  store.set("northstar.weekStart", "sunday");
+  store.set("northstar.density", "compact");
+
+  migrateLegacyPreferences();
+
+  assert.equal(store.get("spendshape.landingPage"), "insights");
+  assert.equal(store.get("spendshape.weekStart"), "sunday");
+  assert.equal(store.get("spendshape.density"), "compact");
+  assert.equal(readLandingPage(), "insights");
+  assert.equal(readWeekStart(), "sunday");
+});
+
+test("the old keys are removed, so the migration runs only once", () => {
+  store.clear();
+  store.set("northstar.landingPage", "plan");
+  migrateLegacyPreferences();
+  assert.equal(store.has("northstar.landingPage"), false);
+});
+
+test("a choice made after upgrading is never overwritten by an old one", () => {
+  store.clear();
+  store.set("northstar.landingPage", "insights");
+  store.set("spendshape.landingPage", "transactions");
+  migrateLegacyPreferences();
+  assert.equal(store.get("spendshape.landingPage"), "transactions");
+  assert.equal(store.has("northstar.landingPage"), false);
+});
+
+test("nothing stored under either name still yields the defaults", () => {
+  store.clear();
+  migrateLegacyPreferences();
+  assert.equal(readLandingPage(), "home");
+  assert.equal(readWeekStart(), "monday");
 });

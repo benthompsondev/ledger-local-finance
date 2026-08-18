@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Northstar Ledger",
+  "productName": "SpendShape",
   "version": "2.9.1",
   "identifier": "dev.benthompson.ledger",
   "build": {
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Northstar Ledger",
+        "title": "SpendShape",
         "width": 1180,
         "height": 800,
         "minWidth": 900,
@@ -32,8 +32,8 @@
     "category": "Finance",
     "publisher": "Ben Thompson",
     "homepage": "https://github.com/benthompsondev/ledger-local-finance",
-    "shortDescription": "Private, local financial clarity.",
-    "longDescription": "Northstar Ledger is a private, local-first personal finance application. The native desktop app runs the existing deterministic Python finance engine as a packaged sidecar without opening a browser or exposing a localhost service.",
+    "shortDescription": "Private, local-first personal finance.",
+    "longDescription": "SpendShape is a private, local-first personal finance application. The native desktop app runs the existing deterministic Python finance engine as a packaged sidecar without opening a browser or exposing a localhost service.",
     "windows": {
       "allowDowngrades": false,
       "webviewInstallMode": {

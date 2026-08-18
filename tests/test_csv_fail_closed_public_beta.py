@@ -100,7 +100,7 @@ def test_saved_mapping_preserves_unsigned_direction_column(tmp_path):
             "2026-04-02,INVENTED A,-10.00\n"
             "2026-04-03,INVENTED B,1e309\n",
             _mapping(),
-            "amount northstar cannot read",
+            "amount spendshape cannot read",
         ),
         (
             "broken-date.csv",
@@ -108,7 +108,7 @@ def test_saved_mapping_preserves_unsigned_direction_column(tmp_path):
             "2026-04-02,INVENTED A,-10.00\n"
             "BROKEN,INVENTED B,-20.00\n",
             _mapping(),
-            "date northstar cannot read",
+            "date spendshape cannot read",
         ),
     ],
 )
@@ -136,7 +136,7 @@ def test_saved_mapping_cannot_bypass_fail_closed_checks(
             "Date,Description,Amount\n"
             "2026-04-02,INVENTED A,-10.00\n"
             "2026-04-03,INVENTED B,1e309\n",
-            "amount northstar cannot read",
+            "amount spendshape cannot read",
         ),
         (
             "duplicate-header.csv",
@@ -177,7 +177,7 @@ def test_saved_mapping_cannot_bypass_fail_closed_checks(
             "2026-04-02,INVENTED A,-10.00\n"
             ",TOTAL WINE AND MORE,-20.00\n"
             "2026-04-04,INVENTED C,-30.00\n",
-            "date northstar cannot read",
+            "date spendshape cannot read",
         ),
     ],
 )

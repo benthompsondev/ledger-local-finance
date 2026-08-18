@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    SpendShape app mark.
+
+    Built to survive 32px, which is the size that actually matters on a Windows
+    taskbar. That constraint drove every decision here: three fat bars rather
+    than five thin ones, one open arc rather than a full ring plus tick marks,
+    and a wave stroke heavy enough to still read as a curve when it is four
+    pixels tall. The old compass mark had fine ticks that turned to mush.
+
+    The idea is the name: the bars are spending, and their tops trace a shape.
+    The arc frames it the way a lens or a scope would.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#132437"/>
+      <stop offset="0.55" stop-color="#0d1a28"/>
+      <stop offset="1" stop-color="#09121c"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E9FFF"/>
+      <stop offset="0.5" stop-color="#00D084"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <linearGradient id="barA" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#1668b0"/>
+      <stop offset="1" stop-color="#1E9FFF"/>
+    </linearGradient>
+    <linearGradient id="barB" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#0e8a5a"/>
+      <stop offset="1" stop-color="#00D084"/>
+    </linearGradient>
+    <linearGradient id="barC" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#16a34a"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1E9FFF"/>
+      <stop offset="0.55" stop-color="#00D084"/>
+      <stop offset="1" stop-color="#5BE59A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square field. Windows draws app icons small and square; a
+       transparent free-floating mark loses its silhouette on a dark taskbar. -->
+  <rect x="64" y="64" width="896" height="896" rx="232" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="232" fill="none"
+        stroke="#1f7a4d" stroke-opacity="0.55" stroke-width="6"/>
+
+  <!-- Open arc, sweeping from lower-left up and over the top. The gap on the
+       lower right is where the tallest bar breaks out, so the mark reads as
+       one object rather than a chart sitting inside a circle. -->
+  <path d="M 232 660 A 288 288 0 1 1 748 604"
+        fill="none" stroke="url(#arc)" stroke-width="54" stroke-linecap="round"/>
+
+  <!-- Three bars, ascending. Wide and well separated so the gaps hold at
+       small sizes; the rounded tops match the app's own chart styling. -->
+  <g>
+    <rect x="356" y="574" width="86" height="152" rx="30" fill="url(#barA)"/>
+    <rect x="470" y="490" width="86" height="236" rx="30" fill="url(#barB)"/>
+    <rect x="584" y="386" width="86" height="340" rx="30" fill="url(#barC)"/>
+  </g>
+
+  <!-- The shape the bars make. Drawn over the bar tops, not behind them, so
+       the curve is the thing you see last and remember. -->
+  <path d="M 322 646 C 400 630 428 566 484 536 C 548 502 578 470 628 424"
+        fill="none" stroke="url(#wave)" stroke-width="34"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.96"/>
+  <circle cx="628" cy="424" r="30" fill="#7CF0AE"/>
+</svg>

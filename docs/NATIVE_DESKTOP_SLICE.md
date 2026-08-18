@@ -1,6 +1,6 @@
 # Ledger native desktop
 
-Northstar Ledger's Windows product is a Tauri 2 desktop application. It covers
+SpendShape's Windows product is a Tauri 2 desktop application. It covers
 the core weekly workflow natively: Home, Add Data, Plan, Goals, Insights,
 Transactions, and secondary Settings. It runs on Ledger's existing
 deterministic Python finance engine.
@@ -65,7 +65,7 @@ From the repository root:
 
 The script builds the onedir Python engine, builds the React frontend, and
 asks Tauri to create the current-user NSIS installer at
-`src-tauri\target\release\bundle\nsis\NorthstarLedger_<version>_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\SpendShape_<version>_x64-setup.exe`.
 
 ## Legacy Windows prototype (retired)
 
@@ -79,7 +79,7 @@ not be used to migrate more pages. Their build scripts
 ## Rollback
 
 1. Close Ledger.
-2. Uninstall `Northstar Ledger` from Windows Installed Apps, or run
+2. Uninstall `SpendShape` from Windows Installed Apps, or run
    `& "$env:LOCALAPPDATA\Programs\Ledger\uninstall.exe"`.
 3. Confirm `%LOCALAPPDATA%\Ledger\finance.db` still exists. Do not delete the
    `%LOCALAPPDATA%\Ledger` folder.

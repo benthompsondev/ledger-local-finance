@@ -247,7 +247,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
         <article className="plan-card">
           {/* Facts first. A derived figure is not an input and must not look
               like one — a read-only box reads as "a field you are somehow
-              not allowed to use" rather than "a number Northstar worked
+              not allowed to use" rather than "a number SpendShape worked
               out". These are labels with values. */}
           <dl className="plan-facts">
             <div className="plan-fact">
@@ -255,7 +255,7 @@ function PlanView({ refreshToken, onDataChanged, onNavigate }: Props) {
               <dd>{moneyCents(equation?.income ?? 0)}</dd>
               <p>{data.income_basis.months_used
                 ? data.income_basis.basis_label
-                : "Import one complete month and Northstar can work this out."}</p>
+                : "Import one complete month and SpendShape can work this out."}</p>
             </div>
             {equation && equation.nonmonthly_reserves > 0 && (
               <div className="plan-fact">

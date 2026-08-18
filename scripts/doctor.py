@@ -1,5 +1,5 @@
 """
-Quick local health check for Northstar Ledger.
+Quick local health check for SpendShape.
 
 This is meant for someone who just cloned the repo and wants to know:
 
@@ -191,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     mode = "legacy prototype" if args.legacy else "native desktop"
-    print(f"Northstar Ledger {mode} check")
+    print(f"SpendShape {mode} check")
     print(f"repo: {ROOT}")
     print()
 
@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     if all(checks):
-        print(f"Northstar Ledger {mode} looks ready.")
+        print(f"SpendShape {mode} looks ready.")
         print(
             "Native run: npm run desktop:dev"
             if not args.legacy
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    print(f"Northstar Ledger {mode} needs attention before it is ready.")
+    print(f"SpendShape {mode} needs attention before it is ready.")
     return 1
 
 

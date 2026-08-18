@@ -26,7 +26,7 @@ interface Props {
 }
 
 /**
- * Checking for updates is the one thing in Northstar that reaches the
+ * Checking for updates is the one thing in SpendShape that reaches the
  * internet without an AI key configured, so it never happens on its own.
  * There is no check on mount, no timer, and no retry loop: this component
  * makes exactly one request per click.
@@ -78,13 +78,13 @@ export function UpdatePanel({ version }: Props) {
     <article className="form-card" id="app-updates">
       <h3>App updates</h3>
       <p className="guidance">
-        Northstar checks GitHub only when you press the button below, and only
+        SpendShape checks GitHub only when you press the button below, and only
         for the version number of the latest release. Nothing about you, your
         accounts or your transactions is sent, and no check happens on its own
         or in the background.
       </p>
       <dl>
-        <div><dt>Installed</dt><dd>Northstar Ledger {version || "…"}</dd></div>
+        <div><dt>Installed</dt><dd>SpendShape {version || "…"}</dd></div>
       </dl>
 
       <div className="button-row" aria-live="polite">
@@ -129,7 +129,7 @@ export function UpdatePanel({ version }: Props) {
               The update is installed and verified.
             </p>
             <button type="button" onClick={() => void relaunch()}>
-              Restart Northstar
+              Restart SpendShape
             </button>
           </>
         )}
@@ -151,7 +151,7 @@ export function UpdatePanel({ version }: Props) {
       )}
 
       <p className="file-meta">
-        Updates are signed. Northstar installs one only if the signature
+        Updates are signed. SpendShape installs one only if the signature
         matches its built-in key, so a download that was tampered with or
         interrupted is refused and your current version is left alone.
         Releases are also listed at{" "}

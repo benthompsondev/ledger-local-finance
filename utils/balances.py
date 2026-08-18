@@ -3,7 +3,7 @@ Deterministic account balances and net-worth contributions.
 
 One shared service — pages must not duplicate these formulas.
 
-Ledger stores transaction amounts as positive magnitudes with a
+SpendShape stores transaction amounts as positive magnitudes with a
 `direction` of 'credit' (money in) or 'debit' (money out); the known
 exception is Mastercard refunds, historically stored as negative
 credits — ABS() normalizes both. 'cancelled' rows never count.

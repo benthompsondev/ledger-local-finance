@@ -1,9 +1,9 @@
 """
-Read-only Ledger context export for future OpenClaw Finance Seraphine.
+Read-only SpendShape context export for future OpenClaw Finance Seraphine.
 
 What this is
 ────────────
-A tiny, defensive helper that returns a single dict snapshot of Ledger's
+A tiny, defensive helper that returns a single dict snapshot of SpendShape's
 useful state — KPIs, top categories, top merchants, subscriptions, recs,
 review queue summary, money progress, generated_at — so an external
 agent can read the user's finances without touching the SQLite DB
@@ -60,7 +60,7 @@ def build_agent_context(
     include_recent_transactions: bool = False,
     conn=None,
 ) -> dict:
-    """Return a JSON-serializable dict describing the current Ledger state.
+    """Return a JSON-serializable dict describing the current SpendShape state.
 
     Args:
         period: 'last_30_days' | 'last_90_days' (default) | 'last_180_days'
@@ -132,7 +132,7 @@ def build_agent_context(
         out["coverage"] = {}
         out["latest_imported_month"] = ""
 
-    # Ask Ledger supported skills — flat list of skill ids the agent can
+    # Ask SpendShape supported skills — flat list of skill ids the agent can
     # request. Tiny and safe; helps OpenClaw know what to route to.
     try:
         from utils.ai_explainer import ASK_PRESETS

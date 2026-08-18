@@ -104,7 +104,7 @@ def test_restore_refuses_table_names_without_the_ledger_schema(
     candidate = tmp_path / "invented-broken-schema.db"
     _malformed_ledger(candidate)
 
-    with pytest.raises(BackupValidationError, match="required Ledger fields"):
+    with pytest.raises(BackupValidationError, match="required SpendShape fields"):
         restore_database(candidate, db_path=database.DB_PATH)
 
     # The current database remains usable and untouched.

@@ -1,5 +1,5 @@
 """
-Ledger AI Copilot — grounded explanations, summaries, and a small Ask Ledger.
+SpendShape AI Copilot — grounded explanations, summaries, and a small Ask SpendShape.
 
 Design contract
 ───────────────
@@ -208,7 +208,7 @@ def _call_ai(
 
 _REPAIR_SYSTEM = (
     "Return only valid JSON. No reasoning. No <think>. No markdown. No code "
-    "fences. Use only the provided Ledger evidence. Do not invent numbers. "
+    "fences. Use only the provided SpendShape evidence. Do not invent numbers. "
     "Keep text concise."
 )
 
@@ -562,10 +562,10 @@ def _dashboard_packet(conn: sqlite3.Connection) -> dict:
 
 _COPILOT_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Do not give financial advice beyond the evidence. "
     "Keep text concise.\n\n"
-    "You are Ledger's local financial copilot. Explain the user's state using "
+    "You are SpendShape's local financial copilot. Explain the user's state using "
     "ONLY the JSON evidence packet — never invent numbers, categories, or "
     "merchants. Plain, calm, mature tone. No fluff, no emojis, no advisor "
     "persona.\n\n"
@@ -704,7 +704,7 @@ def dashboard_copilot(conn: sqlite3.Connection) -> dict:
         return {
             "headline": "No data yet",
             "summary":  "Import at least one statement to get started. "
-                        "Everything Ledger shows is computed locally from imported data.",
+                        "Everything SpendShape shows is computed locally from imported data.",
             "moves":    [
                 "Open the Import page and add a statement.",
                 "Set a budget in Settings → Budgets after your first import.",
@@ -757,7 +757,7 @@ def dashboard_copilot(conn: sqlite3.Connection) -> dict:
 
 _REC_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Keep text concise.\n\n"
     "Explain a single personal-finance recommendation. Use ONLY the "
     "evidence packet. JSON keys: why_it_matters (<=240 chars), action "
@@ -865,7 +865,7 @@ def explain_recommendation(rec: dict, context: Optional[dict] = None) -> dict:
 
 _TRIAGE_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Keep text concise.\n\n"
     "Summarize a personal-finance Review queue. JSON keys: "
     "headline (<=80 chars), summary (<=240 chars), clean_first (array of "
@@ -1007,7 +1007,7 @@ def review_triage_summary(flagged: list[dict], ai_candidate_count: int = 0) -> d
 
 _MISSION_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Keep text concise.\n\n"
     "Write ONE short, plain-English sentence (<=150 chars) framing the "
     "user's chosen monthly mission, grounded in the packet. No cheer, "
@@ -1069,7 +1069,7 @@ def mission_framing(mission: dict, streaks: dict) -> dict:
     }
 
 
-# ── 5. Ask Ledger — skill router ──────────────────────────────────────────
+# ── 5. Ask SpendShape — skill router ──────────────────────────────────────────
 
 ASK_PRESETS = [
     ("top_cuts",                "What should I cut first this month?"),
@@ -1080,7 +1080,7 @@ ASK_PRESETS = [
     ("explain_score",           "Why is my Money Pulse where it is?"),
     ("safest_hundred",          "What is my safest $100/month savings move?"),
     ("weekly_focus",            "What should I focus on this week?"),
-    # Pass 22 — Ask Ledger v3 presets aligned to the planning loop.
+    # Pass 22 — Ask SpendShape v3 presets aligned to the planning loop.
     ("month_plan",              "What is my plan this month?"),
     ("forecast_risk",           "Am I on track this month?"),
     ("safe_to_spend",           "How much can I safely spend?"),
@@ -1168,7 +1168,7 @@ def _route_question(q: str) -> Optional[str]:
 
 _ASK_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Do not give financial advice beyond the "
     "evidence. Keep text concise.\n\n"
     "Answer the user's question about their personal finances using ONLY "
@@ -1437,7 +1437,7 @@ def _build_ask_packet(skill: str, conn: sqlite3.Connection) -> dict:
         rec = [r for r in rec if r["category"] not in ("Housing / Mortgage", "Transfer", "Transfer Out")][:1]
         packet["merchant_top"] = rec[0] if rec else None
 
-    # ── Pass 22: Ask Ledger v3 — planning-loop skills ──────────────
+    # ── Pass 22: Ask SpendShape v3 — planning-loop skills ──────────────
     elif skill in ("month_plan", "forecast_risk", "safe_to_spend",
                    "bills_due", "category_targets", "goal_progress",
                    "next_payday_focus", "reminder_suggestions"):
@@ -1726,7 +1726,7 @@ def _deterministic_ask(skill: str, packet: dict) -> dict:
         fc = packet.get("forecast") or {}
         sts = fc.get("safe_to_spend")
         if sts is None:
-            answer = ("No saved plan yet — Ledger needs a spending "
+            answer = ("No saved plan yet — SpendShape needs a spending "
                       "target to compute safe-to-spend. Open Month Plan "
                       "and save a plan.")
             bullets = []
@@ -1860,7 +1860,7 @@ def _deterministic_ask(skill: str, packet: dict) -> dict:
         rs = rs[:5]
         answer = (
             f"{len(rs)} suggested reminder(s) for OpenClaw to surface. "
-            "All are read-only suggestions — Ledger never schedules "
+            "All are read-only suggestions — SpendShape never schedules "
             "them automatically."
         )
         bullets = rs
@@ -1883,8 +1883,8 @@ def ask_ledger(question: str, conn: sqlite3.Connection,
         supported = [lbl for _, lbl in ASK_PRESETS]
         return {
             "skill":        "unsupported",
-            "answer":       ("That question is outside what Ledger can answer from your "
-                             "local data. Ledger only explains what's already in your "
+            "answer":       ("That question is outside what SpendShape can answer from your "
+                             "local data. SpendShape only explains what's already in your "
                              "imported statements — no market data, no predictions, no "
                              "external lookups."),
             "bullets":      ["Try one of these supported questions:"] + [f"· {s}" for s in supported[:5]],
@@ -1952,7 +1952,7 @@ def ask_ledger(question: str, conn: sqlite3.Connection,
 
 _WEEKLY_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Keep text concise.\n\n"
     "Write a brief weekly money check-in using ONLY the JSON packet. "
     "JSON keys: headline (<=90 chars), focus (<=200 chars), checklist "
@@ -2129,7 +2129,7 @@ def weekly_review(conn: sqlite3.Connection) -> dict:
 
 _SCENARIO_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers — every figure must come from the packet. "
     "Keep text concise.\n\n"
     "Explain the result of a deterministic personal-finance 'what-if' "
@@ -2306,7 +2306,7 @@ def ai_health_check() -> dict:
 
 _REDUCE_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers — every figure must come from the packet. "
     "Keep text concise.\n\n"
     "You help the user reduce spending. Given a packet of subscription "
@@ -2331,7 +2331,7 @@ def _deterministic_reduce(packet: dict) -> dict:
     if not subs and not ctrl:
         return {
             "headline":   "Not enough data to suggest cuts yet",
-            "first_move": "Import a few months of statements so Ledger can spot recurring "
+            "first_move": "Import a few months of statements so SpendShape can spot recurring "
                           "charges and controllable categories.",
             "candidates": [],
             "categories": [],
@@ -2470,7 +2470,7 @@ def reduce_workspace_summary(packet: dict) -> dict:
 
 _PROGRESS_COACH_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Keep text concise.\n\n"
     "You coach the user on financial momentum. Given an XP / level / "
     "momentum scorecard, write supportive, mature, NON-shameful copy. "
@@ -2626,7 +2626,7 @@ def coach_money_progress(mp: dict) -> dict:
 # ── 11. AI features status (for Settings page) ────────────────────────────
 
 def ai_features_status() -> list[dict]:
-    """A map of every AI-powered surface in Ledger, for Settings to render."""
+    """A map of every AI-powered surface in SpendShape, for Settings to render."""
     ready, reason = ai_is_ready()
     ai = get_ai_settings()
     base = {"provider": ai.get("provider"), "model": ai.get("model"),
@@ -2666,7 +2666,7 @@ def ai_features_status() -> list[dict]:
         },
         {
             "id":          "ask_ledger",
-            "name":        "Ask Ledger",
+            "name":        "Ask SpendShape",
             "location":    "Dashboard · compact Q&A panel",
             "purpose":     "Five preset grounded questions routed to evidence skills.",
             "fallback":    "Deterministic answer from the skill's evidence packet.",
@@ -2753,7 +2753,7 @@ def ai_features_status() -> list[dict]:
 
 _PLAN_COACH_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Stay under length budgets. Mature, calm "
     "tone. No professional financial advisor voice.\n\n"
     "JSON keys: headline (<=90 chars), summary (<=300 chars), "
@@ -2763,7 +2763,7 @@ _PLAN_COACH_SYSTEM = (
 
 _FORECAST_COACH_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Mature, calm tone.\n\n"
     "JSON keys: risk_explanation (<=240 chars), what_matters_most "
     "(<=200 chars), watch_this_week (<=200 chars), next_action "
@@ -2772,7 +2772,7 @@ _FORECAST_COACH_SYSTEM = (
 
 _GOAL_COACH_SYSTEM = (
     "Output ONLY a valid JSON object. No markdown. No code fences. "
-    "No reasoning. No <think>. Use only the provided Ledger evidence. "
+    "No reasoning. No <think>. Use only the provided SpendShape evidence. "
     "Do not invent numbers. Mature, supportive, no fluff.\n\n"
     "JSON keys: progress_summary (<=240 chars), next_milestone "
     "(<=160 chars), suggested_action (<=160 chars), caution "

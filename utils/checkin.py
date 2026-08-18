@@ -361,7 +361,7 @@ def safe_to_spend_summary(conn: Optional[sqlite3.Connection] = None,
             "reason": (
                 f"Your latest imported activity is from {month_label}, which "
                 "has ended. Import current-month transactions before "
-                "Northstar shows money available now."
+                "SpendShape shows money available now."
             ),
             "month": month,
             "amount": 0.0,
@@ -1037,7 +1037,7 @@ def recommended_actions(conn: Optional[sqlite3.Connection] = None,
         _add({
             "id": "add_balances",
             "title": "Add current account balances",
-            "why": "Safe to Spend stays unavailable until Northstar knows the cash and card balances you have now.",
+            "why": "Safe to Spend stays unavailable until SpendShape knows the cash and card balances you have now.",
             "page": "Insights",
             "label": "Open Insights",
         })
@@ -1120,7 +1120,7 @@ def _verdict(freshness: dict, sts: dict, progress: dict,
         return {
             "state": "no_data",
             "headline": "No data yet",
-            "sentence": "Import your first statement and Ledger will take "
+            "sentence": "Import your first statement and SpendShape will take "
                         "it from there.",
         }
     if freshness.get("state") == "stale":

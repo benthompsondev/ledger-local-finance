@@ -13,7 +13,7 @@ from utils import __version__
 def verify_installer(installer: Path, bundle: Path) -> dict[str, object]:
     installer = installer.resolve()
     bundle = bundle.resolve()
-    expected_name = f"NorthstarLedger_{__version__}_x64-setup.exe"
+    expected_name = f"SpendShape_{__version__}_x64-setup.exe"
     if installer.name != expected_name:
         raise RuntimeError(f"Expected installer name {expected_name}, got {installer.name}")
     if not installer.is_file() or installer.stat().st_size < 1_000_000:

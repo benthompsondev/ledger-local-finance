@@ -1,4 +1,4 @@
-"""The artifact names a Northstar release produces.
+"""The artifact names a SpendShape release produces.
 
 One definition, so the build script, the release checks and the version
 consistency test all expect the same filenames. Getting these wrong is how an
@@ -12,7 +12,7 @@ import pathlib
 
 def expected_installer_name(version: str) -> str:
     """The NSIS installer a person downloads and double-clicks."""
-    return f"NorthstarLedger_{version}_x64-setup.exe"
+    return f"SpendShape_{version}_x64-setup.exe"
 
 
 def expected_updater_artifact_name(version: str) -> str:
@@ -35,7 +35,7 @@ def bundle_dir(repo: pathlib.Path) -> pathlib.Path:
 
 
 def release_artifacts(repo: pathlib.Path, version: str) -> dict[str, pathlib.Path]:
-    """Every file a signed Northstar release needs, by role."""
+    """Every file a signed SpendShape release needs, by role."""
     directory = bundle_dir(repo)
     return {
         "installer": directory / expected_installer_name(version),

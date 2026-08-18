@@ -1,11 +1,11 @@
-"""Check what Windows actually recorded after Northstar Ledger was installed.
+"""Check what Windows actually recorded after SpendShape was installed.
 
 verify_windows_installer.py checks the artifact: its name, its size, the
 bundle inside it. Nothing checked what the machine looked like once that
 artifact had run, so the version a user sees in Settings › Apps was never
 part of any release evidence. An upgrade that installed a new executable
 beside a stale uninstall entry, or that left the pre-rename "Ledger" entry
-behind next to "Northstar Ledger", would have passed every gate.
+behind next to "SpendShape", would have passed every gate.
 
 Reads only. Run it after installing, against a real machine:
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from utils import __version__
 
-PRODUCT_NAME = "Northstar Ledger"
+PRODUCT_NAME = "SpendShape"
 _UNINSTALL_PATHS = [
     ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
     ("HKLM", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),

@@ -98,7 +98,7 @@ export function updateErrorMessage(error: unknown, action: UpdateAction): string
 
   if (/signature|public key|key id|verify|minisign|untrusted/i.test(detail)) {
     return "That update could not be verified as genuine, so nothing was "
-      + "installed. Your copy of Northstar is unchanged.";
+      + "installed. Your copy of SpendShape is unchanged.";
   }
 
   if (/json|parse|manifest|malformed|unexpected token|invalid/i.test(detail)) {
@@ -120,8 +120,8 @@ export function updateErrorMessage(error: unknown, action: UpdateAction): string
   }
 
   return action === "check"
-    ? "Northstar could not check for updates. Nothing was sent or changed."
-    : "Northstar could not install that update. Your current version is "
+    ? "SpendShape could not check for updates. Nothing was sent or changed."
+    : "SpendShape could not install that update. Your current version is "
       + "untouched.";
 }
 

@@ -696,7 +696,7 @@ def finance_charges_in_window(start_date: str, end_date: str,
 
 
 # ── Pass 35 Phase 3: cash-advance trust check ──────────────────────────
-# Ledger sees transactions, not balances. A cash-advance debit followed by
+# SpendShape sees transactions, not balances. A cash-advance debit followed by
 # subsequent credit-card payments may well already be paid off — but the
 # old code treated every detected cash advance as urgent unpaid debt.
 # This helper returns a deterministic summary the Dashboard Copilot,
@@ -767,7 +767,7 @@ def cash_advance_status(conn=None) -> dict:
             verdict = "covered"
             safe_action = (
                 f"Verify the {cnt} cash-advance transaction(s) "
-                f"(${total:,.0f}). Ledger sees later credit-card "
+                f"(${total:,.0f}). SpendShape sees later credit-card "
                 f"payments totalling ${pay_total:,.0f} since "
                 f"{first_d} - it may already be paid off. Treat as a "
                 "historical fee/risk and avoid repeating."
@@ -777,7 +777,7 @@ def cash_advance_status(conn=None) -> dict:
             safe_action = (
                 f"Verify the cash-advance transaction(s) "
                 f"(${total:,.0f}). Some credit-card payments "
-                f"(${pay_total:,.0f}) followed the advance, but Ledger "
+                f"(${pay_total:,.0f}) followed the advance, but SpendShape "
                 "only sees transactions - it can't confirm the balance. "
                 "Check your card statement before treating this as "
                 "outstanding."
@@ -2323,7 +2323,7 @@ def compute_recommendations(conn=None) -> list[dict]:
     if ca and (ca["cnt"] or 0) > 0:
         # Pass 35 Phase 3: choose the wording (and urgency) based on whether
         # later CC payments plausibly cover the cash advance principal.
-        # Ledger sees transactions, not balances - it must not assert an
+        # SpendShape sees transactions, not balances - it must not assert an
         # outstanding payoff when later payments may have already covered it.
         try:
             _ca_status = cash_advance_status(conn=c) or {}
@@ -2334,7 +2334,7 @@ def compute_recommendations(conn=None) -> list[dict]:
             _ca_status.get("safe_action")
             or (f"{ca['cnt']} cash advance(s) totalling "
                 f"${(ca['total'] or 0):,.2f} in the last 90 days. "
-                "Verify on your card statement; Ledger sees "
+                "Verify on your card statement; SpendShape sees "
                 "transactions, not balances.")
         )
         if _verdict == "covered":
@@ -3474,7 +3474,7 @@ def money_runway(conn=None, today=None) -> dict:
                     "period_end": "", "confidence": "low", "formula": {},
                 },
                 "runway_status": "unknown",
-                "why": ["Ledger needs a complete statement month before it can estimate runway."],
+                "why": ["SpendShape needs a complete statement month before it can estimate runway."],
                 "watchlists": [],
                 "upcoming": [],
                 "wins": [],
@@ -3493,7 +3493,7 @@ def money_runway(conn=None, today=None) -> dict:
             partial_note = (
                 f"{current_month} is partial: "
                 f"{cov.get('incomplete_reason') or 'not enough days imported'}. "
-                f"Ledger uses {truth_month} as the trusted baseline."
+                f"SpendShape uses {truth_month} as the trusted baseline."
             )
             caveats.append(partial_note)
 
@@ -3538,7 +3538,7 @@ def money_runway(conn=None, today=None) -> dict:
         if not plan or float(plan.get("income_target") or 0) <= 0:
             return {
                 "available": False,
-                "reason": "Confirm a monthly plan before Northstar estimates spendable money.",
+                "reason": "Confirm a monthly plan before SpendShape estimates spendable money.",
                 "truth_month": truth_month,
                 "latest_data_month": latest_data_month,
                 "using_partial_month": using_partial,
@@ -4005,7 +4005,7 @@ def mission_deck(conn=None, limit: int = 3) -> list[dict]:
                 "impact_label": "Improves data quality",
                 "impact_amount": None,
                 "confidence": "high",
-                "if_then_plan": "If I open Ledger this week, then I will clear 3 Review rows before changing the plan.",
+                "if_then_plan": "If I open SpendShape this week, then I will clear 3 Review rows before changing the plan.",
                 "action_label": "Open Review",
                 "target_page": "Review queue",
                 "evidence": [{"type": "review_queue", "count": int(review_count)}],
@@ -4040,7 +4040,7 @@ def mission_deck(conn=None, limit: int = 3) -> list[dict]:
                 "id": "verify_cash_advance",
                 "title": f"Verify the ${total:,.0f} cash-advance category",
                 "kind": "verify",
-                "why_it_matters": "Ledger sees the transaction and later card payments, but it should not claim unpaid debt without balance evidence.",
+                "why_it_matters": "SpendShape sees the transaction and later card payments, but it should not claim unpaid debt without balance evidence.",
                 "effort": "2 min",
                 "impact_label": "Prevents bad advice",
                 "impact_amount": None,

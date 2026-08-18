@@ -2,7 +2,7 @@ import { moneyCents, signedMoneyCents } from "./money";
 import type { Insight, InsightEvidence } from "./types";
 
 /**
- * One thing Northstar noticed, on the Insights page.
+ * One thing SpendShape noticed, on the Insights page.
  *
  * Deliberately not `InsightCard`. That one belongs to Coach, where the job is
  * a short claim plus an optional model-written explanation. Here the job is

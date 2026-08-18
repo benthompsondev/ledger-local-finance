@@ -446,7 +446,7 @@ def enrich_transaction(tx: dict, conn=None, *, use_learned_rules: bool = True) -
             tx["category_source"] = "import_rule"
             tx["category_rule_id"] = None
             tx["category_explanation"] = (
-                "Categorized by Ledger's built-in import rules."
+                "Categorized by SpendShape's built-in import rules."
                 if static_cat != "Uncategorized"
                 else "No matching saved or built-in rule; review needed."
             )
@@ -486,7 +486,7 @@ def enrich_transaction(tx: dict, conn=None, *, use_learned_rules: bool = True) -
         tx["category_source"] = "protected"
         tx["category_rule_id"] = None
         tx["category_explanation"] = (
-            "Protected by Ledger's financial transaction-type detection."
+            "Protected by SpendShape's financial transaction-type detection."
         )
         tx["parse_confidence"] = "high"
         if tx_type == "refund":

@@ -326,7 +326,7 @@ async fn pick_export_file(app: AppHandle) -> Result<Option<String>, String> {
     app.dialog()
         .file()
         .add_filter("Comma separated values", &["csv"])
-        .set_file_name("northstar-transactions.csv")
+        .set_file_name("spendshape-transactions.csv")
         .set_title("Export your transactions")
         .save_file(move |file| {
             let _ = tx.send(file);
@@ -1129,8 +1129,8 @@ async fn pick_backup_file(app: AppHandle) -> Result<Option<String>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Northstar Ledger backup", &["db"])
-        .set_title("Choose a Northstar Ledger backup to restore")
+        .add_filter("SpendShape backup", &["db"])
+        .set_title("Choose a SpendShape backup to restore")
         .pick_file(move |file| {
             let _ = tx.send(file);
         });

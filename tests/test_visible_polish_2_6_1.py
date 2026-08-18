@@ -139,5 +139,5 @@ def test_the_tauri_config_is_still_valid_json() -> None:
 
     config = json.loads(TAURI_CONF.read_text(encoding="utf-8"))
 
-    assert config["productName"] == "Northstar Ledger"
+    assert config["productName"] == "SpendShape"
     assert config["plugins"]["updater"]["pubkey"]

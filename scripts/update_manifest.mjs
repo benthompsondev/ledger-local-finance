@@ -1,4 +1,4 @@
-// Build or validate Northstar's updater manifest (latest.json).
+// Build or validate SpendShape's updater manifest (latest.json).
 //
 // Tauri's updater reads one latest.json from the newest GitHub release, finds
 // its own platform entry, downloads the archive named there, and refuses it
@@ -7,7 +7,7 @@
 // the manifest a checkable artifact rather than hand-edited JSON.
 //
 // It rejects:
-//   - a manifest missing windows-x86_64, the only platform Northstar ships
+//   - a manifest missing windows-x86_64, the only platform SpendShape ships
 //   - a non-https url, or one pointing at the interactive NSIS installer
 //     rather than the updater archive (the mistake that produces an update
 //     which downloads fine and then does nothing)
@@ -21,14 +21,14 @@
 // Usage:
 //   node scripts/update_manifest.mjs --validate latest.json
 //   node scripts/update_manifest.mjs --version 2.6.0 \
-//     --pub-date 2026-08-04T00:00:00Z --notes "Northstar Ledger 2.6.0" \
+//     --pub-date 2026-08-04T00:00:00Z --notes "SpendShape 2.6.0" \
 //     --url <https url to the .nsis.zip> --sig <path to the .sig> \
 //     --out latest.json
 
 import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-/** Windows is the only platform Northstar builds. */
+/** Windows is the only platform SpendShape builds. */
 export const REQUIRED_PLATFORMS = ['windows-x86_64'];
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -48,7 +48,7 @@ function fail(message) {
  * change from Tauri 1 where the updater consumed a .zip. Verified by building:
  *
  *     Finished 1 updater signature at:
- *       ...\bundle\nsis\Northstar Ledger_2.6.0_x64-setup.exe.sig
+ *       ...\bundle\nsis\SpendShape_2.6.0_x64-setup.exe.sig
  *
  * So the installer *is* the updater artifact here. What still has to be
  * refused is a URL pointing at something that was never signed — release
@@ -202,7 +202,7 @@ function main() {
     validateManifest(JSON.parse(readFileSync(options.validate, 'utf8')), {
       expectVersion: options.expectVersion,
     });
-    console.log(`${options.validate} is a valid Northstar updater manifest.`);
+    console.log(`${options.validate} is a valid SpendShape updater manifest.`);
     return;
   }
 

@@ -1,7 +1,7 @@
 // The half of the updater that talks to Tauri.
 //
 // Nothing here runs on its own. Every call below happens because the user
-// pressed a button in Settings: Northstar makes no update request at launch,
+// pressed a button in Settings: SpendShape makes no update request at launch,
 // on a timer, or in the background, and sends nothing about the person or
 // their finances when it does make one. The request is an ordinary HTTPS GET
 // for a public release manifest.
@@ -15,7 +15,7 @@ const CHECK_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 300_000;
 
 /**
- * Ask GitHub whether a newer Northstar exists.
+ * Ask GitHub whether a newer SpendShape exists.
  *
  * Returns null when the installed version is already current. The plugin
  * verifies the manifest signature itself; the extra version comparison here

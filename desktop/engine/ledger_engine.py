@@ -763,7 +763,7 @@ def preview_import_action(params: dict[str, Any]) -> dict[str, Any]:
                     entry["provenance_note"] = (
                         "Some rows match an earlier import, but not enough to "
                         "tell whether this is an updated export or separate "
-                        "activity. Northstar will not guess."
+                        "activity. SpendShape will not guess."
                     )
                 entry["statement_period"] = result.get("statement_period", "") or ""
                 entry["sample"] = _sample_rows(txs)
@@ -808,7 +808,7 @@ def preview_import_action(params: dict[str, Any]) -> dict[str, Any]:
                 if entry["blocked"]:
                     problems = (result.get("receipt") or {}).get("problems") or []
                     entry["error"] = problems[0] if problems else (
-                        "Northstar could not read this file safely."
+                        "SpendShape could not read this file safely."
                     )
                 elif not txs:
                     if entry["needs_mapping"]:
@@ -966,7 +966,7 @@ def confirm_import_action(params: dict[str, Any]) -> dict[str, Any]:
                 # into the database in the first place.
                 problems = (result.get("receipt") or {}).get("problems") or []
                 detail = problems[0] if problems else (
-                    "Northstar could not read this file safely."
+                    "SpendShape could not read this file safely."
                 )
                 raise ValueError(
                     f"“{path.name}” was not imported. {detail}"
@@ -2217,7 +2217,7 @@ def _plan_payload(conn, today=None) -> dict[str, Any]:
                 else "One full month of history makes this more accurate"
             ),
             "detail": (
-                "Northstar needs about 28 days of activity before its income "
+                "SpendShape needs about 28 days of activity before its income "
                 "baseline settles."
             ),
             "action": "Add data",
@@ -2439,7 +2439,7 @@ def _plan_amount(value: Any, label: str) -> float:
 def _planning_income(conn) -> dict[str, Any]:
     """The one planning-income basis every Plan surface must use.
 
-    Northstar had two. The screen showed `typical_monthly_income` — the
+    SpendShape had two. The screen showed `typical_monthly_income` — the
     average of complete months, which is also what Safe to Spend and the
     planner read — while `save_plan` validated the submitted figure against
     `reliable_income_summary`, which sums a median per source across only the
@@ -2632,7 +2632,7 @@ def save_plan_action(params: dict[str, Any]) -> dict[str, Any]:
         reserve_conn.close()
     if values["income_target"] <= 0:
         raise ValueError(
-            "Northstar cannot work out a monthly income yet. Import at least "
+            "SpendShape cannot work out a monthly income yet. Import at least "
             "one complete month of statements and the plan can be saved."
         )
     # The reserve is derived from live commitments on every read, so it is
@@ -2886,7 +2886,7 @@ def insights_summary_action(params: dict[str, Any]) -> dict[str, Any]:
 
     conn = _connection()
     try:
-        # Northstar has one visible amount basis. Only explicit transaction
+        # SpendShape has one visible amount basis. Only explicit transaction
         # splits reduce it; the former automatic household lens is retired.
         share_view = "personal"
         month = analysis_anchor(conn=conn)
@@ -3143,7 +3143,7 @@ def upcoming_money_action(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def insight_feed_action(params: dict[str, Any]) -> dict[str, Any]:
-    """What Northstar noticed. Works with no AI configured at all."""
+    """What SpendShape noticed. Works with no AI configured at all."""
     from utils.insight_feed import insight_feed
 
     conn = _connection()
@@ -3368,7 +3368,7 @@ def add_account_balance_action(params: dict[str, Any]) -> dict[str, Any]:
     as_of = str(params.get("as_of_date") or "").strip()
     balance = float(params.get("balance") or 0)
     if account_ref <= 0:
-        raise ValueError("Choose an existing Northstar account.")
+        raise ValueError("Choose an existing SpendShape account.")
     if balance < 0:
         raise ValueError("Enter the balance as a positive magnitude.")
     try:
@@ -3380,7 +3380,7 @@ def add_account_balance_action(params: dict[str, Any]) -> dict[str, Any]:
     try:
         account = get_account(account_ref, conn=conn)
         if not account or account.get("is_archived"):
-            raise ValueError("That Northstar account is unavailable.")
+            raise ValueError("That SpendShape account is unavailable.")
         insert_account_balance({
             "account_ref": account_ref,
             "account_name": account["name"],
@@ -3401,7 +3401,7 @@ def _planning_balances_payload(conn) -> dict[str, Any]:
 
     Deliberately no totals. These are planning inputs for Safe to Spend and
     Plan, not a second measurement of what someone is worth: summing them
-    into an "assets" or "net worth" figure is exactly the duplicate Northstar
+    into an "assets" or "net worth" figure is exactly the duplicate SpendShape
     just removed, and it would disagree with the monthly readings the moment
     an account was missing.
     """
@@ -3617,7 +3617,7 @@ def _legacy_sources_for_paths(paths: list[Path]) -> dict[int, list[dict]]:
             account = get_account(int(batch["account_ref"] or 0), conn=conn)
             if not account:
                 raise ValueError(
-                    f"The account for “{path.name}” is missing. Northstar "
+                    f"The account for “{path.name}” is missing. SpendShape "
                     "stopped without changing the database."
                 )
             detected, _confidence = detect_with_confidence(path)

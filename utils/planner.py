@@ -3,7 +3,7 @@ utils/planner.py — Pass 21 monthly operating loop (deterministic).
 
 What this is
 ────────────
-A pure-Python module that turns Ledger's existing analytics into the
+A pure-Python module that turns SpendShape's existing analytics into the
 inputs a user needs to plan a month, forecast it, watch their bills,
 and track goals. Every function here is deterministic — no AI, no
 internet calls, no live price lookup, no DB mutation.
@@ -141,7 +141,7 @@ VOLATILE_CATEGORIES = {
 #   non-cashflow / transfer / etc. → never counted
 
 # True fixed bills. Detected primarily by category — categorization is
-# already the truth layer for all other Ledger math, so we lean on it
+# already the truth layer for all other SpendShape math, so we lean on it
 # here too. A merchant repeating in one of these categories represents
 # a real recurring obligation.
 _FIXED_COMMITMENT_CATEGORIES = {

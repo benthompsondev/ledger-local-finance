@@ -164,7 +164,7 @@ def _choose_mission_impl(conn: sqlite3.Connection, s: dict) -> dict:
     # BUT only when there is no plausible payment coverage from later
     # credit-card payments. Pass 35 Phase 3 fix: a cash advance whose
     # principal looks covered by later payments shouldn't be presented
-    # as urgent "clear it" — Ledger sees transactions, not balances.
+    # as urgent "clear it" — SpendShape sees transactions, not balances.
     row = conn.execute("""
         SELECT COUNT(*) AS cnt, SUM(ABS(amount)) AS total
         FROM transactions
@@ -308,7 +308,7 @@ def _mission_candidates(conn: sqlite3.Connection, s: dict) -> list[dict]:
     ca_total = round(row["total"] or 0, 2)
     if ca_cnt > 0:
         # Pass 35 Phase 3: payment-coverage-aware wording. Same logic as
-        # _choose_mission_impl above — Ledger only sees transactions, so
+        # _choose_mission_impl above — SpendShape only sees transactions, so
         # never claim "pay it off" when later CC payments may already cover
         # the cash-advance principal.
         try:

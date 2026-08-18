@@ -234,7 +234,7 @@ def test_release_versions_are_consistent():
     )
 
     assert expected_installer_name(__version__) == (
-        f"NorthstarLedger_{__version__}_x64-setup.exe"
+        f"SpendShape_{__version__}_x64-setup.exe"
     )
     # Tauri 2's NSIS bundler signs the installer itself, so the updater
     # artifact and the installer are the same file.

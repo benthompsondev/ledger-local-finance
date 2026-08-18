@@ -1,17 +1,61 @@
 export type ChartPeriod = 3 | 6 | 12;
 export type AnalysisPeriod = 30 | 90;
 
-const CHART_PERIOD_KEY = "northstar.chartPeriod";
-const ANALYSIS_PERIOD_KEY = "northstar.analysisPeriodDays";
-const DENSITY_KEY = "northstar.density";
-const HOME_SECONDARY_KEY = "northstar.homeSecondary";
-const LANDING_PAGE_KEY = "northstar.landingPage";
-const SHOW_NET_WORTH_KEY = "northstar.showNetWorth";
-const SAVINGS_STYLE_KEY = "northstar.savingsStyle";
-const SAVINGS_VALUE_KEY = "northstar.savingsValue";
-const COMPARE_BASELINE_KEY = "northstar.compareBaseline";
-const CATEGORY_EXPANDED_KEY = "northstar.categoryExpanded";
-const WEEK_START_KEY = "northstar.weekStart";
+const CHART_PERIOD_KEY = "spendshape.chartPeriod";
+const ANALYSIS_PERIOD_KEY = "spendshape.analysisPeriodDays";
+const DENSITY_KEY = "spendshape.density";
+const HOME_SECONDARY_KEY = "spendshape.homeSecondary";
+const LANDING_PAGE_KEY = "spendshape.landingPage";
+const SHOW_NET_WORTH_KEY = "spendshape.showNetWorth";
+const SAVINGS_STYLE_KEY = "spendshape.savingsStyle";
+const SAVINGS_VALUE_KEY = "spendshape.savingsValue";
+const COMPARE_BASELINE_KEY = "spendshape.compareBaseline";
+const CATEGORY_EXPANDED_KEY = "spendshape.categoryExpanded";
+const WEEK_START_KEY = "spendshape.weekStart";
+
+/** The keys these used to have, in the same order, for the rename migration. */
+const LEGACY_KEYS: [string, string][] = [
+  ["northstar.chartPeriod", CHART_PERIOD_KEY],
+  ["northstar.analysisPeriodDays", ANALYSIS_PERIOD_KEY],
+  ["northstar.density", DENSITY_KEY],
+  ["northstar.homeSecondary", HOME_SECONDARY_KEY],
+  ["northstar.landingPage", LANDING_PAGE_KEY],
+  ["northstar.showNetWorth", SHOW_NET_WORTH_KEY],
+  ["northstar.savingsStyle", SAVINGS_STYLE_KEY],
+  ["northstar.savingsValue", SAVINGS_VALUE_KEY],
+  ["northstar.compareBaseline", COMPARE_BASELINE_KEY],
+  ["northstar.categoryExpanded", CATEGORY_EXPANDED_KEY],
+  ["northstar.weekStart", WEEK_START_KEY],
+];
+
+/**
+ * Carry settings across the rename.
+ *
+ * Renaming the storage namespace without this would silently reset every
+ * preference someone had chosen — landing page, density, week start, savings
+ * style — and it would look like the update had lost them rather than like a
+ * rename. Runs once: after the copy the old keys are removed, so the next
+ * launch finds nothing to do.
+ *
+ * A value already present under the new key always wins, so this can never
+ * overwrite a choice made after upgrading.
+ */
+export function migrateLegacyPreferences(): void {
+  try {
+    for (const [old, next] of LEGACY_KEYS) {
+      const value = window.localStorage.getItem(old);
+      if (value !== null) {
+        if (window.localStorage.getItem(next) === null) {
+          window.localStorage.setItem(next, value);
+        }
+        window.localStorage.removeItem(old);
+      }
+    }
+  } catch {
+    // Storage can be unavailable or full. Losing a preference is not worth
+    // failing a launch over; defaults are all reasonable.
+  }
+}
 export type WeekStart = "monday" | "sunday";
 export type Density = "comfortable" | "compact";
 // Goals left primary navigation, but this list still offered it as a startup
@@ -45,7 +89,7 @@ export function readDensity(): Density {
 
 export function saveDensity(value: Density): void {
   window.localStorage.setItem(DENSITY_KEY, value);
-  window.dispatchEvent(new Event("northstar-preferences-changed"));
+  window.dispatchEvent(new Event("spendshape-preferences-changed"));
 }
 
 export function readHomeSecondary(): boolean {
@@ -69,7 +113,7 @@ export function readLandingPage(): LandingPage {
 }
 export function saveLandingPage(value:LandingPage):void {window.localStorage.setItem(LANDING_PAGE_KEY,value);}
 export function readShowNetWorth():boolean {return window.localStorage.getItem(SHOW_NET_WORTH_KEY)!=="hidden";}
-export function saveShowNetWorth(show:boolean):void {window.localStorage.setItem(SHOW_NET_WORTH_KEY,show?"shown":"hidden");window.dispatchEvent(new Event("northstar-preferences-changed"));}
+export function saveShowNetWorth(show:boolean):void {window.localStorage.setItem(SHOW_NET_WORTH_KEY,show?"shown":"hidden");window.dispatchEvent(new Event("spendshape-preferences-changed"));}
 export function readSavingsPreference():{style:SavingsStyle;value:number}{
   const style=window.localStorage.getItem(SAVINGS_STYLE_KEY)==="amount"?"amount":"percentage";
   const raw=window.localStorage.getItem(SAVINGS_VALUE_KEY);
@@ -78,7 +122,7 @@ export function readSavingsPreference():{style:SavingsStyle;value:number}{
 }
 export function saveSavingsPreference(style:SavingsStyle,value:number):void{
   window.localStorage.setItem(SAVINGS_STYLE_KEY,style);window.localStorage.setItem(SAVINGS_VALUE_KEY,String(Math.max(0,value)));
-  window.dispatchEvent(new Event("northstar-preferences-changed"));
+  window.dispatchEvent(new Event("spendshape-preferences-changed"));
 }
 
 export function readCompareBaseline(): CompareBaseline {
@@ -95,7 +139,7 @@ export function readWeekStart(): WeekStart {
 }
 export function saveWeekStart(value: WeekStart): void {
   window.localStorage.setItem(WEEK_START_KEY, value);
-  window.dispatchEvent(new Event("northstar-preferences-changed"));
+  window.dispatchEvent(new Event("spendshape-preferences-changed"));
 }
 
 export function readCategoryExpanded(): boolean {
@@ -105,7 +149,9 @@ export function saveCategoryExpanded(expanded: boolean): void {
   window.localStorage.setItem(CATEGORY_EXPANDED_KEY, expanded ? "expanded" : "collapsed");
 }
 
-export function clearNorthstarPreferences(): void {
+export function clearSpendShapePreferences(): void {
+  // Clears the legacy namespace too, so "reset everything" really does.
+  for (const [old] of LEGACY_KEYS) window.localStorage.removeItem(old);
   window.localStorage.removeItem(COMPARE_BASELINE_KEY);
   window.localStorage.removeItem(CATEGORY_EXPANDED_KEY);
   window.localStorage.removeItem(CHART_PERIOD_KEY);
