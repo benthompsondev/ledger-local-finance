@@ -2,7 +2,7 @@
 Create a deterministic fake demo database.
 
 Build a deterministic FAKE demo database at data/finance.demo.db so
-the Ledger app, screenshots, and reviewers can see meaningful data
+the SpendShape app, screenshots, and reviewers can see meaningful data
 without ever touching real finances.
 
 What this script does
@@ -38,7 +38,7 @@ Usage
 
 Run the desktop app against the demo DB (PowerShell)
 ────────────────────────────────────────────────────
-    $env:LEDGER_DATA_DIR = "$env:TEMP\northstar-ledger-demo"
+    $env:LEDGER_DATA_DIR = "$env:TEMP\spendshape-demo"
     $env:LEDGER_DEMO_DB = "1"
     npm run desktop:dev
 
@@ -538,7 +538,7 @@ def _seed_plan_and_goals(conn: sqlite3.Connection, anchor: date) -> dict:
 # ── Main ──────────────────────────────────────────────────────────
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
-        description="Generate a fake demo SQLite database for Ledger.",
+        description="Generate a fake demo SQLite database for SpendShape.",
     )
     p.add_argument("--out", default=str(_ROOT / "data" / "finance.demo.db"),
                    help="Demo DB output path. Defaults to data/finance.demo.db.")

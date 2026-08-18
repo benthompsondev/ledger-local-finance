@@ -1,4 +1,4 @@
-"""One-request JSON bridge from the Tauri shell to Ledger's Python engine.
+"""One-request JSON bridge from the Tauri shell to SpendShape's Python engine.
 
 The process reads exactly one JSON request from stdin, writes exactly one JSON
 response to stdout, and exits. It never opens a socket or launches a browser.
@@ -49,9 +49,9 @@ def _logger(data_root: Path) -> logging.Logger:
 
 
 def _bind_database() -> None:
-    """Point Ledger's database module at the desktop data directory.
+    """Point SpendShape's database module at the desktop data directory.
 
-    Ledger resolves DB_PATH at import time for normal app performance. The
+    SpendShape resolves DB_PATH at import time for normal app performance. The
     desktop bridge makes its process boundary explicit so isolated launches
     and tests always use the directory supplied by the Tauri shell.
     """
@@ -505,7 +505,7 @@ def _sample_rows(txs: list[dict]) -> list[dict[str, Any]]:
 
 
 def _preview_totals(txs: list[dict]) -> dict[str, Any]:
-    """Summarize parsed rows using Ledger's cashflow exclusions."""
+    """Summarize parsed rows using SpendShape's cashflow exclusions."""
     from utils.financial_semantics import cashflow_totals
     dates = sorted(
         str(tx.get("transaction_date") or "")
@@ -527,7 +527,7 @@ def _checked_paths(params: dict[str, Any]) -> list[Path]:
         raise ValueError("No files were selected.")
     if len(raw_paths) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"Ledger imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
         )
     paths = []
     for raw in raw_paths:
@@ -546,7 +546,7 @@ def _preview_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("No files were selected.")
     if len(raw_specs) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"Ledger imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
         )
     specs = []
     for raw in raw_specs:
@@ -891,7 +891,7 @@ def confirm_import_action(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("No files were confirmed for import.")
     if len(raw_files) > MAX_IMPORT_FILES:
         raise ValueError(
-            f"Ledger imports at most {MAX_IMPORT_FILES} files at a time."
+            f"SpendShape imports at most {MAX_IMPORT_FILES} files at a time."
         )
 
     conn = _connection()
@@ -1446,7 +1446,7 @@ def correct_transaction_action(params: dict[str, Any]) -> dict[str, Any]:
     if tx_id <= 0:
         raise ValueError("No transaction was selected.")
     if category not in CATEGORIES:
-        raise ValueError(f"“{category}” is not a Ledger category.")
+        raise ValueError(f"“{category}” is not a SpendShape category.")
     from utils.financial_semantics import (
         BULK_CATEGORY_TYPES, MANUAL_TRANSACTION_TYPES,
         classify_transaction_type,
@@ -1916,7 +1916,7 @@ def add_manual_transaction_action(params: dict[str, Any]) -> dict[str, Any]:
     if direction not in {"debit", "credit"}:
         raise ValueError("Direction must be money out or money in.")
     if category not in CATEGORIES:
-        raise ValueError(f"“{category}” is not a Ledger category.")
+        raise ValueError(f"“{category}” is not a SpendShape category.")
     if amount <= 0:
         raise ValueError("Amount must be greater than zero.")
 
@@ -3750,7 +3750,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
     action = request.get("action")
     handler = ACTIONS.get(str(action))
     if handler is None:
-        raise ValueError("Unsupported Ledger desktop action.")
+        raise ValueError("Unsupported SpendShape desktop action.")
     params = request.get("params")
     if params is None:
         params = {}

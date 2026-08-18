@@ -41,7 +41,7 @@ def verify_installer(installer: Path, bundle: Path) -> dict[str, object]:
     names = [str(path.relative_to(bundle)) for path in bundle.rglob("*")]
     _assert_safe_names(names)
     if not re.fullmatch(r"\d+\.\d+\.\d+", __version__):
-        raise RuntimeError(f"Ledger version is not installer-safe: {__version__}")
+        raise RuntimeError(f"SpendShape version is not installer-safe: {__version__}")
     digest = hashlib.sha256(installer.read_bytes()).hexdigest().upper()
     return {
         "files": sum(path.is_file() for path in bundle.rglob("*")),

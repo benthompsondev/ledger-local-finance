@@ -1,6 +1,6 @@
-# Northstar Ledger
+# SpendShape
 
-[![Northstar Ledger validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
+[![SpendShape validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/benthompsondev/ledger-local-finance)](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Local-first](https://img.shields.io/badge/local--first-no%20account%2C%20no%20server-brightgreen.svg)](SECURITY.md)
@@ -18,7 +18,7 @@ had, which was some version of "am I okay, and what changed."
 **[Download the installer](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - one .exe, no Python needed ·
 **[Read the setup guide](docs/GETTING_STARTED.md)**
 
-![Northstar Ledger Home screen using synthetic demo data](docs/screenshots/native-home-2.5.5.png)
+![SpendShape Home screen using synthetic demo data](site/assets/home.png)
 
 The questions it is built to answer:
 
@@ -33,10 +33,10 @@ The questions it is built to answer:
 Download the installer from the
 [latest release](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
 and run it. That is the whole thing. You do not need Python, Node or Rust to
-use Northstar; the installer bundles everything, including the Python engine.
+use SpendShape; the installer bundles everything, including the Python engine.
 
 ```
-NorthstarLedger_2.9.1_x64-setup.exe
+SpendShape_3.0.0_x64-setup.exe
 ```
 
 It installs for your user only, so no admin prompt. Installing over an older
@@ -58,13 +58,10 @@ latest release by hand this once.
 
 ## Status
 
-**Current release: 2.9.1. Windows public beta.** It works, it is tested, and it
-is still a beta. Money Radar now shows only bills that the same Plan logic
-treats as obligations. Regular groceries, restaurants and delivery habits stay
-out, expected dates start today instead of building an overdue backlog, and
-non-payroll income needs an explicit decision before it appears as a payday.
-Each item still opens to the real charges behind it, and nothing projects a
-balance. Insights still carries the pattern observations added in 2.8.0.
+**Current release: 3.0.0. Windows public beta.** Northstar Ledger is now
+SpendShape. The name, icon and interface changed; the local database, updater
+identity and finance rules did not. Existing installs update in place and keep
+using `%LOCALAPPDATA%\Ledger` so no data or settings are orphaned.
 
 - **Your own statements remain the source of truth.** The math is covered by
   tests, but check anything that matters against your bank.
@@ -92,7 +89,7 @@ There are six tabs:
 | **Home** | The weekly check-in. Safe to Spend, the next few weeks of recurring money, what changed, and the few things worth looking at. |
 | **Add Data** | Import statements. Detects the file's shape once, shows you what it found, and refuses files whose evidence is contradictory. |
 | **Plan** | Turn recent spending into a monthly plan, then compare a finished month with the exact plan that existed for it. |
-| **Insights** | What Northstar noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |
+| **Insights** | What SpendShape noticed in your history, with the figures and the transactions behind it. Also spending pace, category movement, income steadiness, cashflow and monthly net worth. |
 | **Transactions** | The full ledger. Search, filter, recategorize, exclude transfers, fix mistakes. |
 | **Coach** | Optional AI explanation of numbers the engine already computed. Works only if you configure a provider. |
 
@@ -124,7 +121,7 @@ look more cautious than other apps:
 
 ## Building it from source
 
-**You do not need any of this to use Northstar.** Skip to
+**You do not need any of this to use SpendShape.** Skip to
 [Importing your own statements](#importing-your-own-statements) unless you want
 to work on the code.
 
@@ -157,7 +154,7 @@ Demo mode is not a switch inside the app. It is two environment variables, so
 the app can never quietly point itself at generated data or at yours:
 
 ```powershell
-$demoDir = Join-Path $env:TEMP "northstar-ledger-demo"
+$demoDir = Join-Path $env:TEMP "spendshape-demo"
 New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
 .\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
 $env:LEDGER_DATA_DIR = $demoDir
@@ -193,7 +190,7 @@ The app works completely without AI, and nothing in the finance math depends on
 it. Every figure on every screen is computed locally whether AI is on or off,
 and Coach still reports its deterministic findings with AI disabled.
 
-This part is marked **Beta** because provider compatibility varies. Northstar
+This part is marked **Beta** because provider compatibility varies. SpendShape
 speaks the OpenAI chat format and Anthropic's Messages API, but a provider that
 claims compatibility can still differ enough to return an error. If you
 configure a provider key, AI can summarize and explain numbers the local engine
@@ -220,7 +217,7 @@ The useful boundaries are simple:
 ## Privacy
 
 The finance math is entirely local and deterministic. There is no telemetry,
-no analytics and no account. Northstar makes exactly two kinds of outbound
+no analytics and no account. SpendShape makes exactly two kinds of outbound
 request, and you have to start both:
 
 - An **AI request** you triggered, to a provider you configured, carrying the

@@ -20,11 +20,18 @@ from pathlib import Path
 from utils import __version__
 
 PRODUCT_NAME = "SpendShape"
+LEGACY_PRODUCT_NAMES = frozenset({"ledger", "northstar ledger"})
 _UNINSTALL_PATHS = [
     ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
     ("HKLM", r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
     ("HKLM", r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
 ]
+
+
+def _is_product_entry(display_name: str, subkey_name: str) -> bool:
+    """Recognize the current app and both legacy visible names exactly."""
+    names = {display_name.strip().lower(), subkey_name.strip().lower()}
+    return PRODUCT_NAME.lower() in names or bool(names & LEGACY_PRODUCT_NAMES)
 
 
 def _uninstall_entries() -> list[dict[str, str]]:
@@ -50,7 +57,7 @@ def _uninstall_entries() -> list[dict[str, str]]:
                                 return ""
 
                         display = value("DisplayName")
-                        if "ledger" not in f"{display} {subkey_name}".lower():
+                        if not _is_product_entry(display, subkey_name):
                             continue
                         found.append({
                             "hive": hive_name,
@@ -102,7 +109,7 @@ def verify_installed(expected_version: str = "") -> dict[str, object]:
             for e in entries
         )
         raise RuntimeError(
-            f"Installed Apps carries {len(entries)} Ledger entries, so at "
+            f"Installed Apps carries {len(entries)} SpendShape or legacy entries, so at "
             f"least one is stale: {listed}"
         )
 

@@ -1,7 +1,7 @@
 {
   "name": "ledger-native-desktop",
   "private": true,
-  "version": "2.9.1",
+  "version": "3.0.0",
   "description": "SpendShape native desktop",
   "type": "module",
   "scripts": {

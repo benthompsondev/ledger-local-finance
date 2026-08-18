@@ -1,1 +1,1 @@
-"""Packaged Python engine used by the Ledger Tauri shell."""
+"""Packaged Python engine used by the SpendShape Tauri shell."""

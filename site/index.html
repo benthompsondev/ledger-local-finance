@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Northstar Ledger - private, local financial clarity</title>
+    <title>SpendShape - private, local-first personal finance</title>
     <meta
       name="description"
       content="A local-first Windows finance app for importing statements, checking spending, planning the month, and tracking net worth without an account or cloud sync."
     />
     <link rel="canonical" href="https://benthompsondev.github.io/ledger-local-finance/" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Northstar Ledger" />
-    <meta property="og:title" content="Northstar Ledger - your statements, your computer, useful answers" />
+    <meta property="og:site_name" content="SpendShape" />
+    <meta property="og:title" content="SpendShape - see the shape in your spending" />
     <meta
       property="og:description"
       content="Import bank statements, understand where the money went, and plan the month. Finance calculations stay on your Windows PC."
     />
     <meta property="og:url" content="https://benthompsondev.github.io/ledger-local-finance/" />
-    <meta property="og:image" content="https://benthompsondev.github.io/ledger-local-finance/assets/northstar-hero.png" />
-    <meta property="og:image:alt" content="Northstar Ledger logo and the words Private, local financial clarity" />
+    <meta property="og:image" content="https://benthompsondev.github.io/ledger-local-finance/assets/home.png" />
+    <meta property="og:image:alt" content="SpendShape desktop app using synthetic demo data" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#07120f" />
     <link rel="icon" href="assets/icon.png" type="image/png" />
@@ -26,9 +26,9 @@
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="Northstar Ledger home">
+      <a class="brand" href="#top" aria-label="SpendShape home">
         <img src="assets/icon.png" alt="" width="42" height="42" />
-        <span>Northstar <strong>Ledger</strong></span>
+        <span>Spend<strong>Shape</strong></span>
       </a>
       <nav aria-label="Site navigation">
         <a href="#tour">Product tour</a>
@@ -44,7 +44,7 @@
           <p class="eyebrow">Windows public beta</p>
           <h1>Your statements. Your computer. Useful answers.</h1>
           <p class="lede">
-            Northstar Ledger imports bank and credit-card statements, checks the
+            SpendShape imports bank and credit-card statements, checks the
             numbers locally, and turns them into a practical monthly check-in.
             No account, no subscription, and no finance-data server.
           </p>
@@ -55,12 +55,12 @@
             <a class="button secondary" href="#tour">Take the product tour</a>
           </div>
           <p class="fine-print">
-            The installer is currently unsigned, so Windows SmartScreen may warn you.
-            The download page includes its SHA-256 checksum.
+            The updater is signed and each release includes a SHA-256 checksum.
+            The installer is not Authenticode signed, so SmartScreen may still warn you.
           </p>
         </div>
         <div class="hero-visual">
-          <img src="assets/home.png" alt="Northstar Ledger Home screen using fully synthetic demo data" />
+          <img src="assets/home.png" alt="SpendShape Home screen using fully synthetic demo data" />
           <span class="demo-label">Synthetic demo data</span>
         </div>
       </section>
@@ -83,7 +83,7 @@
           </p>
         </div>
 
-        <div class="tour-tabs" role="tablist" aria-label="Northstar screens">
+        <div class="tour-tabs" role="tablist" aria-label="SpendShape screens">
           <button id="tour-home" role="tab" aria-selected="true" aria-controls="tour-panel" tabindex="0" data-tour="home">Home</button>
           <button id="tour-plan" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-tour="plan">Plan</button>
           <button id="tour-insights" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-tour="insights">Insights</button>
@@ -103,7 +103,7 @@
               <li>Plain-language findings from local calculations</li>
             </ul>
           </div>
-          <img id="tour-image" src="assets/home.png" alt="Northstar Ledger Home screen using synthetic data" />
+          <img id="tour-image" src="assets/home.png" alt="SpendShape Home screen using synthetic data" />
         </article>
       </section>
 
@@ -112,7 +112,7 @@
           <span class="number">01</span>
           <h3>Import without hiding the risky part</h3>
           <p>
-            Northstar detects a statement's columns, date format, and amount
+            SpendShape detects a statement's columns, date format, and amount
             convention once. If the evidence conflicts, the import stops instead
             of guessing and quietly corrupting the ledger.
           </p>
@@ -151,7 +151,7 @@
           <h2>Local-first is a design rule, not a badge</h2>
           <p>
             Statement parsing, categorization, planning, charts, backups, and the
-            SQLite database all run on your computer. There is no Northstar account,
+            SQLite database all run on your computer. There is no SpendShape account,
             telemetry service, or background financial-data sync.
           </p>
           <p>
@@ -203,8 +203,8 @@
           <h2>What is still rough</h2>
         </div>
         <ul>
-          <li>The Windows installer is unsigned.</li>
-          <li>Updates are manual downloads for now.</li>
+          <li>The installer is updater-signed but not Authenticode signed, so SmartScreen may warn you.</li>
+          <li>Update checks happen only when you press the button in Settings.</li>
           <li>Bank exports vary, so an unfamiliar CSV may need mapping or may be refused.</li>
           <li>AI provider support is Beta and is not required for any finance feature.</li>
           <li>Your bank statement remains the final source of truth.</li>
@@ -218,7 +218,7 @@
           <p>The source, installer, checksum, setup guide, and known limits are all public.</p>
         </div>
         <div class="actions">
-          <a class="button primary" href="https://github.com/benthompsondev/ledger-local-finance/releases/latest">Download Northstar</a>
+          <a class="button primary" href="https://github.com/benthompsondev/ledger-local-finance/releases/latest">Download SpendShape</a>
           <a class="button secondary" href="https://github.com/benthompsondev/ledger-local-finance">Read the source</a>
         </div>
       </section>

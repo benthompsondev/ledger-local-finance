@@ -1,6 +1,6 @@
 [package]
 name = "ledger-native"
-version = "2.9.1"
+version = "3.0.0"
 description = "SpendShape native desktop"
 authors = ["Ben Thompson"]
 homepage = "https://github.com/benthompsondev/ledger-local-finance"

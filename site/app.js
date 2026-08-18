@@ -9,7 +9,7 @@ const tours = {
       "Plain-language findings from local calculations",
     ],
     image: "assets/home.png",
-    alt: "Northstar Ledger Home screen using synthetic data",
+    alt: "SpendShape Home screen using synthetic data",
   },
   plan: {
     kicker: "A plan that shows its work",
@@ -21,7 +21,7 @@ const tours = {
       "A review step before the plan becomes authoritative",
     ],
     image: "assets/plan.png",
-    alt: "Northstar Ledger Plan screen using synthetic data",
+    alt: "SpendShape Plan screen using synthetic data",
   },
   insights: {
     kicker: "Patterns that keep the comparison fair",
@@ -33,7 +33,7 @@ const tours = {
       "Income, recurring costs, and recorded net-worth trend",
     ],
     image: "assets/insights.png",
-    alt: "Northstar Ledger Insights screen using synthetic data",
+    alt: "SpendShape Insights screen using synthetic data",
   },
 };
 

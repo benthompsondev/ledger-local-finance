@@ -1,4 +1,4 @@
-name: Northstar Ledger validation
+name: SpendShape validation
 
 # The shipping product is the native Tauri desktop app: a Rust shell around a
 # React frontend talking to a packaged Python engine. This workflow validates

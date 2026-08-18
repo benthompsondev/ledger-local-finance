@@ -1,6 +1,6 @@
-# Getting started with Northstar Ledger
+# Getting started with SpendShape
 
-This is the beginner path for running Northstar Ledger on your own machine.
+This is the beginner path for running SpendShape on your own machine.
 
 It is a local-first finance app for Windows. It runs on your computer, stores
 everything in a local SQLite database, and does not need an account or an
@@ -16,10 +16,10 @@ Download the latest Windows installer from
 It is a per-user install and does not require Python, Node, Rust, or
 administrator rights.
 
-The installer is currently unsigned, so Windows SmartScreen may warn you the
-first time. Check the SHA-256 value on the release page before running it.
+The installer is not Authenticode signed, so Windows SmartScreen may warn you
+the first time. Check the SHA-256 value on the release page before running it.
 
-The sections below are for running Northstar from source. For that you need:
+The sections below are for running SpendShape from source. For that you need:
 
 - [Python 3.13+](https://www.python.org/downloads/) — tick **Add Python to
   PATH** during install if the installer offers it
@@ -71,7 +71,7 @@ looking at invented data or yours.
 Generate the dataset into a temp folder and point the app at it:
 
 ```powershell
-$demoDir = Join-Path $env:TEMP "northstar-ledger-demo"
+$demoDir = Join-Path $env:TEMP "spendshape-demo"
 New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
 .\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
 $env:LEDGER_DATA_DIR = $demoDir
@@ -141,8 +141,9 @@ powershell -File scripts/build_native_desktop.ps1
 The installer is written to `src-tauri/target/release/bundle/nsis/`. It is a
 per-user install and does not need administrator rights.
 
-Note there is no auto-update yet. Installing a newer build over an older one is
-currently a manual reinstall.
+From version 2.6.0 onward, Settings can check GitHub for a signed update when
+you press **Check for updates**. Nothing checks in the background. A manual
+installer still upgrades the same per-user installation and keeps your data.
 
 ## If something fails
 

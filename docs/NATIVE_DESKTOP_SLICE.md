@@ -1,8 +1,8 @@
-# Ledger native desktop
+# SpendShape native desktop
 
 SpendShape's Windows product is a Tauri 2 desktop application. It covers
-the core weekly workflow natively: Home, Add Data, Plan, Goals, Insights,
-Transactions, and secondary Settings. It runs on Ledger's existing
+the core weekly workflow natively: Home, Add Data, Plan, Insights,
+Transactions, and secondary Settings. It runs on SpendShape's existing
 deterministic Python finance engine.
 
 ## Architecture
@@ -78,7 +78,7 @@ not be used to migrate more pages. Their build scripts
 
 ## Rollback
 
-1. Close Ledger.
+1. Close SpendShape.
 2. Uninstall `SpendShape` from Windows Installed Apps, or run
    `& "$env:LOCALAPPDATA\Programs\Ledger\uninstall.exe"`.
 3. Confirm `%LOCALAPPDATA%\Ledger\finance.db` still exists. Do not delete the

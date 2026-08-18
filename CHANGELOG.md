@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.0.0 - 2026-08-18
+
+Northstar Ledger is now SpendShape. This is a product-name and interface
+release, not a change to the finance math.
+
+### What changed
+
+- The native app, installer, taskbar icon, update panel and current public docs
+  now use the SpendShape name and the new chart-shaped mark.
+- The interface uses one navy, green, blue, violet and amber system across
+  navigation, cards, charts, buttons, focus states and the Insights patterns.
+- Existing installs update in place. The app identifier, program directory,
+  database directory, sidecar name and environment variables keep their legacy
+  values so upgrades do not strand data.
+- Preferences saved under the old `northstar.*` browser-storage keys move to
+  `spendshape.*` once, without overwriting a newer choice.
+- Upgrade cleanup now removes both `Ledger` and `Northstar Ledger` Installed
+  Apps entries and shortcuts after SpendShape installs successfully.
+- Remaining native errors and current setup guidance use the SpendShape name.
+
 ## 2.9.1 - 2026-08-18
 
 This patch makes Money Radar much more selective after real use showed that

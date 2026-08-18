@@ -169,7 +169,10 @@ def test_unsupported_action_returns_one_json_error(engine_env) -> None:
     code, payload = _request({"action": "delete_everything"})
 
     assert code == 1
-    assert payload == {"ok": False, "error": "Unsupported Ledger desktop action."}
+    assert payload == {
+        "ok": False,
+        "error": "Unsupported SpendShape desktop action.",
+    }
 
 
 def test_account_lifecycle_and_types(engine_env) -> None:
@@ -516,7 +519,7 @@ def test_correct_transaction_rejects_unknown_category(engine_env) -> None:
         }
     )
     assert code == 1
-    assert "not a Ledger category" in payload["error"]
+    assert "not a SpendShape category" in payload["error"]
 
 
 def test_native_plan_goal_insights_and_manual_entry(engine_env) -> None:

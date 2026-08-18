@@ -176,7 +176,7 @@ def check_demo_data() -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check whether Ledger is ready to run locally."
+        description="Check whether SpendShape is ready to run locally."
     )
     parser.add_argument(
         "--strict",

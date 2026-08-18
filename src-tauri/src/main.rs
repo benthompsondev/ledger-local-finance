@@ -1,4 +1,4 @@
-// Ledger native desktop shell. Every frontend capability is one narrow,
+// SpendShape native desktop shell. Every frontend capability is one narrow,
 // typed Tauri command that forwards a single JSON request to the packaged
 // Python engine sidecar over stdin/stdout. No HTTP server, no localhost
 // listener, no external browser. Release builds hide the console window.
@@ -59,18 +59,18 @@ fn log_shell_error(context: &str, detail: &str) {
 
 fn decode_engine_response(stdout: &[u8]) -> Result<Value, String> {
     let response: Value = serde_json::from_slice(stdout)
-        .map_err(|error| format!("Ledger engine returned invalid JSON: {error}"))?;
+        .map_err(|error| format!("SpendShape engine returned invalid JSON: {error}"))?;
     if response.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(response
             .get("error")
             .and_then(Value::as_str)
-            .unwrap_or("Ledger engine failed without an error message.")
+            .unwrap_or("SpendShape engine failed without an error message.")
             .to_string());
     }
     response
         .get("data")
         .cloned()
-        .ok_or_else(|| "Ledger engine returned no data.".to_string())
+        .ok_or_else(|| "SpendShape engine returned no data.".to_string())
 }
 
 /// Run one one-shot engine request: spawn the sidecar, write a single JSON
@@ -96,7 +96,7 @@ async fn run_engine_inner(
 ) -> Result<Value, String> {
     let data_dir = ledger_data_dir()?;
     std::fs::create_dir_all(data_dir.join("logs"))
-        .map_err(|error| format!("Ledger could not create its private data directory: {error}"))?;
+        .map_err(|error| format!("SpendShape could not create its private data directory: {error}"))?;
 
     // The engine ships as a PyInstaller onedir bundle inside Tauri's
     // resource directory (a onefile sidecar re-extracted ~85 MB on every
@@ -106,10 +106,10 @@ async fn run_engine_inner(
     let engine = app
         .path()
         .resolve("engine/ledger-engine.exe", BaseDirectory::Resource)
-        .map_err(|error| format!("Ledger engine is missing: {error}"))?;
+        .map_err(|error| format!("SpendShape engine is missing: {error}"))?;
     if !engine.is_file() {
         return Err(format!(
-            "Ledger engine is missing from the installation: {}",
+            "SpendShape engine is missing from the installation: {}",
             engine.display()
         ));
     }
@@ -119,11 +119,11 @@ async fn run_engine_inner(
         .env("LEDGER_DATA_DIR", &data_dir);
     let (mut events, mut child) = command
         .spawn()
-        .map_err(|error| format!("Ledger engine could not start: {error}"))?;
+        .map_err(|error| format!("SpendShape engine could not start: {error}"))?;
     let request = json!({"action": action, "params": params});
     child
         .write((request.to_string() + "\n").as_bytes())
-        .map_err(|error| format!("Ledger engine request failed: {error}"))?;
+        .map_err(|error| format!("SpendShape engine request failed: {error}"))?;
 
     let collect = async {
         let mut stdout = Vec::new();
@@ -145,16 +145,16 @@ async fn run_engine_inner(
             Err(_) => {
                 let _ = child.kill();
                 return Err(format!(
-                    "Ledger engine did not respond within {timeout_secs} seconds."
+                    "SpendShape engine did not respond within {timeout_secs} seconds."
                 ));
             }
         };
     if stdout.is_empty() {
         let detail = String::from_utf8_lossy(&stderr).trim().to_string();
         return Err(if detail.is_empty() {
-            "Ledger engine exited without a response.".to_string()
+            "SpendShape engine exited without a response.".to_string()
         } else {
-            format!("Ledger engine failed: {detail}")
+            format!("SpendShape engine failed: {detail}")
         });
     }
     decode_engine_response(&stdout)
@@ -1211,7 +1211,7 @@ fn main() {
             pick_backup_file
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Ledger");
+        .expect("error while running SpendShape");
 }
 
 #[cfg(test)]
