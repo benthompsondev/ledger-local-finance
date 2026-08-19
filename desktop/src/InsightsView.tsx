@@ -318,8 +318,10 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
               )}
             </article>
             <article className="chart-card content-card">
+              {/* Six, to sit level with the donut beside it rather than
+                  running 200px past the bottom of it. */}
               <h3>Top merchants — {data.period_label}</h3>
-              {data.merchants.slice(0, 8).map((m) => (
+              {data.merchants.slice(0, 6).map((m) => (
                 <button
                   type="button"
                   className="rank-row rank-row-click"
