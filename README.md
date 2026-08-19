@@ -38,11 +38,10 @@ use SignalSpace; the installer bundles everything, including the Python engine.
 The latest published installer is still:
 
 ```
-SignalSpaceFinance_3.1.0_x64-setup.exe
+SignalSpaceFinance_3.1.1_x64-setup.exe
 ```
 
-SignalSpace 3.0.0 is prepared on `main`, but it will not replace that download
-until its updater signature can be generated and verified.
+The updater and the installer use the same signed 3.1.1 artifact.
 
 It installs for your user only, so no admin prompt. Installing over an older
 version keeps your data.
@@ -63,7 +62,7 @@ latest release by hand this once.
 
 ## Status
 
-**Version on `main`: 3.1.0. Latest signed public beta: 3.1.0.** The app is now
+**Version on `main`: 3.1.1. Latest signed public beta: 3.1.1.** The app is now
 SignalSpace Finance. Existing installs update in place, keep their current
 database, and can add separate profiles for another set of finances.
 

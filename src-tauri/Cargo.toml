@@ -1,6 +1,6 @@
 [package]
 name = "ledger-native"
-version = "3.1.0"
+version = "3.1.1"
 description = "SignalSpace native desktop"
 authors = ["Ben Thompson"]
 homepage = "https://github.com/benthompsondev/ledger-local-finance"
