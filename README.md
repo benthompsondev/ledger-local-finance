@@ -15,7 +15,7 @@ cloud-dependent, or too busy drawing charts to answer the question I actually
 had, which was some version of "am I okay, and what changed."
 
 **[Take the product tour](https://benthompsondev.github.io/ledger-local-finance/)** - current native screens with synthetic data ·
-**[Download the installer](https://github.com/benthompsondev/ledger-local-finance/releases/latest)** - one .exe, no Python needed ·
+**[Download for Windows](https://github.com/benthompsondev/ledger-local-finance/releases/latest/download/SignalSpaceFinance-setup.exe)** - one .exe, no Python needed ·
 **[Read the setup guide](docs/GETTING_STARTED.md)**
 
 ![SignalSpace Home screen using synthetic demo data](site/assets/home.png)
@@ -30,19 +30,13 @@ The questions it is built to answer:
 
 ## Install it
 
-Download the installer from the
-[latest release](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
-and run it. That is the whole thing. You do not need Python, Node or Rust to
+[Download SignalSpaceFinance-setup.exe](https://github.com/benthompsondev/ledger-local-finance/releases/latest/download/SignalSpaceFinance-setup.exe) and run it. That is the
+whole thing. You do not need Python, Node or Rust to
 use SignalSpace; the installer bundles everything, including the Python engine.
 
-The download is always the same file name:
-
-```
-SignalSpaceFinance-setup.exe
-```
-
-That link always resolves to the newest release. A versioned copy is
-published beside it for release history, and it is the versioned file
+That link always resolves to the newest release, so it keeps working and
+does not need updating when a new version ships. A versioned copy is
+published beside it for release history, and the versioned file is what
 the updater and its signature refer to.
 
 It installs for your user only, so no admin prompt. Installing over an older
