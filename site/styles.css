@@ -52,8 +52,8 @@ main { overflow: hidden; }
   margin-right: auto;
 }
 .hero {
-  min-height: 720px;
-  padding: 88px 0 72px;
+  min-height: 680px;
+  padding: 64px 0 56px;
   display: grid;
   grid-template-columns: minmax(0, 0.82fr) minmax(560px, 1.18fr);
   align-items: center;
@@ -68,7 +68,7 @@ main { overflow: hidden; }
   margin: 0 0 13px;
 }
 h1, h2, h3, p { margin-top: 0; }
-h1 { font-size: clamp(3rem, 6vw, 5.35rem); line-height: 0.98; letter-spacing: -0.055em; margin-bottom: 28px; }
+h1 { font-size: clamp(3rem, 5.25vw, 4.75rem); line-height: 0.98; letter-spacing: -0.055em; margin-bottom: 28px; }
 h2 { font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1.05; letter-spacing: -0.04em; margin-bottom: 18px; }
 h3 { font-size: 1.25rem; line-height: 1.25; margin-bottom: 12px; }
 .lede { color: #c7d5d3; font-size: 1.16rem; max-width: 650px; }
