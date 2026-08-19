@@ -402,7 +402,7 @@ export interface TransactionQuery {
   flaggedOnly?: boolean;
   suggestedOnly?: boolean;
   quickReview?: boolean;
-  cashflowRole?: "" | "income" | "spending" | "net";
+  cashflowRole?: "" | "income" | "spending" | "net" | "excluded";
 }
 
 export interface PlanRecord {
@@ -1223,7 +1223,7 @@ export interface TxPrefill {
   quickReview?: boolean;
   flaggedOnly?: boolean;
   suggestedOnly?: boolean;
-  cashflowRole?: "" | "income" | "spending" | "net";
+  cashflowRole?: "" | "income" | "spending" | "net" | "excluded";
   categoryComparison?: {
     category: string;
     current: number;
