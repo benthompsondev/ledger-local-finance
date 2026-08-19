@@ -12,6 +12,10 @@ const SAVINGS_VALUE_KEY = "spendshape.savingsValue";
 const COMPARE_BASELINE_KEY = "spendshape.compareBaseline";
 const CATEGORY_EXPANDED_KEY = "spendshape.categoryExpanded";
 const WEEK_START_KEY = "spendshape.weekStart";
+// Per profile, because "I have already been shown this" is true of the
+// person who has been using their finances for months and not of the
+// empty profile they just created for somebody else.
+const GETTING_STARTED_PREFIX = "spendshape.gettingStarted.";
 
 /** The keys these used to have, in the same order, for the rename migration. */
 const LEGACY_KEYS: [string, string][] = [
@@ -149,6 +153,35 @@ export function saveCategoryExpanded(expanded: boolean): void {
   window.localStorage.setItem(CATEGORY_EXPANDED_KEY, expanded ? "expanded" : "collapsed");
 }
 
+export function gettingStartedKey(profileId: string): string {
+  return GETTING_STARTED_PREFIX + profileId;
+}
+
+export function readGettingStartedDismissed(profileId: string): boolean {
+  if (!profileId) return false;
+  try {
+    return window.localStorage.getItem(gettingStartedKey(profileId))
+      === "dismissed";
+  } catch {
+    return false;
+  }
+}
+
+export function saveGettingStartedDismissed(
+  profileId: string, dismissed: boolean,
+): void {
+  if (!profileId) return;
+  try {
+    if (dismissed) {
+      window.localStorage.setItem(gettingStartedKey(profileId), "dismissed");
+    } else {
+      window.localStorage.removeItem(gettingStartedKey(profileId));
+    }
+  } catch {
+    // A preference is not worth failing a render over.
+  }
+}
+
 export function clearSignalSpacePreferences(): void {
   // Clears the legacy namespace too, so "reset everything" really does.
   for (const [old] of LEGACY_KEYS) window.localStorage.removeItem(old);
@@ -163,4 +196,11 @@ export function clearSignalSpacePreferences(): void {
   window.localStorage.removeItem(SAVINGS_STYLE_KEY);
   window.localStorage.removeItem(SAVINGS_VALUE_KEY);
   window.localStorage.removeItem(WEEK_START_KEY);
+  // Every profile's getting-started state, whatever the ids were.
+  for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+    const key = window.localStorage.key(i);
+    if (key && key.startsWith(GETTING_STARTED_PREFIX)) {
+      window.localStorage.removeItem(key);
+    }
+  }
 }

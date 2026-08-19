@@ -84,7 +84,7 @@ def test_a_new_profile_gets_its_own_directory_and_starts_empty(tmp_path):
     profiles.ensure_registry(tmp_path)
     (tmp_path / "finance.db").write_bytes(b"default data")
 
-    created = profiles.create_profile(tmp_path, "Tori's Finances")
+    created = profiles.create_profile(tmp_path, "Second Person's Finances")
     directory = profiles.profile_dir(tmp_path, created["id"])
 
     assert directory != tmp_path
@@ -181,7 +181,7 @@ def two_profiles(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("LEDGER_DATA_DIR", str(tmp_path))
     profiles.ensure_registry(tmp_path)
-    second = profiles.create_profile(tmp_path, "Tori's Finances")
+    second = profiles.create_profile(tmp_path, "Second Person's Finances")
 
     def seed(profile_id: str, payload: dict) -> None:
         monkeypatch.setenv(profiles.ACTIVE_OVERRIDE_ENV, profile_id)
@@ -223,9 +223,9 @@ def two_profiles(tmp_path, monkeypatch):
                               category="Groceries")],
     })
     seed(second["id"], {
-        "account": "TORI CHEQUING", "balance": 900.0, "savings": 90.0,
-        "rule_merchant": "TORI RULE ONLY", "rule_category": "Shopping",
-        "transactions": [dict(day="2026-08-05", desc="TORI ONLY MERCHANT",
+        "account": "SECOND CHEQUING", "balance": 900.0, "savings": 90.0,
+        "rule_merchant": "SECOND RULE ONLY", "rule_category": "Shopping",
+        "transactions": [dict(day="2026-08-05", desc="SECOND ONLY MERCHANT",
                               amount=222.22, direction="debit",
                               category="Shopping")],
     })
@@ -261,8 +261,8 @@ def test_transactions_do_not_leak(two_profiles):
     mp = two_profiles["monkeypatch"]
 
     for profile_id, mine, theirs in (
-        (profiles.DEFAULT_PROFILE_ID, "BEN ONLY MERCHANT", "TORI ONLY MERCHANT"),
-        (second, "TORI ONLY MERCHANT", "BEN ONLY MERCHANT"),
+        (profiles.DEFAULT_PROFILE_ID, "BEN ONLY MERCHANT", "SECOND ONLY MERCHANT"),
+        (second, "SECOND ONLY MERCHANT", "BEN ONLY MERCHANT"),
     ):
         db = _open(root, profile_id, mp)
         conn = db.get_connection()
@@ -305,12 +305,12 @@ def test_accounts_plans_and_net_worth_do_not_leak(two_profiles):
         seen[profile_id] = (accounts, plans, net)
 
     ben_accounts, ben_plans, ben_net = seen[profiles.DEFAULT_PROFILE_ID]
-    tori_accounts, tori_plans, tori_net = seen[second]
+    second_accounts, second_plans, second_net = seen[second]
 
     assert ben_accounts == ["BEN CHEQUING"]
-    assert tori_accounts == ["TORI CHEQUING"]
-    assert ben_plans == [500.0] and tori_plans == [90.0]
-    assert ben_net == [5000.0] and tori_net == [900.0]
+    assert second_accounts == ["SECOND CHEQUING"]
+    assert ben_plans == [500.0] and second_plans == [90.0]
+    assert ben_net == [5000.0] and second_net == [900.0]
 
 
 def test_saved_financial_rules_do_not_leak(two_profiles):
@@ -326,7 +326,7 @@ def test_saved_financial_rules_do_not_leak(two_profiles):
         }
 
     assert seen[profiles.DEFAULT_PROFILE_ID] == {"BEN RULE ONLY": "Groceries"}
-    assert seen[second] == {"TORI RULE ONLY": "Shopping"}
+    assert seen[second] == {"SECOND RULE ONLY": "Shopping"}
 
 
 def test_home_and_insights_figures_do_not_leak(two_profiles):
@@ -357,7 +357,7 @@ def test_an_import_only_reaches_the_open_profile(two_profiles):
     db = _open(root, second, mp)
     conn = db.get_connection()
     from tests.conftest import add_tx
-    add_tx(conn, day="2026-08-09", desc="IMPORTED INTO TORI", amount=44.0,
+    add_tx(conn, day="2026-08-09", desc="IMPORTED INTO SECOND", amount=44.0,
            direction="debit", category="Shopping")
     conn.commit()
     conn.close()
@@ -370,7 +370,7 @@ def test_an_import_only_reaches_the_open_profile(two_profiles):
         ).fetchall()
     ]
     conn.close()
-    assert not any("IMPORTED INTO TORI" in r for r in rows)
+    assert not any("IMPORTED INTO SECOND" in r for r in rows)
 
 
 def test_backups_and_exports_land_inside_the_open_profile(two_profiles):
@@ -392,7 +392,7 @@ def test_restoring_one_profile_cannot_replace_the_other(two_profiles):
     """Restore targets the open profile's database and no other file.
 
     The backup API accepts a selected SQLite file, so the decisive boundary
-    is the destination: restoring Tori must never rewrite Ben's root database.
+    is the destination: restoring Second must never rewrite Ben's root database.
     """
     root, second = two_profiles["root"], two_profiles["second"]
     mp = two_profiles["monkeypatch"]
@@ -421,7 +421,7 @@ def test_restoring_one_profile_cannot_replace_the_other(two_profiles):
         ).fetchall()
     ]
     conn.close()
-    assert any("TORI ONLY MERCHANT" in value for value in descriptions)
+    assert any("SECOND ONLY MERCHANT" in value for value in descriptions)
     assert not any("REMOVE ON RESTORE" in value for value in descriptions)
     assert not any("BEN ONLY MERCHANT" in value for value in descriptions)
 
@@ -446,8 +446,8 @@ def test_ai_payload_uses_only_the_open_profiles_financial_context(two_profiles):
         }
 
     assert any("BEN ONLY MERCHANT" in value for value in seen[profiles.DEFAULT_PROFILE_ID])
-    assert not any("TORI ONLY MERCHANT" in value for value in seen[profiles.DEFAULT_PROFILE_ID])
-    assert any("TORI ONLY MERCHANT" in value for value in seen[second])
+    assert not any("SECOND ONLY MERCHANT" in value for value in seen[profiles.DEFAULT_PROFILE_ID])
+    assert any("SECOND ONLY MERCHANT" in value for value in seen[second])
     assert not any("BEN ONLY MERCHANT" in value for value in seen[second])
 
 
@@ -510,8 +510,8 @@ def test_the_engine_binding_opens_the_active_profile(two_profiles):
     assert default_path.parent == root
     assert second_path.parent == profiles.profile_dir(root, second)
     assert any("BEN ONLY" in r for r in default_rows)
-    assert not any("TORI ONLY" in r for r in default_rows)
-    assert any("TORI ONLY" in r for r in second_rows)
+    assert not any("SECOND ONLY" in r for r in default_rows)
+    assert any("SECOND ONLY" in r for r in second_rows)
     assert not any("BEN ONLY" in r for r in second_rows)
 
 
@@ -551,7 +551,7 @@ def test_closing_and_reopening_keeps_the_chosen_profile(two_profiles):
     profiles.switch_profile(root, second)
 
     assert profiles.active_profile_id(root) == second
-    assert profiles.active_profile(root)["name"] == "Tori's Finances"
+    assert profiles.active_profile(root)["name"] == "Second Person's Finances"
 
 
 def test_a_visited_but_empty_profile_does_not_claim_to_have_data(tmp_path):

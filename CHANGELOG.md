@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.2.0 - 2026-08-19
+
+For anyone opening SignalSpace for the first time.
+
+### What changed
+
+- **A getting started card on Home for an empty profile.** Four steps: where
+  your data lives and that there is no account, how to import a statement,
+  where to check what came in, and what Home and Insights are for. It appears
+  only while a profile has no transactions, it can be dismissed, and it stays
+  dismissed for that profile. Settings can bring it back.
+- It says to use **CSV**, and says plainly that PDF import is Beta, works for
+  a small number of layouts and fails on many banks. It does not claim every
+  bank export works: some need their columns mapped and some will not import.
+- **Plan is explained rather than demanded.** It needs a few finished months
+  behind it, so there is nothing useful to set up on the first day and the
+  card says so instead of sending you there.
+- Each profile answers this for itself, so creating an empty profile for
+  somebody else gives them the guide even though you have finished with it.
+- The new-profile box no longer suggests a real person's name.
+- **A permanent Windows download link.** Every release now publishes
+  `SignalSpaceFinance-setup.exe` alongside the versioned installer, so
+  `releases/latest/download/SignalSpaceFinance-setup.exe` keeps working from
+  one release to the next. The versioned file stays for release history and
+  is still what the updater and its signature refer to.
+
 ## 3.1.1 - 2026-08-19
 
 This patch finishes the 3.1 interface work and fixes what the packaged app

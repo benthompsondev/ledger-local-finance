@@ -106,7 +106,31 @@ try {
             "before building a release.")
     }
 
+    # A second copy under a name that never changes. Every public download
+    # button points at GitHub's latest-release path, which can only resolve an
+    # asset whose filename is the same in every release; with the version in
+    # the name, each release silently broke every button until somebody edited
+    # the websites by hand.
+    #
+    # Deliberately a copy and not a rename. The versioned installer stays the
+    # release-history artifact and, more importantly, stays the exact filename
+    # the updater manifest and its detached .sig refer to. Nothing about the
+    # updater identity or signing changes here.
+    $StableInstaller = [IO.Path]::GetFullPath(
+        (Join-Path $BundleDir "SignalSpaceFinance-setup.exe"))
+    if (-not $StableInstaller.StartsWith($BundleDir, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Resolved stable installer path escaped the NSIS bundle directory."
+    }
+    Copy-Item -LiteralPath $FinalInstaller -Destination $StableInstaller -Force
+    $VersionedHash = (Get-FileHash -LiteralPath $FinalInstaller -Algorithm SHA256).Hash
+    $StableHash = (Get-FileHash -LiteralPath $StableInstaller -Algorithm SHA256).Hash
+    if ($VersionedHash -ne $StableHash) {
+        throw "Stable installer copy does not match the versioned installer."
+    }
+
     Write-Host "SignalSpace installer: $FinalInstaller"
+    Write-Host "Permanent-name copy:   $StableInstaller"
+    Write-Host "Both SHA-256:          $VersionedHash"
 }
 finally {
     Pop-Location

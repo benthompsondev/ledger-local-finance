@@ -35,13 +35,15 @@ Download the installer from the
 and run it. That is the whole thing. You do not need Python, Node or Rust to
 use SignalSpace; the installer bundles everything, including the Python engine.
 
-The latest published installer is still:
+The download is always the same file name:
 
 ```
-SignalSpaceFinance_3.1.1_x64-setup.exe
+SignalSpaceFinance-setup.exe
 ```
 
-The updater and the installer use the same signed 3.1.1 artifact.
+That link always resolves to the newest release. A versioned copy is
+published beside it for release history, and it is the versioned file
+the updater and its signature refer to.
 
 It installs for your user only, so no admin prompt. Installing over an older
 version keeps your data.

@@ -197,7 +197,7 @@ export function ProfilesPanel({ onSwitched }: { onSwitched: () => void }) {
             <input
               value={newName}
               maxLength={60}
-              placeholder="Tori's Finances"
+              placeholder="My second profile"
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter") void add(); }}
             />

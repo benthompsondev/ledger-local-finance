@@ -3,6 +3,7 @@ import { AnalysisContextNote } from "./AnalysisContextNote";
 import {
   loadHomeDashboard, loadHomeSummary, loadInsightFeed, loadUpcomingMoney,
 } from "./api";
+import { GettingStarted } from "./GettingStarted";
 import { MoneyRadar } from "./MoneyRadar";
 import {
   CashflowChart, CategoryBars, CategoryDonut, IncomeSourceDonut,
@@ -23,9 +24,14 @@ interface Props {
   onNavigate: (screen: string) => void;
   onDrill: (prefill: TxPrefill) => void;
   refreshToken: number;
+  /** Set only when the open profile holds nothing and has not dismissed it. */
+  guide?: { id: string; name: string; showName: boolean } | null;
+  onGuideDismissed?: () => void;
 }
 
-function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
+function HomeView({
+  onAddData, onNavigate, onDrill, refreshToken, guide, onGuideDismissed,
+}: Props) {
   const [packet, setPacket] = useState<HomePacket | null>(null);
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null);
   const [feed, setFeed] = useState<InsightFeed | null>(null);
@@ -138,6 +144,17 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
 
   return (
     <>
+      {guide && (
+        <GettingStarted
+          profileId={guide.id}
+          profileName={guide.name}
+          showProfileName={guide.showName}
+          onAddData={onAddData}
+          onNavigate={onNavigate}
+          onDismiss={() => onGuideDismissed?.()}
+        />
+      )}
+
       {error && (
         <section className="error-panel" role="alert">
           <strong>SignalSpace could not load your Home summary.</strong>

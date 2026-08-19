@@ -1691,3 +1691,48 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   .plan-outcome strong { font-size: 2.1rem; }
   .plan-notice { flex-direction: column; align-items: flex-start; }
 }
+
+/* ── getting started ────────────────────────────────────────────────── */
+/* Shown only to a profile holding nothing, so it can afford to be the
+   loudest thing on Home without ever competing with real figures. */
+.getting-started {
+  margin-top: 18px; border: 1px solid var(--accent-border, rgba(52,208,88,.35));
+  border-left: 3px solid var(--accent-mid); border-radius: 14px;
+  padding: 20px 22px; background: linear-gradient(
+    120deg, rgba(52,208,88,.07), rgba(16,27,41,.4) 52%);
+}
+.gs-head {
+  align-items: flex-start; display: flex; gap: 16px; flex-wrap: wrap;
+  justify-content: space-between;
+}
+.gs-head h2 { margin: 4px 0 0; font-size: 1.35rem; letter-spacing: -0.02em; }
+.gs-head > div > p { margin-top: 6px; color: var(--text-muted); font-size: .86rem; }
+.gs-steps {
+  display: grid; gap: 16px; margin: 18px 0 0; padding-left: 22px;
+  counter-reset: none;
+}
+.gs-steps li { color: var(--text-soft); }
+.gs-steps li::marker { color: var(--accent-text); font-weight: 750; }
+.gs-steps strong { color: var(--text); display: block; font-size: .95rem; }
+.gs-steps p {
+  margin: 5px 0 0; color: var(--text-muted); font-size: .86rem;
+  line-height: 1.55; max-width: 84ch;
+}
+.gs-steps .button-row { margin-top: 10px; }
+/* The PDF caveat is a limit, not a feature, and reads as one. */
+.gs-note {
+  border-left: 2px solid var(--caution-soft, rgba(227,179,65,.5));
+  padding-left: 10px;
+}
+.gs-later {
+  margin: 18px 0 0; padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-muted); font-size: .86rem; line-height: 1.55;
+  max-width: 88ch;
+}
+.gs-later strong { color: var(--text-soft); }
+.gs-link {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  color: var(--accent-text); font: inherit; text-decoration: underline;
+}
+@media (max-width: 720px) { .getting-started { padding: 16px; } }

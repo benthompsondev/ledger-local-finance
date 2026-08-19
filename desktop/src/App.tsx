@@ -10,7 +10,8 @@ import { loadReviewSummary } from "./api";
 import type { TxPrefill } from "./types";
 import brandIcon from "./assets/spendshape-icon.png";
 import { loadProfiles } from "./api";
-import { readDensity, readLandingPage } from "./preferences";
+import { readDensity, readLandingPage, readGettingStartedDismissed,
+  saveGettingStartedDismissed } from "./preferences";
 
 type Screen = "home" | "add-data" | "plan" | "insights" | "transactions" | "ai" | "settings";
 // Goals is gone. Its progress was self-reported, which made a whole tab out of
@@ -36,15 +37,21 @@ export default function App(){
   const[focusToken,setFocusToken]=useState(0);
   const[density,setDensity]=useState(readDensity);
   const[reviewCount,setReviewCount]=useState(0);
-  const[profile,setProfile]=useState<{name:string;count:number}|null>(null);
+  const[profile,setProfile]=useState<{id:string;name:string;count:number;transactions:number}|null>(null);
+  // Bumped when the getting-started card is dismissed or re-opened, so
+  // Home re-reads the stored answer without another engine round trip.
+  const[guideVersion,setGuideVersion]=useState(0);
   const[profileVersion,setProfileVersion]=useState(0);
   useEffect(()=>{const update=()=>setDensity(readDensity());window.addEventListener("spendshape-preferences-changed",update);return()=>window.removeEventListener("spendshape-preferences-changed",update);},[]);
   // Home owns first-run database initialization. Delay this small secondary
   // badge request so two new sidecars never race while a schema is migrating.
   // Also the first call that writes the profile registry, so an
   // installation that never opens Settings still gets one.
-  useEffect(()=>{void loadProfiles().then(p=>{const active=p.profiles.find(x=>x.active);setProfile(active?{name:active.name,count:p.profiles.length}:null);}).catch(()=>setProfile(null));},[dataVersion]);
+  useEffect(()=>{void loadProfiles().then(p=>{const active=p.profiles.find(x=>x.active);setProfile(active?{id:active.id,name:active.name,count:p.profiles.length,transactions:active.transaction_count}:null);}).catch(()=>setProfile(null));},[dataVersion]);
   useEffect(()=>{const timer=window.setTimeout(()=>{void loadReviewSummary().then(v=>setReviewCount(v.count)).catch(()=>setReviewCount(0));},dataVersion===0?1500:0);return()=>window.clearTimeout(timer);},[dataVersion]);
+  const showGuide=!!profile&&profile.transactions===0
+    &&!readGettingStartedDismissed(profile.id)&&guideVersion>=0;
+  const reopenGuide=()=>{if(!profile)return;saveGettingStartedDismissed(profile.id,false);setGuideVersion(v=>v+1);setScreen("home");};
   const changed=()=>setDataVersion(v=>v+1);
   const profileChanged=()=>{setTxPrefill(null);setProfileVersion(v=>v+1);setDataVersion(v=>v+1);};
   const goTo=(target:string)=>{const[base,anchor=""]=target.split("#");const[next,queryString=""]=base.split("?") as [Screen,string?];if(next==="add-data")setAddDataMounted(true);if(next==="transactions"&&queryString){const params=new URLSearchParams(queryString);setTxPrefill({quickReview:params.get("quickReview")==="1",flaggedOnly:params.get("flaggedOnly")==="1",suggestedOnly:params.get("suggestedOnly")==="1"});}setFocusAnchor(anchor);setFocusToken(v=>v+1);setScreen(next);};
@@ -55,12 +62,12 @@ export default function App(){
         with different words, not a new mark. */}
     <div><h1><span>Signal</span>Space Finance</h1><p>Private, local-first personal finance.</p></div></button><div className="header-actions">{profile&&profile.count>1&&<button type="button" className="profile-chip" onClick={()=>{setScreen("settings");setFocusAnchor("profiles");setFocusToken(v=>v+1);}} title="Switch profile">{profile.name}</button>}<span className="native-badge">Native · local-first</span><button className={screen==="settings"?"icon-button nav-active":"icon-button"} onClick={()=>setScreen("settings")} aria-label="Settings">⚙</button></div></header>
     <nav className="app-nav" aria-label="Main">{SCREENS.map(s=><button key={s.id} type="button" className={screen===s.id?"nav-button nav-active":"nav-button"} onClick={()=>goTo(s.id)}>{s.label}{s.id==="transactions"&&reviewCount>0&&<span className="nav-count">{reviewCount>99?"99+":reviewCount}</span>}</button>)}</nav>
-    {screen==="home"&&<HomeView onAddData={()=>goTo("add-data")} onNavigate={goTo} onDrill={drill} refreshToken={dataVersion}/>}
+    {screen==="home"&&<HomeView onAddData={()=>goTo("add-data")} onNavigate={goTo} onDrill={drill} refreshToken={dataVersion} guide={showGuide&&profile?{id:profile.id,name:profile.name,showName:profile.count>1}:null} onGuideDismissed={()=>setGuideVersion(v=>v+1)}/>}
     {addDataMounted&&<div hidden={screen!=="add-data"}><AddDataView key={profileVersion} onGoHome={()=>setScreen("home")} onGoTransactions={()=>setScreen("transactions")} onDataChanged={changed}/></div>}
     {screen==="plan"&&<PlanView refreshToken={dataVersion} onDataChanged={changed} onNavigate={goTo}/>}
     {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed}/>}
     {screen==="transactions"&&<TransactionsView refreshToken={dataVersion} onDataChanged={changed} prefill={txPrefill} onPrefillApplied={()=>setTxPrefill(null)}/>}
     {screen==="ai"&&<AiView onOpenSettings={()=>goTo("settings#ai-assist")} onDrill={d=>drill({category:d.category,search:d.merchant,startDate:d.start_date,endDate:d.end_date})}/>}
-    {screen==="settings"&&<SettingsView key={profileVersion} onDataChanged={changed} onProfileChanged={profileChanged} focusAnchor={focusAnchor} focusToken={focusToken}/>}
+    {screen==="settings"&&<SettingsView key={profileVersion} onDataChanged={changed} onProfileChanged={profileChanged} focusAnchor={focusAnchor} focusToken={focusToken} onShowGuide={reopenGuide}/>}
   </main>;
 }

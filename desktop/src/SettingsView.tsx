@@ -63,13 +63,17 @@ interface Props {
   onProfileChanged: () => void;
   focusAnchor?: string;
   focusToken?: number;
+  /** Re-opens the getting-started card on Home for the open profile. */
+  onShowGuide?: () => void;
 }
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken }: Props) {
+function SettingsView({
+  onDataChanged, onProfileChanged, focusAnchor, focusToken, onShowGuide,
+}: Props) {
   const [data, setData] = useState<BackupPayload | null>(null);
   const [safety, setSafety] = useState<DataSafetyPayload | null>(null);
   const [version, setVersion] = useState("");
@@ -719,6 +723,17 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
           <label className="check-label"><input type="checkbox" checked={showSecondary} onChange={(e)=>changeSecondary(e.target.checked)}/> Show extra Home sections such as monthly cash flow, merchants, and goals</label>
           <label className="check-label"><input type="checkbox" checked={showNetWorth} onChange={(e)=>changeNetWorth(e.target.checked)}/> Show net worth in Insights</label>
           <p className="guidance">These choices stay on this computer and survive a relaunch.</p>
+          {onShowGuide && <div className="button-row">
+            <button type="button" className="ghost-button"
+              onClick={() => onShowGuide()}>
+              Show the getting started guide
+            </button>
+          </div>}
+          {onShowGuide && <p className="guidance">
+            Re-opens the first-run checklist on Home for the profile you
+            have open. It normally appears only while a profile has no
+            transactions.
+          </p>}
         </article>
       </div>
 
