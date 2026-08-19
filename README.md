@@ -1,4 +1,4 @@
-# SignalSpace
+# SignalSpace Finance
 
 [![SignalSpace validation](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/benthompsondev/ledger-local-finance/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/benthompsondev/ledger-local-finance)](https://github.com/benthompsondev/ledger-local-finance/releases/latest)
@@ -157,7 +157,7 @@ Demo mode is not a switch inside the app. It is two environment variables, so
 the app can never quietly point itself at generated data or at yours:
 
 ```powershell
-$demoDir = Join-Path $env:TEMP "spendshape-demo"
+$demoDir = Join-Path $env:TEMP "signalspace-demo"
 New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
 .\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
 $env:LEDGER_DATA_DIR = $demoDir

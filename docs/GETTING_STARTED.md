@@ -71,7 +71,7 @@ looking at invented data or yours.
 Generate the dataset into a temp folder and point the app at it:
 
 ```powershell
-$demoDir = Join-Path $env:TEMP "spendshape-demo"
+$demoDir = Join-Path $env:TEMP "signalspace-demo"
 New-Item -ItemType Directory -Force -Path $demoDir | Out-Null
 .\.venv\Scripts\python.exe -m scripts.create_demo_data --out "$demoDir\finance.demo.db" --force
 $env:LEDGER_DATA_DIR = $demoDir

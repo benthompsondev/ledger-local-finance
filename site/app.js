@@ -11,6 +11,18 @@ const tours = {
     image: "assets/home.png",
     alt: "SignalSpace Home screen using synthetic data",
   },
+  profiles: {
+    kicker: "One installation, separate finances",
+    title: "Two people in a household never see each other's money",
+    copy: "Each profile keeps its own transactions, accounts, imports, plans and net worth in its own database. Switching profiles opens a different database rather than filtering a shared one, so a profile you are not in is not open at all.",
+    points: [
+      "A separate SQLite database per profile",
+      "Imports, backups and exports scoped to the open profile",
+      "Create, rename, switch and safely delete from Settings",
+    ],
+    image: "assets/profiles.png",
+    alt: "SignalSpace profile management showing two separate sets of finances, using synthetic data",
+  },
   plan: {
     kicker: "A plan that shows its work",
     title: "See what is committed before deciding what is flexible",
