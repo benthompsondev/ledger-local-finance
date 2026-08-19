@@ -578,6 +578,17 @@ textarea { font: inherit; }
    what made the first row of every section sit lower than the second. */
 .insight-grid > .chart-card, .insight-grid > .form-card,
 .noticed-grid > .chart-card { margin-top: 0; }
+/* A row of cards is one block in the page's rhythm exactly as a single card
+   is. Only the cards carried the margin, so wherever a section began with a
+   grid it sat flush against whatever was above it: Home's metric row ran
+   straight into the spending check-in, and Cash flow by month straight into
+   the category breakdown, with nothing between them at all. */
+.insight-grid, .settings-grid, .goal-grid, .breakdown-grid,
+.home-actions-grid, .noticed-grid { margin-top: 18px; }
+/* Under a heading the heading's own spacing already separates them. */
+.insight-section + .insight-grid, .insight-section + .settings-grid,
+.insight-section + .noticed-grid, .insight-section + .chart-card,
+.insight-section + .form-card { margin-top: 10px; }
 .form-card h3, .chart-card h3 { margin: 0 0 14px; font-size: 1rem; }
 .chart-explainer { margin: -6px 0 16px; color: var(--text-muted); font-size: .8rem; line-height: 1.45; }
 .chart-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1055,7 +1066,9 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 /* Expected things are drawn quieter than things that happened. Nothing in
    here may look as solid as a figure on the rest of Home, because none of
    it has happened yet. */
-.radar-card { margin-top: 4px; }
+/* Deliberately closer than the usual rhythm, because Safe to Spend above it
+   is the same question asked about now. Close, not touching. */
+.radar-card { margin-top: 10px; }
 .radar-through {
   border: 1px solid var(--line); border-radius: 999px; color: var(--text-muted);
   font-size: .72rem; padding: 3px 10px; white-space: nowrap;

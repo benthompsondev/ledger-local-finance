@@ -235,6 +235,13 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
             </button>}
           </section>
 
+          {/* Home is three groups and used to read as one long column: the
+              figures for the period, where this month stands right now, and
+              the longer history. Naming them is what separates them; the
+              spacing alone was never going to say which card belonged with
+              which. */}
+          <h3 className="insight-section">This month so far</h3>
+
           {dashboard?.available && (
             <div className="insight-grid home-detail-grid home-essentials">
               <article className="chart-card">
@@ -275,6 +282,8 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
               transactions; repeating that here would mean the same three
               cards twice, and Home would stop being a check-in. Two lines,
               the headline and its figure, and a way through. */}
+          <h3 className="insight-section">Worth a look</h3>
+
           {feed && teasers.length > 0 && <article className="chart-card">
             <div className="chart-card-head">
               <div>
@@ -317,6 +326,10 @@ function HomeView({ onAddData, onNavigate, onDrill, refreshToken }: Props) {
               {packet.actions.length ? packet.actions.slice(0,2).map(action => <div className="finding" key={action.id}><strong>{action.title}</strong><p>{action.why}</p>{action.label&&<button type="button" className="ghost-button finding-drill" onClick={()=>action.category?onDrill({category:action.category}):onNavigate(action.screen)}>{action.label}</button>}</div>) : <p className="guidance">Nothing urgent needs your attention for this check-in.</p>}
             </article>
           </div>
+
+          {showSecondary && dashboard?.available && (
+            <h3 className="insight-section">The longer view</h3>
+          )}
 
           {showSecondary && dashboard?.available && (
               <article className="chart-card">
