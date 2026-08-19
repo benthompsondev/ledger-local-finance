@@ -42,18 +42,22 @@ def test_no_other_label_is_lowercased_on_the_way_out() -> None:
 def test_coach_states_its_beta_limits_up_front() -> None:
     source = AI_VIEW.read_text(encoding="utf-8")
 
-    assert "Beta: provider compatibility and AI answers may be incomplete" in source
+    # The caveat itself: the answers are unreliable in a way the figures
+    # underneath them are not. Worded once rather than in two paragraphs,
+    # so this pins the guarantee rather than the old sentence.
+    assert "Answers can be incomplete or fail outright" in source
     assert "calculated locally" in source
     # Still labelled in the eyebrow, and still says AI does no arithmetic.
     assert 'className="beta-tag"' in source
-    assert "never calculates anything" in source
+    assert "calculates nothing" in source
+    assert "worked your figures out on this computer" in source
 
 
 def test_the_beta_notice_sits_above_the_findings() -> None:
     """A warning under the results is a warning nobody reads first."""
     source = AI_VIEW.read_text(encoding="utf-8")
 
-    notice = source.index("Beta: provider compatibility")
+    notice = source.index("Answers can be incomplete or fail outright")
     # The rendered element, not the import at the top of the file.
     findings = source.index("<AnalysisContextNote")
 
