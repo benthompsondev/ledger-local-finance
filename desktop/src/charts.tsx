@@ -903,6 +903,13 @@ export function KeptChart({ months, onDrill }: {
             : `${months.length - positive} spent more than came in`}</small>
         </div>
       </div>
+      <div className="viz-legend kept-legend">
+        <span><i className="kept-swatch-spent" />Spending used</span>
+        <span><i className="kept-swatch-net" />what was left</span>
+        <span className="kept-legend-note">
+          The whole bar is what came in that month
+        </span>
+      </div>
       {months.map((m, i) => {
         const prior = i > 0 ? months[i - 1] : null;
         const change = prior ? m.net - prior.net : null;
@@ -916,11 +923,28 @@ export function KeptChart({ months, onDrill }: {
                 <small>{m.savings_rate.toFixed(0)}% of {money(m.income)}</small>
               </span>
             </div>
+            {/* Read left to right, the bar is the sentence: this much came
+                in, spending used this much of it, this much was left. Both
+                segments used to start at the left edge and overlap, so the
+                only way to know what the pale part meant was the line of
+                prose underneath, which is why nobody knew what it meant. */}
             <div className="kept-track"
               title={`${m.month}: ${moneyCents(m.income)} in, ${moneyCents(m.spending)} spent, ${moneyCents(m.net)} ${overspent ? "overspent" : "kept"}`}>
               <i className="kept-income" style={{ width: `${(m.income / scale) * 100}%` }} />
-              <i className={overspent ? "kept-over" : "kept-net"}
-                style={{ width: `${(Math.abs(m.net) / scale) * 100}%` }} />
+              <i className="kept-spent" style={{ width: `${(Math.min(m.spending, m.income) / scale) * 100}%` }} />
+              {overspent ? (
+                <i className="kept-over"
+                  style={{
+                    left: `${(m.income / scale) * 100}%`,
+                    width: `${(Math.abs(m.net) / scale) * 100}%`,
+                  }} />
+              ) : (
+                <i className="kept-net"
+                  style={{
+                    left: `${(m.spending / scale) * 100}%`,
+                    width: `${(m.net / scale) * 100}%`,
+                  }} />
+              )}
             </div>
             <div className="kept-foot">
               <small>
@@ -946,10 +970,6 @@ export function KeptChart({ months, onDrill }: {
           </div>
         );
       })}
-      <p className="file-meta">
-        The pale bar is everything that came in; the solid bar is what was left
-        at the end of the month.
-      </p>
     </div>
   );
 }

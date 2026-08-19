@@ -637,6 +637,21 @@ textarea { font: inherit; }
 .pace-legend i.dash { width:14px; height:0; border-top:2px dashed var(--text-muted); background:none !important; border-radius:0; }
 .pace-legend i.dot { width:14px; height:0; border-top:2px dotted var(--warn); background:none !important; border-radius:0; }
 .pace-plot { position:relative; }
+
+/* The spending check-in is two cards that are honestly different sizes: one
+   chart against a list of categories. Left to sit at the top of its cell the
+   shorter one left a hole in the row. Both cards paint the full height now
+   and the pace chart takes the room, which is a bigger chart rather than
+   padding pretending to be content. */
+.insight-grid.checkin-row { align-items: stretch; }
+.checkin-row > .chart-card { display: flex; flex-direction: column; }
+.checkin-row .pace-card { flex: 1 1 auto; }
+/* The chart keeps its own proportions rather than being stretched out of
+   them; the room it gains sits evenly above and below it. */
+.checkin-row .pace-plot {
+  flex: 1 1 auto; min-height: 170px;
+  display: flex; flex-direction: column; justify-content: center;
+}
 .pace-tooltip { position:absolute; top:4px; transform:translateX(-50%); pointer-events:none; background:var(--panel); border:1px solid var(--border); border-radius:.5rem; padding:.4rem .55rem; font-size:.72rem; display:flex; flex-direction:column; gap:.15rem; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,.35); z-index:2; }
 .pace-tooltip span { display:flex; align-items:center; gap:.35rem; }
 .pace-tooltip i { width:8px; height:8px; border-radius:2px; display:inline-block; }
@@ -1012,28 +1027,35 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   display: grid; gap: 14px; align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
 }
-.noticed-grid > :first-child:nth-last-child(n + 3) { grid-column: 1 / -1; }
+/* The lead finding used to span the full width whenever three or more
+   arrived. Ranking already puts the strongest one first, and a whole row of
+   screen on top of that bought nothing the order was not already saying. */
 .noticed-card {
   background: var(--panel, rgba(255,255,255,.02));
   border: 1px solid var(--line); border-left: 3px solid var(--violet);
-  border-radius: 14px; padding: 16px 18px;
+  border-radius: 14px; padding: 15px 17px;
 }
 .noticed-card.good { border-left-color: var(--accent-mid); }
+.noticed-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
 .noticed-card h4 {
   margin: 0; font-size: .95rem; color: var(--text); letter-spacing: .01em;
+  flex: 1 1 190px; min-width: 0;
 }
 .noticed-figure {
-  align-items: baseline; display: flex; flex-wrap: wrap; gap: 10px;
-  margin: 10px 0 8px;
+  align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: flex-end; margin: 0; text-align: right;
 }
 .noticed-figure strong {
-  color: var(--text); font-size: 1.9rem; font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  color: var(--text); font-size: 1.45rem; font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 .noticed-card.good .noticed-figure strong { color: var(--accent-text); }
 .noticed-figure span { color: var(--text-muted); font-size: .82rem; line-height: 1.4; }
 .noticed-claim {
-  margin: 0; color: var(--text-soft); font-size: .88rem; line-height: 1.6;
+  margin: 8px 0 0; color: var(--text-soft); font-size: .85rem; line-height: 1.5;
   max-width: 82ch;
 }
 /* ── profiles ───────────────────────────────────────────────────────── */
@@ -1188,16 +1210,11 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   color: var(--text); font-size: .84rem; font-variant-numeric: tabular-nums;
   margin: 0; white-space: nowrap;
 }
-.noticed-foot {
-  align-items: center; display: flex; gap: 16px; flex-wrap: wrap;
-  justify-content: space-between; margin-top: 14px;
-  padding-top: 12px; border-top: 1px solid var(--border-soft);
-}
 .noticed-basis {
-  color: var(--text-muted); flex: 1 1 260px; font-size: .74rem;
-  line-height: 1.45; margin: 0; max-width: 80ch;
+  color: var(--text-muted); font-size: .74rem;
+  line-height: 1.45; margin: 10px 0 0; max-width: 80ch;
 }
-.noticed-foot .ghost-button { flex: none; font-size: .78rem; padding: 7px 11px; }
+.noticed-drill { margin-top: 10px; font-size: .78rem; padding: 6px 11px; }
 .noticed-more { margin-top: 14px; }
 .noticed-more .noticed-grid { margin-top: 12px; }
 .noticed-more .noticed-grid > :first-child:not(:last-child) { grid-column: auto; }
@@ -1423,9 +1440,25 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .kept-track i {
   position: absolute; left: 0; top: 0; height: 100%; border-radius: 5px;
 }
-.kept-income { background: rgba(31, 157, 94, 0.22); }
+/* Money in is the extent of the track. Spending fills it from the left and
+   what was left of it follows on, so the two segments sit end to end instead
+   of on top of each other. */
+.kept-income { background: rgba(31, 157, 94, 0.14); }
+.kept-spent { background: rgba(148, 163, 184, 0.42); }
 .kept-net { background: var(--accent-mid); }
 .kept-over { background: var(--violet); }
+.kept-legend { margin-bottom: 4px; }
+.kept-legend .kept-swatch-spent { background: rgba(148, 163, 184, 0.42); }
+.kept-legend .kept-swatch-net { background: var(--accent-mid); }
+.kept-legend-note { color: var(--text-faint); font-weight: 500; }
+
+/* A settled decision, plus the small way back to it. */
+.income-decision { display: flex; align-items: center; gap: 10px; flex: none; }
+.decision-change {
+  border: 0; background: transparent; padding: 2px 4px; cursor: pointer;
+  color: var(--text-muted); font-size: .74rem; text-decoration: underline;
+}
+.decision-change:hover { color: var(--text-soft); }
 .kept-foot {
   display: flex; justify-content: space-between; align-items: baseline;
   gap: 14px;

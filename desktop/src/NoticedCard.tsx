@@ -35,55 +35,61 @@ export function NoticedCard({
 
   return (
     <article className={`noticed-card${good ? " good" : ""}`}>
-      <h4>{insight.title}</h4>
-
-      {hasFigure && (
-        <p className="noticed-figure">
-          {/* Cents, not whole dollars. The claim underneath quotes the same
-              amount to the penny, and a headline reading $278 above a
-              sentence reading $277.67 looks like two different figures. */}
-          <strong>
-            {insight.figure_kind === "count"
-              ? String(figure)
-              : moneyCents(Math.abs(figure))}
-          </strong>
-          <span>{insight.figure_caption}</span>
-        </p>
-      )}
+      {/* The figure sits beside the title rather than under it. On its own
+          line it was a 1.9rem number with a caption wrapping beneath, and
+          three of those pushed the charts off the screen entirely. */}
+      <div className="noticed-head">
+        <h4>{insight.title}</h4>
+        {hasFigure && (
+          <p className="noticed-figure">
+            {/* Cents, not whole dollars. The claim underneath quotes the same
+                amount to the penny, and a headline reading $278 above a
+                sentence reading $277.67 looks like two different figures. */}
+            <strong>
+              {insight.figure_kind === "count"
+                ? String(figure)
+                : moneyCents(Math.abs(figure))}
+            </strong>
+            <span>{insight.figure_caption}</span>
+          </p>
+        )}
+      </div>
 
       <p className="noticed-claim">{insight.claim}</p>
 
       {/* Closed by default. Open, four of these filled the screen before the
           charts started, which is the dashboard this was meant not to be.
-          The claim already carries the figures; this is the working. */}
-      {rows.length > 0 && (
+          The claim already carries the figures; this is the working, and what
+          the finding left out is part of the working rather than a permanent
+          third paragraph on every card. */}
+      {(rows.length > 0 || insight.evidence_note) && (
         <details className="noticed-working">
           <summary>Show the working</summary>
-          <dl className="noticed-evidence">
-            {rows.map((row) => (
-              <div key={`${row.label}-${row.note}`}>
-                <dt>
-                  {row.label}
-                  {row.note && row.kind !== "text" && <small>{row.note}</small>}
-                </dt>
-                <dd>{evidenceValue(row)}</dd>
-              </div>
-            ))}
-          </dl>
+          {rows.length > 0 && (
+            <dl className="noticed-evidence">
+              {rows.map((row) => (
+                <div key={`${row.label}-${row.note}`}>
+                  <dt>
+                    {row.label}
+                    {row.note && row.kind !== "text" && <small>{row.note}</small>}
+                  </dt>
+                  <dd>{evidenceValue(row)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {insight.evidence_note && (
+            <p className="noticed-basis">{insight.evidence_note}</p>
+          )}
         </details>
       )}
 
-      <div className="noticed-foot">
-        {insight.evidence_note && (
-          <p className="noticed-basis">{insight.evidence_note}</p>
-        )}
-        {insight.drill && onDrill && (
-          <button type="button" className="ghost-button"
-            onClick={() => onDrill(insight.drill!)}>
-            Show the transactions
-          </button>
-        )}
-      </div>
+      {insight.drill && onDrill && (
+        <button type="button" className="ghost-button noticed-drill"
+          onClick={() => onDrill(insight.drill!)}>
+          Show the transactions
+        </button>
+      )}
     </article>
   );
 }

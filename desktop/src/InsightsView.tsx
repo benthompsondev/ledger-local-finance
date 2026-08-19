@@ -41,6 +41,9 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
   // inputs rather than a second net worth.
   const [entryBusy, setEntryBusy] = useState(false);
   const [reviewBusy, setReviewBusy] = useState("");
+  // Which income source is being reconsidered. A decided source shows the
+  // decision; this is how you get the choice back.
+  const [changingIncome, setChangingIncome] = useState("");
   const [paceView,setPaceView]=useState<"flexible"|"total">("flexible");
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(readChartPeriod);
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(readAnalysisPeriod);
@@ -188,7 +191,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
           </>}
 
           <h3 className="insight-section">Spending check-in</h3>
-          <div className="insight-grid home-detail-grid home-essentials">
+          <div className="insight-grid home-detail-grid home-essentials checkin-row">
             <article className="chart-card">
               <div className="chart-card-head"><div><h3>{paceView==="flexible"?"Flexible spending pace":"Total spending pace"} in {insightMonthLabel}</h3><p className="chart-explainer">{paceView==="flexible"?"Everyday spending with reviewed fixed commitments removed.":"All genuine spending, including fixed commitments."}</p></div><div className="segmented-control" aria-label="Spending pace view"><button className={paceView==="flexible"?"selected":""} onClick={()=>setPaceView("flexible")}>Flexible</button><button className={paceView==="total"?"selected":""} onClick={()=>setPaceView("total")}>Total</button></div></div>
               <PaceChart pace={paceView==="flexible"?data.flexible_pace:data.pace} currentLabel={insightMonthLabel} />
@@ -206,8 +209,12 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
                   </div>
                 )}
               </div>
+              {/* Five, not eight. Eight rows at 67px each made this card
+                  half again as tall as the pace chart beside it, and the
+                  row was mostly the empty space that left. Five covers the
+                  bulk of a month's spending and the rest is one click. */}
               <CategoryBars
-                items={showAllCategories ? data.category_pace.items : data.category_pace.items.slice(0, 8)}
+                items={showAllCategories ? data.category_pace.items : data.category_pace.items.slice(0, 5)}
                 total={data.category_pace.total}
                 previousMonth={data.category_pace.previous_month}
                 comparisonAvailable={data.category_pace.comparison_available}
@@ -216,7 +223,7 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
                 periodLabel={`${insightMonthLabel} through day ${data.category_pace.through_day}`}
                   onDrill={(category) => {const item=data.category_pace.items.find(row=>row.category===category);onDrill({ category, cashflowRole: "spending", startDate: categoryStart, endDate: categoryEnd, categoryComparison:item&&item.previous!=null&&item.delta!=null?{category,current:item.amount,previous:item.previous,delta:item.delta,throughDay:data.category_pace.through_day,previousMonth:data.category_pace.previous_month}:undefined });}}
               />
-              {data.category_pace.items.length > 8 && <button className="ghost-button show-all-button" onClick={() => { const next = !showAllCategories; setShowAllCategories(next); saveCategoryExpanded(next); }}>{showAllCategories ? "Show top 8" : "Show all categories"}</button>}
+              {data.category_pace.items.length > 5 && <button className="ghost-button show-all-button" onClick={() => { const next = !showAllCategories; setShowAllCategories(next); saveCategoryExpanded(next); }}>{showAllCategories ? "Show top 5" : `Show all ${data.category_pace.items.length} categories`}</button>}
               {data.category_pace.comparison_available && (data.category_movers.increase || data.category_movers.decrease) && (
                 <p className="mover-summary">
                   <strong>Biggest movers:</strong>{" "}
@@ -342,7 +349,30 @@ function InsightsView({ refreshToken, onDrill, onNavigate, onDataChanged }: Prop
               <p className="chart-explainer">Money entering your accounts, including refunds and incoming e-transfers. Transfers between your own accounts stay excluded once matched or marked internal.</p>
               {data.income_sources.length ? (
                 <><IncomeSourceDonut items={data.income_sources} total={data.income_total} onDrill={(source) => onDrill({ search: source, cashflowRole: "income", startDate: monthStart, endDate: monthEnd })} />
-                <div className="settings-list">{data.income_sources.map(source=><div className="setting-row" key={`${source.source_normalized}-${source.category}`}><button type="button" className="rank-row-click text-button" onClick={()=>onDrill({search:source.source,cashflowRole:"income",startDate:monthStart,endDate:monthEnd})}><strong>{source.source}</strong><small>{moneyCents(source.total)} · {source.tx_count} deposit{source.tx_count===1?"":"s"}</small></button><div className="button-row compact-actions"><button type="button" className={source.stable_status==="confirmed"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewIncome(source.source_normalized,"confirmed")}>Use as income</button><button type="button" className={source.stable_status==="excluded"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>void reviewIncome(source.source_normalized,"excluded")}>Exclude</button></div></div>)}</div>
+                <div className="settings-list">{data.income_sources.map(source=>{
+                  // Once the choice is made it is a fact, not a question.
+                  // Two full-size buttons on every row for the rest of time
+                  // is the screen still asking something already answered.
+                  const key=source.source_normalized;
+                  const decided=source.stable_status==="confirmed"||source.stable_status==="excluded";
+                  const settled=decided&&changingIncome!==key;
+                  return <div className="setting-row" key={`${key}-${source.category}`}>
+                    <button type="button" className="rank-row-click text-button" onClick={()=>onDrill({search:source.source,cashflowRole:"income",startDate:monthStart,endDate:monthEnd})}>
+                      <strong>{source.source}</strong>
+                      <small>{moneyCents(source.total)} · {source.tx_count} deposit{source.tx_count===1?"":"s"}</small>
+                    </button>
+                    {settled ? <div className="income-decision">
+                      <span className={source.stable_status==="confirmed"?"status-tag status-ok":"status-tag status-muted"}>
+                        {source.stable_status==="confirmed"?"Counted as income":"Left out of planning"}
+                      </span>
+                      <button type="button" className="text-button decision-change" disabled={!!reviewBusy} onClick={()=>setChangingIncome(key)}>Change</button>
+                    </div> : <div className="button-row compact-actions">
+                      <button type="button" className={source.stable_status==="confirmed"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>{setChangingIncome("");void reviewIncome(key,"confirmed");}}>Use as income</button>
+                      <button type="button" className={source.stable_status==="excluded"?"selected ghost-button":"ghost-button"} disabled={!!reviewBusy} onClick={()=>{setChangingIncome("");void reviewIncome(key,"excluded");}}>Exclude</button>
+                      {decided&&<button type="button" className="text-button decision-change" onClick={()=>setChangingIncome("")}>Cancel</button>}
+                    </div>}
+                  </div>;
+                })}</div>
                 <p className="chart-explainer">Excluding a source takes it out of your typical monthly income, so Plan and Safe to Spend stop counting on it. Every month is recalculated, not just this one. Choosing it again puts it back.</p></>
               ) : <p className="guidance">No confirmed income in this period.</p>}
               <IncomeSteadiness months={cashflow} sources={data.income_sources} total={data.income_total} />
