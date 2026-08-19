@@ -1242,7 +1242,6 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .noticed-drill { margin-top: 10px; font-size: .78rem; padding: 6px 11px; }
 .noticed-more { margin-top: 14px; }
 .noticed-more .noticed-grid { margin-top: 12px; }
-.noticed-more .noticed-grid > :first-child:not(:last-child) { grid-column: auto; }
 
 /* ── spending calendar ──────────────────────────────────────────────── */
 /* Sized so three months still sit side by side in a half-width card, which

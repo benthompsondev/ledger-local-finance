@@ -31,6 +31,31 @@ finances, and it puts a shortcut back in your Start Menu.
 - Findings no longer quote a percentage when the amount underneath is too
   small to support one, and what counts as a material change now scales with
   what you actually spend in a month.
+- **Settings is in an order you could guess.** Seven named groups instead of
+  a stack of panels: profiles first, then balances, AI, everyday
+  preferences, what SignalSpace has learned from your statements, then
+  everything that backs up, exports or erases your data, then the version.
+  Backups, the CSV export, the repair tool and Reset all sit together now
+  instead of being answered in three places down the page.
+- Profiles reads as a feature rather than a list. It says what a profile is,
+  the open one has a card of its own, and creating one explains what happens.
+- **AI assistance says whether it is on before it says anything else**, and
+  says it once instead of repeating the same privacy paragraph three times.
+  One card for where the answers come from, one for exactly what is sent.
+  Nothing about what is actually transmitted changed.
+- **Coach opens with the question box** rather than repeating the Insights
+  page above it. The findings follow as things to have explained, and the
+  coaching preferences fold away once you have set them.
+- Transactions: the Flow filter is now Show, split into how SignalSpace
+  counts a row and which way the money moved, and it can finally show you
+  the transfers and card payments themselves.
+- Home has three named groups, and no card anywhere in the app now sits
+  flush against the one above it.
+- What you kept draws spending and what was left end to end along the bar
+  instead of stacked on top of each other, with a legend rather than a
+  sentence underneath explaining the overlap.
+- An income source you have already decided about shows the decision and a
+  small way to change it, rather than two full-size buttons forever.
 
 ## 3.0.0 - 2026-08-18
 
