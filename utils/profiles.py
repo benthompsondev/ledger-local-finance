@@ -202,6 +202,18 @@ def _new_id(existing: set[str]) -> str:
             return candidate
 
 
+def database_name() -> str:
+    """The database filename the engine will bind for this process.
+
+    Demo mode opens ``finance.demo.db``, so a profile listing that always
+    looked for ``finance.db`` reported every profile as empty while the rest
+    of the app was busy drawing months of it. One definition, read the same
+    way the engine reads it.
+    """
+    from utils.database import is_demo_mode
+    return "finance.demo.db" if is_demo_mode() else "finance.db"
+
+
 def _transaction_count(database: Path) -> int:
     """How many transactions a profile holds, without disturbing it.
 
@@ -230,10 +242,11 @@ def list_profiles(root: Path) -> dict[str, Any]:
     """Every profile, which is active, and whether each holds any finances."""
     registry = _read_registry(root)
     active = registry["active"]
+    filename = database_name()
     items = []
     for entry in registry["profiles"]:
         directory = profile_dir(root, entry["id"])
-        count = _transaction_count(directory / "finance.db")
+        count = _transaction_count(directory / filename)
         items.append({
             **entry,
             "active": entry["id"] == active,

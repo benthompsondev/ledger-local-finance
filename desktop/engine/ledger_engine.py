@@ -66,8 +66,12 @@ def _bind_database() -> None:
     from utils import database
     from utils.analysis_period import reset_supported_bounds_cache
     from utils.platform_utils import get_data_dir
+    from utils.profiles import database_name
 
-    filename = "finance.demo.db" if database.is_demo_mode() else "finance.db"
+    # One definition of which file a profile's finances live in. Deciding it
+    # here and again in the profile listing is how the listing came to report
+    # a profile full of demo data as having no transactions at all.
+    filename = database_name()
     profile_dir = get_data_dir()
     profile_dir.mkdir(parents=True, exist_ok=True)
     database.DB_PATH = profile_dir / filename

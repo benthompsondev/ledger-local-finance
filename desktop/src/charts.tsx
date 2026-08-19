@@ -905,7 +905,7 @@ export function KeptChart({ months, onDrill }: {
       </div>
       <div className="viz-legend kept-legend">
         <span><i className="kept-swatch-spent" />Spending used</span>
-        <span><i className="kept-swatch-net" />what was left</span>
+        <span><i className="kept-swatch-net" />What was left</span>
         <span className="kept-legend-note">
           The whole bar is what came in that month
         </span>

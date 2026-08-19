@@ -589,3 +589,51 @@ def test_a_visited_but_empty_profile_does_not_claim_to_have_data(tmp_path):
     )
     assert entry["has_data"] is True
     assert entry["transaction_count"] == 1
+
+
+def test_the_profile_listing_reads_the_database_demo_mode_opens(
+    tmp_path, monkeypatch,
+):
+    """A profile full of demo data must not report itself as empty.
+
+    Found by looking at the running app: in demo mode the engine binds
+    finance.demo.db while the profile listing went looking for finance.db,
+    so Settings said "No transactions yet" over a screen drawing eight
+    months of it. Every isolation test missed it because they all run
+    against the real filename.
+    """
+    import sqlite3
+
+    monkeypatch.setenv("LEDGER_DEMO_DB", "1")
+    monkeypatch.setenv("LEDGER_DATA_DIR", str(tmp_path))
+    profiles.ensure_registry(tmp_path)
+
+    assert profiles.database_name() == "finance.demo.db"
+
+    conn = sqlite3.connect(tmp_path / "finance.demo.db")
+    conn.execute("CREATE TABLE transactions (id INTEGER PRIMARY KEY)")
+    conn.executemany(
+        "INSERT INTO transactions (id) VALUES (?)", [(1,), (2,), (3,)]
+    )
+    conn.commit()
+    conn.close()
+
+    entry = profiles.list_profiles(tmp_path)["profiles"][0]
+    assert entry["transaction_count"] == 3
+    assert entry["has_data"] is True
+
+    # And the ordinary filename is still what a normal install reads.
+    monkeypatch.delenv("LEDGER_DEMO_DB")
+    assert profiles.database_name() == "finance.db"
+    assert profiles.list_profiles(tmp_path)["profiles"][0]["has_data"] is False
+
+
+def test_one_definition_of_the_database_filename():
+    """The engine and the listing must not each decide this for themselves."""
+    engine = Path(__file__).resolve().parents[1] / "desktop" / "engine"
+    source = (engine / "ledger_engine.py").read_text(encoding="utf-8")
+    binding = source[source.index("def _bind_database"):]
+    binding = binding[:binding.index("\ndef ", 1)]
+
+    assert "database_name()" in binding
+    assert "finance.demo.db" not in binding

@@ -228,9 +228,14 @@ h1 { font-size: 1.55rem; letter-spacing: -0.02em; }
 .verdict-on_track h2 { color: var(--accent-text); }
 .verdict-behind h2, .verdict-tight h2 { color: var(--caution-soft); }
 
+/* auto-fit, not a fixed four. The payroll card only appears when payroll is
+   broken out separately, so the usual case is three cards in a four-column
+   grid and a conspicuous empty cell to the right of Spending, which reads as
+   a card that failed to load. Empty tracks collapse and the real cards share
+   the width, whether there are three of them or four. */
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 14px;
   margin-top: 18px;
 }
