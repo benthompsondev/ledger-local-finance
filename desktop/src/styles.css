@@ -921,6 +921,15 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .import-receipt{margin:10px 0}
 .import-receipt summary{color:var(--muted,var(--text-muted));cursor:pointer;font-size:.85rem}
 .ai-card{border-color:rgba(255,196,84,.32)}
+/* On or off is the first thing to know and it used to be a checkbox two
+   paragraphs into a card of prose. The strip carries the state in its
+   border as well as its words. */
+.ai-status{border-color:rgba(255,196,84,.32)}
+.ai-status-off{border-color:var(--border-soft)}
+.ai-status-on{border-color:rgba(255,196,84,.55)}
+.ai-status-local{border-color:rgba(52,208,88,.42)}
+.ai-status .toggle-row{margin-top:0}
+.ai-status-note{color:var(--text-muted);font-size:.79rem;line-height:1.5;margin:12px 0 0;max-width:82ch}
 .ai-advanced{margin:14px 0;padding:12px 14px;border:1px solid rgba(255,255,255,.09);border-radius:10px;background:rgba(255,255,255,.02)}
 .ai-advanced .form-grid{margin-top:12px}
 .ai-scope-title{display:block;margin:14px 0 6px}
@@ -938,6 +947,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .ai-question-label textarea{width:100%;resize:vertical;border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);background:var(--surface-sunken);line-height:1.5}
 .ai-question-label textarea:focus{border-color:var(--accent-lit);outline:2px solid rgba(0, 208, 132,.12)}
 .ai-scope-note{align-self:center;color:var(--text-muted);font-size:.78rem}
+.ai-beta-note{font-size:.78rem;line-height:1.45;margin-top:8px;max-width:74ch}
 .ai-answer-card{border-color:rgba(0, 208, 132,.34);background:linear-gradient(145deg,rgba(6, 58, 38,.4),rgba(16, 27, 41,.94))}
 .ai-answer{white-space:pre-wrap;color:var(--text);font-size:.96rem;line-height:1.7}
 .ai-answer-meta{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:18px;padding-top:12px;border-top:1px solid rgba(255,255,255,.09);color:var(--text-muted);font-size:.76rem}
@@ -1068,8 +1078,23 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
   text-overflow: ellipsis; white-space: nowrap;
 }
 .profile-chip:hover { border-color: var(--accent-lit); color: #fff; }
-.profiles-panel { margin-top: 4px; }
-.profile-row.active { border-color: rgba(52,208,88,.4); }
+.profiles-panel { margin-top: 10px; }
+.profiles-lede {
+  color: var(--text-soft); font-size: .88rem; line-height: 1.6;
+  margin: 0; max-width: 78ch;
+}
+/* The open profile is the answer this section exists to give, so it is its
+   own card with the accent on it, not a row in a list with a green edge. */
+.profile-active-card {
+  align-items: center; display: flex; gap: 18px; flex-wrap: wrap;
+  justify-content: space-between;
+  border-color: rgba(52,208,88,.42);
+  background: linear-gradient(
+    100deg, rgba(52,208,88,.09), rgba(16,27,41,.35) 46%);
+}
+.profile-active-card .eyebrow { display: block; margin-bottom: 6px; }
+.profile-active-card .profile-identity strong { font-size: 1.15rem; }
+.profile-add-card .profile-add { margin-top: 12px; }
 .profile-identity { flex: 1; min-width: 0; }
 .profile-identity strong { color: #eef4f8; display: block; }
 .profile-identity small { color: #8794a1; display: block; margin-top: 3px; }
@@ -1391,6 +1416,11 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .settings-collapse > summary {
   cursor: pointer; font-weight: 600; padding: 2px 0; list-style: revert;
 }
+/* The name of the thing, then how much of it there is, so a closed row still
+   says whether it is worth opening. */
+.settings-collapse > summary > span {
+  color: var(--text-muted); font-weight: 500; float: right;
+}
 .settings-collapse > summary::marker { color: var(--muted); }
 .settings-collapse[open] > summary { margin-bottom: 10px; }
 .tx-danger-wrap > summary {
@@ -1450,7 +1480,9 @@ select:focus, input:focus { outline: 1px solid var(--accent-border); }
 .kept-legend { margin-bottom: 4px; }
 .kept-legend .kept-swatch-spent { background: rgba(148, 163, 184, 0.42); }
 .kept-legend .kept-swatch-net { background: var(--accent-mid); }
-.kept-legend-note { color: var(--text-faint); font-weight: 500; }
+/* --text-muted, not --text-faint: this line is what makes the bar readable,
+   so it has to clear AA rather than sit at the 3.4:1 the faint token gives. */
+.kept-legend-note { color: var(--text-muted); font-weight: 500; }
 
 /* A settled decision, plus the small way back to it. */
 .income-decision { display: flex; align-items: center; gap: 10px; flex: none; }

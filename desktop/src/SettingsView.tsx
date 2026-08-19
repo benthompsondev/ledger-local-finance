@@ -397,55 +397,22 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
       <div className="panel-head">
         <div>
           <span className="eyebrow">Settings</span>
-          <h2>Local data and recovery</h2>
+          <h2>How SignalSpace works for you</h2>
           <p>
-            SignalSpace stores finance data on this computer and never
+            Everything here is stored on this computer, and SignalSpace never
             requires an account.
           </p>
         </div>
       </div>
 
+      {error && <div className="inline-error" role="alert">{error}</div>}
+
       {/* First, because which finances are open decides what every other
           screen means. */}
       <h3 className="insight-section" id="profiles">Profiles</h3>
-      <article className="chart-card">
-        <ProfilesPanel onSwitched={onProfileChanged} />
-      </article>
-      {error && <div className="inline-error" role="alert">{error}</div>}
-      <div className="settings-grid">
-        <article className="form-card">
-          <h3>About</h3>
-          <dl>
-            <div><dt>Product</dt><dd>SignalSpace {version || "…"}</dd></div>
-            <div><dt>Storage</dt><dd>{data?.data_directory ?? "Loading…"}</dd></div>
-            <div><dt>Database</dt><dd>{data?.database_name ?? "finance.db"}</dd></div>
-            <div><dt>Finance data</dt><dd>Stays on this computer. Every calculation runs in the local sidecar.</dd></div>
-            <div><dt>Network</dt><dd>Nothing is sent unless you ask. AI assistance contacts the provider you configure; checking for updates contacts GitHub. Both are off until you act.</dd></div>
-          </dl>
-        </article>
-        <UpdatePanel version={version} />
-        <article className="form-card">
-          <h3>Backups</h3>
-          <p className="guidance">
-            Create a validated SQLite recovery point before major changes.
-          </p>
-          <div className="button-row">
-            <button disabled={!!busy} onClick={() => void backup()}>
-              {busy === "backup" ? "Backing up…" : "Create backup"}
-            </button>
-            <button className="ghost-button" disabled={!!busy} onClick={() => void choose()}>
-              Restore from backup…
-            </button>
-          </div>
-          {data?.created && <p className="success-text">Created {data.created}</p>}
-          {data?.restored && (
-            <p className="success-text">
-              Restored {data.restored}. A pre-restore rollback copy was kept.
-            </p>
-          )}
-        </article>
-      </div>
+      <ProfilesPanel onSwitched={onProfileChanged} />
 
+      <h3 className="insight-section">Balances and accounts</h3>
       <article className="form-card" id="planning-balances">
         <h3>Planning balances</h3>
         <p className="guidance">
@@ -545,89 +512,49 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
       <h3 className="insight-section" id="ai-assist">
         AI assistance <em className="beta-tag">Beta</em>
       </h3>
-      <p className="chart-explainer">
-        Optional, and off unless you turn it on. None of the finance
-        math depends on it: every figure on every screen is computed
-        locally whether AI is enabled or not. With an online provider
-        enabled, the evidence packet for the question you asked is sent
-        to that provider. Provider compatibility varies, which is why
-        this is marked Beta. AI can never edit your financial records.
-      </p>
-      <div className="settings-grid">
-        {/* This panel is the longest thing in Settings and it was sitting in
-            one half of a two-column grid, so the explanation ran narrow and
-            the other half stayed empty. It spans the row now: what turning it
-            on means on the left, the connection itself on the right. */}
-        <article className="form-card ai-card settings-wide">
-          <h3>Ask an AI about your finances</h3>
-          <div className="ai-columns">
-          <div>
-          <div className="privacy-statement">
-            <strong>What this changes</strong>
-            <p>
-              With this off, SignalSpace is entirely offline: your statements,
-              figures and settings never leave this computer, and the app makes
-              no network requests at all.
-            </p>
-            <p>
-              With it on, and pointed at an online provider, the data you choose
-              below is sent to that provider each time you ask a question. What
-              they do with it is governed by their terms, not SignalSpace&apos;s.
-              They may log it, retain it, or use it to train on. SignalSpace
-              cannot control that and is not responsible for it. You supply the
-              key, you pay for the usage, and you can switch this off or forget
-              the key at any time.
-            </p>
-            <p>
-              Pointing it at a model running on this computer keeps everything
-              local and still gives you the feature.
-            </p>
-          </div>
-          <p className="guidance">
-            {ai?.is_local
-              // Repeating the "your data leaves" warning while pointed at
-              // localhost would train people to ignore it.
-              ? `Ask questions about your own figures. Pointed at a model on
-                 this computer, nothing leaves it, so this works like the rest
-                 of SignalSpace. It is off until you switch it on.`
-              : `Everything else in SignalSpace happens on this computer. This
-                 does not. Turning it on sends your figures to whichever
-                 provider you point it at, using a key you supply and pay for.
-                 It is off until you switch it on, and nothing is sent while
-                 it is off.`}
-          </p>
-          {!ai ? (
-            // A panel that only ever says "Loading…" is how this shipped
-            // broken: the settings request was rejected and the reason was
-            // never shown. Say what went wrong and offer another go.
-            aiError ? (
-              <>
-                <div className="inline-error">
-                  AI assistance could not be loaded. {aiError}
-                </div>
-                <div className="button-row">
-                  <button type="button" className="ghost-button"
-                    onClick={() => void loadAi()}>Try again</button>
-                </div>
-              </>
-            ) : <p className="guidance">Loading…</p>
-          ) : <>
-            {(() => {
-              const ready = ai.is_local || ai.api_key_set || aiKey.trim();
-              return (
-                <label className={`toggle-row${ready ? "" : " toggle-row-disabled"}`}>
-                  <span className="toggle-copy">
-                    <strong>Enable AI assistance</strong>
-                    <small>{ready
-                      ? ai.enabled
-                        ? "On. SignalSpace may send the selected data when you ask a question."
-                        : "Off. Nothing is sent to the provider."
-                      : "Choose a provider and add a key first."}</small>
-                  </span>
-                  <span className="toggle-control">
-                    <input type="checkbox" checked={ai.enabled}
-                      aria-label="Enable AI assistance"
-                      className="toggle-input"
+
+      {!ai ? (
+        // A panel that only ever says "Loading…" is how this shipped
+        // broken: the settings request was rejected and the reason was
+        // never shown. Say what went wrong and offer another go.
+        aiError ? (
+          <article className="form-card">
+            <div className="inline-error">
+              AI assistance could not be loaded. {aiError}
+            </div>
+            <div className="button-row">
+              <button type="button" className="ghost-button"
+                onClick={() => void loadAi()}>Try again</button>
+            </div>
+          </article>
+        ) : <p className="guidance">Loading…</p>
+      ) : <>
+        {/* The state used to be a checkbox two paragraphs down inside a card
+            of prose, and the prose said the same thing about privacy three
+            times over. One strip, saying what is true right now. */}
+        {(() => {
+          const ready = ai.is_local || ai.api_key_set || aiKey.trim();
+          const state = !ai.enabled ? "off" : ai.is_local ? "local" : "on";
+          return (
+            <article className={`form-card ai-status ai-status-${state}`}>
+              <label className={`toggle-row${ready ? "" : " toggle-row-disabled"}`}>
+                <span className="toggle-copy">
+                  <strong>{ai.enabled
+                    ? ai.is_local ? "On, and answering on this computer"
+                      : "On. Your figures are sent when you ask a question"
+                    : "Off. Nothing leaves this computer"}</strong>
+                  <small>{ready
+                    ? ai.enabled
+                      ? ai.is_local
+                        ? "The model runs at the address below, so nothing is sent anywhere."
+                        : `Asking a question sends the data selected under What gets sent to ${(ai.base_url || "").replace(/^https?:\/\//, "").split("/")[0]}.`
+                      : "Switch this on to have findings explained and questions answered."
+                    : "Choose a provider and add a key below first."}</small>
+                </span>
+                <span className="toggle-control">
+                  <input type="checkbox" checked={ai.enabled}
+                    aria-label="Enable AI assistance"
+                    className="toggle-input"
                     disabled={aiBusy || !ready}
                     onChange={(e) => {
                       // Switching this on is the one decision in SignalSpace
@@ -639,30 +566,37 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
                       }
                       void saveAi({ enabled: e.target.checked });
                     }} />
-                    <span className="toggle-track" aria-hidden="true">
-                      <span className="toggle-thumb" />
-                    </span>
+                  <span className="toggle-track" aria-hidden="true">
+                    <span className="toggle-thumb" />
                   </span>
-                </label>
-              );
-            })()}
-            {ai.model_migrated_from && (
-              <p className="success-text">
-                SignalSpace updated the retired MiniMax model
-                {" "}{ai.model_migrated_from} to MiniMax-M3.
+                </span>
+              </label>
+              <p className="ai-status-note">
+                Every figure on every screen is worked out on this computer
+                whether this is on or off. AI only explains them, and can
+                never change a financial record.
               </p>
-            )}
-            {ai.is_local && (
-              <p className="success-text">
-                This address is on your own computer, so your figures do not
-                leave it. No key needed.
-              </p>
-            )}
-            {ai.key_error && <div className="inline-error">{ai.key_error}</div>}
-          </>}
-          </div>
-          <div>
-          {ai && <>
+              {ai.key_error && <div className="inline-error">{ai.key_error}</div>}
+              {ai.model_migrated_from && (
+                <p className="success-text">
+                  SignalSpace updated the retired MiniMax model
+                  {" "}{ai.model_migrated_from} to MiniMax-M3.
+                </p>
+              )}
+            </article>
+          );
+        })()}
+
+        <div className="settings-grid">
+          <article className="form-card ai-card">
+            <h3>Where the answers come from</h3>
+            <p className="guidance">
+              {ai.is_local
+                // Repeating the "your data leaves" warning while pointed at
+                // localhost would train people to ignore it.
+                ? "This address is on your own computer, so your figures never leave it and no key is needed."
+                : "A cloud provider is an outside company. What it does with what you send is governed by its terms, not SignalSpace's: it may log it, keep it, or train on it. You supply the key and pay for the usage. Pointing this at a model running on this computer gives you the same feature with nothing leaving."}
+            </p>
             <div className="form-grid">
               <label>Provider
                 <select value={chosenProvider.value} disabled={aiBusy}
@@ -698,10 +632,6 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
                   ? "Local models do not need a cloud key."
                   : "Encrypted with Windows user protection. It is only decrypted when SignalSpace calls the provider above."}</small>
               </label>
-              <label>Months of history to share
-                <input type="number" min="1" max="12" value={ai.months}
-                  onChange={(e) => void saveAi({ months: Number(e.target.value) })} />
-              </label>
             </div>
             <details className="formula-details ai-advanced">
               <summary>Advanced connection settings</summary>
@@ -724,9 +654,19 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
                 onClick={() => void saveAndTestAi()}>
                 {aiBusy ? "Checking…" : "Save and test connection"}
               </button>
+              {ai.api_key_set && <button type="button" className="ghost-button"
+                disabled={aiBusy} onClick={() => void dropKey()}>
+                Forget my key and switch off
+              </button>}
             </div>
             {aiConnection && <p className="success-text">{aiConnection}</p>}
-            <strong className="ai-scope-title">What may be sent</strong>
+          </article>
+
+          {/* The amount of someone's financial life leaving the machine is
+              the whole decision, so it gets a card rather than a heading
+              halfway down a column. */}
+          <article className="form-card ai-card">
+            <h3>What gets sent</h3>
             <div className="settings-list">
               {ai.scopes.map((scope) => (
                 <label className="setting-row ai-scope" key={scope.value}>
@@ -737,15 +677,17 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
                 </label>
               ))}
             </div>
+            <div className="form-grid">
+              <label>Months of history to share
+                <input type="number" min="1" max="12" value={ai.months}
+                  onChange={(e) => void saveAi({ months: Number(e.target.value) })} />
+              </label>
+            </div>
             <div className="button-row">
               <button type="button" className="ghost-button" disabled={aiBusy}
                 onClick={() => void showPayload()}>
                 Show exactly what would be sent
               </button>
-              {ai.api_key_set && <button type="button" className="ghost-button"
-                disabled={aiBusy} onClick={() => void dropKey()}>
-                Forget my key and switch off
-              </button>}
             </div>
             {aiPreview && (
               <details className="formula-details" open>
@@ -758,15 +700,13 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
               </details>
             )}
             {aiError && <div className="inline-error">{aiError}</div>}
-          </>}
-          </div>
-          </div>
-        </article>
-      </div>
+          </article>
+        </div>
+      </>}
 
       <h3 className="insight-section">Everyday preferences</h3>
       <div className="settings-grid">
-        <article className="form-card">
+        <article className="form-card settings-wide">
           <h3>Everyday view</h3>
           <div className="form-grid">
             <label>Open SignalSpace on<select value={landingPage} onChange={(e)=>changeLanding(e.target.value as LandingPage)}><option value="home">Home</option><option value="plan">Plan</option><option value="insights">Insights</option><option value="transactions">Transactions</option></select></label>
@@ -780,38 +720,39 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
           <label className="check-label"><input type="checkbox" checked={showNetWorth} onChange={(e)=>changeNetWorth(e.target.checked)}/> Show net worth in Insights</label>
           <p className="guidance">These choices stay on this computer and survive a relaunch.</p>
         </article>
-        <article className="form-card">
-          <h3>How categorization works</h3>
-          <p className="guidance">SignalSpace protects payments and internal transfers first, then uses your saved merchant rules, the bank statement memo, known merchant mappings, and finally Uncategorized.</p>
-          <p>Only high-impact or genuinely uncertain rows are promoted for review. Ordinary recognized activity updates charts automatically.</p>
-        </article>
       </div>
 
-      <h3 className="insight-section" id="merchant-rules">Merchant and category rules</h3>
-      <article className="chart-card">
+      {/* "How categorization works" had its own card here and nothing you
+          could do about any of it. The order it describes only matters while
+          you are looking at a rule, so the sentence lives with the rules and
+          the card is gone. */}
+      <h3 className="insight-section">What SignalSpace has learned</h3>
+      <article className="chart-card" id="merchant-rules">
+        <h3>Merchant and category rules</h3>
+        <p className="guidance">Payments and internal transfers are protected first, then your saved rules below, then the statement memo, then known merchants, and anything left is Uncategorized.</p>
         <p className="guidance">Rules you save from Transactions are editable here. Disabling a rule preserves it for later; deleting it does not rewrite historical transactions.</p>
         {categorySettings?.rules.length ? categorySettings.rules.map(rule=><div className="rule-row" key={rule.id}><span><strong>{rule.merchant_normalized}</strong><small>{rule.hit_count||0} future import match{rule.hit_count===1?"":"es"}</small></span><select value={rule.category} disabled={busy===`rule-${rule.id}`} onChange={(e)=>void editRule(rule.id,e.target.value,!!rule.enabled)}>{categorySettings.categories.map(category=><option key={category}>{category}</option>)}</select><label className="inline-check"><input type="checkbox" checked={!!rule.enabled} onChange={(e)=>void editRule(rule.id,rule.category,e.target.checked)}/> Enabled</label><button className="ghost-button" disabled={busy===`rule-${rule.id}`} onClick={()=>void removeRule(rule.id)}>Delete</button></div>) : <p className="guidance">No saved merchant rules yet. Save one while correcting a transaction.</p>}
       </article>
 
-      <h3 className="insight-section" id="income-sources">Income sources</h3>
-      <details className="chart-card settings-collapse"
+      <details className="chart-card settings-collapse" id="income-sources"
         open={focusAnchor === "income-sources"}>
         <summary>
-          {categorySettings?.income_sources.length
+          Income sources
+          <span>{categorySettings?.income_sources.length
             ? `${categorySettings.income_sources.length} source${categorySettings.income_sources.length === 1 ? "" : "s"} · ${categorySettings.income_sources.filter(s => s.status === "confirmed" || s.status === "excluded").length} reviewed`
-            : "No income sources yet"}
+            : "none yet"}</span>
         </summary>
         <p className="guidance">SignalSpace's historical planning average includes genuine income unless you exclude it. Payroll can appear as an expected payday automatically. Use as income confirms another regular source for the Radar; Exclude removes it from planning.</p>
         {categorySettings?.income_sources.length?categorySettings.income_sources.map(source=>{const reviewed=source.status==="confirmed"||source.status==="excluded";return <div className="rule-row" key={source.source_normalized}><span><strong>{source.source}</strong><small>{source.tx_count} deposit{source.tx_count===1?"":"s"} across {source.months_seen} month{source.months_seen===1?"":"s"}</small><small className={source.status==="confirmed"?"status-tag status-ok":source.status==="excluded"?"status-tag status-muted":"status-tag status-warn"}>{source.status==="confirmed"?"Using as income":source.status==="excluded"?"Excluded from planning income":"Not reviewed yet — choose one"}</small></span><select value={reviewed?source.status:""} disabled={busy===`income-${source.source_normalized}`} onChange={(e)=>void changeIncomeSource(source.source_normalized,e.target.value as "confirmed"|"excluded")}>{!reviewed&&<option value="" disabled>Choose…</option>}<option value="confirmed">Use as income</option><option value="excluded">Exclude</option></select>{saved===`income-${source.source_normalized}`&&<span className="success-text saved-flag">Saved</span>}</div>;}):<p className="guidance">Income sources appear after income is imported.</p>}
       </details>
 
-      <h3 className="insight-section" id="recurring-costs">Recurring merchants</h3>
-      <details className="chart-card settings-collapse"
+      <details className="chart-card settings-collapse" id="recurring-costs"
         open={focusAnchor === "recurring-costs"}>
         <summary>
-          {categorySettings?.recurring.length
-            ? `${categorySettings.recurring.length} recurring merchant${categorySettings.recurring.length === 1 ? "" : "s"} detected`
-            : "None detected yet"}
+          Recurring merchants
+          <span>{categorySettings?.recurring.length
+            ? `${categorySettings.recurring.length} detected`
+            : "none detected yet"}</span>
         </summary>
         <p className="guidance">SignalSpace detects repeated outflows using merchant, cadence, amount stability, and whether the category is a known bill. Say so when it gets one wrong.</p>
         {/* Two choices, matching Insights. A cost either recurs or it does
@@ -821,9 +762,70 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
         {categorySettings?.recurring.length ? categorySettings.recurring.map(item=>{const edit=recurringEdits[item.merchant_normalized]??{name:item.merchant,category:item.category};const stored=recurringStatus(item.merchant_normalized,item.recurring_status==="confirmed"?"recurring":"automatic");const suggested=stored==="automatic";const status=suggested?"recurring":stored;return <div className="recurring-edit-row" key={item.merchant_normalized}><div><strong>{item.merchant}</strong><small>{item.cadence} · about {item.avg_amount.toLocaleString(undefined,{style:"currency",currency:"CAD"})}</small>{suggested&&<span className="suggested-badge">Suggested</span>}</div><label>Display name<input value={edit.name} onChange={(e)=>setRecurringEdits({...recurringEdits,[item.merchant_normalized]:{...edit,name:e.target.value}})}/></label><label>Category<select value={edit.category} onChange={(e)=>setRecurringEdits({...recurringEdits,[item.merchant_normalized]:{...edit,category:e.target.value}})}>{categorySettings.categories.map(category=><option key={category}>{category}</option>)}</select></label><label>Status<select value={status} disabled={busy===`recurring-${item.merchant_normalized}`} onChange={(e)=>void changeRecurring(item.merchant_normalized,e.target.value)}><option value="recurring">Recurring</option><option value="not_recurring">Not recurring</option></select></label><button className="ghost-button" disabled={busy===`recurring-${item.merchant_normalized}`} onClick={()=>void changeRecurring(item.merchant_normalized,status,true)}>Save details</button>{saved===`recurring-${item.merchant_normalized}`&&<span className="success-text saved-flag">Saved</span>}</div>}) : <p className="guidance">No recurring expenses have enough history yet.</p>}
       </details>
 
-      <h3 className="insight-section">Data safety</h3>
+      {/* Everything that copies, hands back or destroys the data now lives
+          together and near the bottom. Backups were in a grid at the top of
+          the page, the CSV export and the reset were under "Data safety" much
+          further down, and the list of backups came after both, so the one
+          question "how do I get my data back" was answered in three places. */}
+      <h3 className="insight-section" id="local-data">Local data and recovery</h3>
       <div className="settings-grid">
         <article className="form-card">
+          <h3>Backups</h3>
+          <p className="guidance">
+            A validated copy of the active profile&apos;s database, kept on this
+            computer. Worth making before a large import or any change you are
+            unsure about.
+          </p>
+          <div className="button-row">
+            <button disabled={!!busy} onClick={() => void backup()}>
+              {busy === "backup" ? "Backing up…" : "Create backup"}
+            </button>
+            <button className="ghost-button" disabled={!!busy} onClick={() => void choose()}>
+              Restore from backup…
+            </button>
+          </div>
+          {data?.created && <p className="success-text">Created {data.created}</p>}
+          {data?.restored && (
+            <p className="success-text">
+              Restored {data.restored}. A pre-restore rollback copy was kept.
+            </p>
+          )}
+          <details className="formula-details">
+            <summary>
+              Recent backups{data?.backups.length ? ` · ${data.backups.length}` : ""}
+            </summary>
+            {data?.backups.length ? (
+              data.backups.slice(0, 8).map((item) => (
+                <div className="rank-row" key={item.path}>
+                  <span>{item.name}<small>{new Date(item.created_at).toLocaleString()}</small></span>
+                  <strong>{Math.max(1, Math.round(item.size_bytes / 1024))} KB</strong>
+                </div>
+              ))
+            ) : <p className="guidance">No local backups yet.</p>}
+          </details>
+        </article>
+
+        {/* A local-first app that will not hand the data back is only a
+            different kind of lock-in. Every row, in a shape any spreadsheet
+            or other finance app can open. */}
+        <article className="form-card">
+          <h3>Export your transactions</h3>
+          <p className="guidance">
+            Every transaction in the active profile, written to a CSV file you
+            choose. Nothing is uploaded and nothing is deleted here; this is a
+            copy, for a spreadsheet, your records, or another app.
+          </p>
+          {exportNote && <p className="success-text">{exportNote}</p>}
+          {exportError && <div className="inline-error">{exportError}</div>}
+          <div className="button-row">
+            <button type="button" className="ghost-button" disabled={exporting}
+              onClick={() => void runExport()}>
+              {exporting ? "Writing…" : "Export to CSV"}
+            </button>
+          </div>
+        </article>
+
+        <article className="form-card settings-wide">
           <h3>Repair older imports</h3>
           {safety?.repair.needed ? (
             <>
@@ -879,25 +881,6 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
           )}
         </article>
 
-        {/* A local-first app that will not hand the data back is only a
-            different kind of lock-in. Every row, in a shape any spreadsheet
-            or other finance app can open. */}
-        <article className="form-card">
-          <h3>Export your transactions</h3>
-          <p className="guidance">
-            Every transaction SignalSpace holds, written to a CSV file you
-            choose. Nothing is uploaded and nothing is deleted here; this is a
-            copy, for a spreadsheet, your records, or another app.
-          </p>
-          {exportNote && <p className="success-text">{exportNote}</p>}
-          {exportError && <div className="inline-error">{exportError}</div>}
-          <div className="button-row">
-            <button type="button" className="ghost-button" disabled={exporting}
-              onClick={() => void runExport()}>
-              {exporting ? "Writing…" : "Export to CSV"}
-            </button>
-          </div>
-        </article>
         <article className="form-card danger-card settings-wide">
           <h3>Reset all financial data</h3>
           <p>
@@ -923,19 +906,20 @@ function SettingsView({ onDataChanged, onProfileChanged, focusAnchor, focusToken
         </article>
       </div>
 
-      <details className="chart-card settings-collapse">
-        <summary>
-          Recent backups{data?.backups.length ? ` · ${data.backups.length}` : ""}
-        </summary>
-        {data?.backups.length ? (
-          data.backups.slice(0, 8).map((item) => (
-            <div className="rank-row" key={item.path}>
-              <span>{item.name}<small>{new Date(item.created_at).toLocaleString()}</small></span>
-              <strong>{Math.max(1, Math.round(item.size_bytes / 1024))} KB</strong>
-            </div>
-          ))
-        ) : <p className="guidance">No local backups yet.</p>}
-      </details>
+      <h3 className="insight-section">About and updates</h3>
+      <div className="settings-grid">
+        <article className="form-card">
+          <h3>About</h3>
+          <dl>
+            <div><dt>Product</dt><dd>SignalSpace {version || "…"}</dd></div>
+            <div><dt>Storage</dt><dd>{data?.data_directory ?? "Loading…"}</dd></div>
+            <div><dt>Database</dt><dd>{data?.database_name ?? "finance.db"}</dd></div>
+            <div><dt>Finance data</dt><dd>Stays on this computer. Every calculation runs in the local sidecar.</dd></div>
+            <div><dt>Network</dt><dd>Nothing is sent unless you ask. AI assistance contacts the provider you configure; checking for updates contacts GitHub. Both are off until you act.</dd></div>
+          </dl>
+        </article>
+        <UpdatePanel version={version} />
+      </div>
 
       {pending && (
         <div className="confirm-panel" role="dialog" aria-modal="true">

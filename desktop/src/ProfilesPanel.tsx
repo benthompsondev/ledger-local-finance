@@ -75,106 +75,140 @@ export function ProfilesPanel({ onSwitched }: { onSwitched: () => void }) {
   };
 
   if (!data) {
-    return <p className="guidance">{error || "Loading profiles…"}</p>;
+    return <article className="chart-card">
+      <p className="guidance">{error || "Loading profiles…"}</p>
+    </article>;
   }
+
+  const active = data.profiles.find((profile) => profile.active);
+  const others = data.profiles.filter((profile) => !profile.active);
+
+  const identity = (profile: Profile) => renaming === profile.id ? (
+    <input
+      autoFocus
+      value={draftName}
+      maxLength={60}
+      aria-label={`Rename ${profile.name}`}
+      onChange={(event) => setDraftName(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") void commitRename(profile);
+        if (event.key === "Escape") setRenaming("");
+      }}
+      onBlur={() => void commitRename(profile)}
+    />
+  ) : <strong>{profile.name}</strong>;
+
+  const holdings = (profile: Profile) => profile.has_data
+    ? `${profile.transaction_count.toLocaleString()} transaction${profile.transaction_count === 1 ? "" : "s"}`
+    : "No transactions yet";
 
   return (
     <div className="profiles-panel">
-      <p className="guidance">
-        Each profile keeps its own transactions, accounts, plans, net worth,
-        imports and saved financial rules in its own database. Only the
-        profile you are in is open. App appearance stays shared across the
-        installation.
+      {/* A profile is the least self-explanatory thing in the app, so this
+          says what one is before listing any. */}
+      <p className="profiles-lede">
+        A profile is one complete set of finances. Each keeps its own
+        transactions, accounts, imports, plans, net worth and saved rules in
+        its own database, so a second person or a test import never mixes
+        with yours. Only the profile you are in is open. How the app looks
+        stays shared across the installation.
       </p>
 
       {error && <div className="inline-error">{error}</div>}
 
-      <div className="settings-list">
-        {data.profiles.map((profile) => (
-          <div className={`setting-row profile-row${profile.active ? " active" : ""}`}
-            key={profile.id}>
-            <div className="profile-identity">
-              {renaming === profile.id ? (
-                <input
-                  autoFocus
-                  value={draftName}
-                  maxLength={60}
-                  onChange={(event) => setDraftName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void commitRename(profile);
-                    if (event.key === "Escape") setRenaming("");
-                  }}
-                  onBlur={() => void commitRename(profile)}
-                />
-              ) : (
-                <strong>{profile.name}</strong>
-              )}
-              <small>
-                {profile.active ? "Open now" : profile.has_data
-                  ? `${profile.transaction_count.toLocaleString()} transactions`
-                  : "Empty"}
-                {profile.is_default && " · first profile"}
-              </small>
-            </div>
-
-            <div className="button-row compact-actions">
-              {!profile.active && (
-                <button type="button" className="ghost-button"
-                  disabled={!!busy}
-                  onClick={() => void change(profile)}>
-                  {busy === `switch-${profile.id}` ? "Switching…" : "Switch to"}
-                </button>
-              )}
-              <button type="button" className="ghost-button" disabled={!!busy}
-                onClick={() => { setRenaming(profile.id); setDraftName(profile.name); }}>
-                Rename
-              </button>
-              {/* The first profile's directory is the data root, so removing
-                  it would take every other profile with it. The open one is
-                  refused because the running app is reading from it. */}
-              {!profile.is_default && !profile.active && (
-                confirmDelete === profile.id ? (
-                  <>
-                    <span className="nw-confirm">
-                      Delete {profile.name} and its data?
-                    </span>
-                    <button type="button" className="danger-button"
-                      disabled={!!busy}
-                      onClick={() => void remove(profile)}>Delete</button>
-                    <button type="button" className="ghost-button"
-                      onClick={() => setConfirmDelete("")}>Keep</button>
-                  </>
-                ) : (
-                  <button type="button" className="ghost-button"
-                    disabled={!!busy}
-                    onClick={() => setConfirmDelete(profile.id)}>Delete</button>
-                )
-              )}
-            </div>
+      {/* Which one is open is the question this screen exists to answer, so
+          it is a card of its own rather than a highlighted row in a list. */}
+      {active && <article className="chart-card profile-active-card">
+        <div>
+          <span className="eyebrow">Open now</span>
+          <div className="profile-identity">
+            {identity(active)}
+            <small>
+              {holdings(active)}
+              {active.is_default && " · the first profile"}
+            </small>
           </div>
-        ))}
-      </div>
-
-      <div className="profile-add">
-        <label>
-          New profile
-          <input
-            value={newName}
-            maxLength={60}
-            placeholder="Tori's Finances"
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") void add(); }}
-          />
-        </label>
-        <button type="button" className="ghost-button"
-          disabled={!newName.trim() || !!busy}
-          onClick={() => void add()}>
-          {busy === "create" ? "Creating…" : "Create"}
+        </div>
+        <button type="button" className="ghost-button" disabled={!!busy}
+          onClick={() => { setRenaming(active.id); setDraftName(active.name); }}>
+          Rename
         </button>
-      </div>
-      <p className="guidance">
-        A new profile starts empty. Import statements into it after switching.
-      </p>
+      </article>}
+
+      {others.length > 0 && <article className="chart-card">
+        <h3>Not open</h3>
+        <div className="settings-list">
+          {others.map((profile) => (
+            <div className="setting-row profile-row" key={profile.id}>
+              <div className="profile-identity">
+                {identity(profile)}
+                <small>
+                  {holdings(profile)}
+                  {profile.is_default && " · the first profile"}
+                </small>
+              </div>
+
+              <div className="button-row compact-actions">
+                <button type="button" disabled={!!busy}
+                  onClick={() => void change(profile)}>
+                  {busy === `switch-${profile.id}` ? "Switching…" : "Switch to this"}
+                </button>
+                <button type="button" className="ghost-button" disabled={!!busy}
+                  onClick={() => { setRenaming(profile.id); setDraftName(profile.name); }}>
+                  Rename
+                </button>
+                {/* The first profile's directory is the data root, so removing
+                    it would take every other profile with it. The open one is
+                    refused because the running app is reading from it, and it
+                    is not in this list at all. */}
+                {!profile.is_default && (
+                  confirmDelete === profile.id ? (
+                    <>
+                      <span className="nw-confirm">
+                        Delete {profile.name} and its data?
+                      </span>
+                      <button type="button" className="danger-button"
+                        disabled={!!busy}
+                        onClick={() => void remove(profile)}>Delete</button>
+                      <button type="button" className="ghost-button"
+                        onClick={() => setConfirmDelete("")}>Keep</button>
+                    </>
+                  ) : (
+                    <button type="button" className="ghost-button"
+                      disabled={!!busy}
+                      onClick={() => setConfirmDelete(profile.id)}>Delete</button>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>}
+
+      <article className="chart-card profile-add-card">
+        <h3>Add a profile</h3>
+        <p className="guidance">
+          It starts empty. Switch to it, then import statements as usual;
+          nothing imported there can reach the profiles beside it.
+        </p>
+        <div className="profile-add">
+          <label>
+            Name it
+            <input
+              value={newName}
+              maxLength={60}
+              placeholder="Tori's Finances"
+              onChange={(event) => setNewName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void add(); }}
+            />
+          </label>
+          <button type="button"
+            disabled={!newName.trim() || !!busy}
+            onClick={() => void add()}>
+            {busy === "create" ? "Creating…" : "Create profile"}
+          </button>
+        </div>
+      </article>
     </div>
   );
 }
