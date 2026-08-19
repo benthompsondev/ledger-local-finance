@@ -110,18 +110,23 @@ function AiView({ onOpenSettings, onDrill }: Props) {
   const suggestions = suggestionsFor(monthLabel);
 
   return <section className="workflow-panel ai-workspace">
+    {/* The page used to be titled "What SignalSpace noticed", open with the
+        same findings Insights already shows in more depth, and leave the
+        question box at the bottom. The question box is the reason to come
+        here; the findings are the shortcut into it. */}
     <div className="panel-head">
       <div>
         <span className="eyebrow">Coach <em className="beta-tag">Beta</em></span>
-        <h2>What SignalSpace noticed</h2>
-        <p className="warning-text">
-          Beta: provider compatibility and AI answers may be incomplete or
-          occasionally fail. SignalSpace's financial figures are still
-          calculated locally.
-        </p>
+        <h2>Ask about your money</h2>
         <p>
-          Every figure below was worked out on this computer. AI is optional:
-          it only explains a finding you pick, and never calculates anything.
+          SignalSpace has already worked your figures out on this computer.
+          AI is optional and only explains them: it calculates nothing and
+          can never change a financial record.
+        </p>
+        {/* Still Beta, still said once rather than in two paragraphs. */}
+        <p className="warning-text ai-beta-note">
+          Answers can be incomplete or fail outright depending on the
+          provider. The figures they describe are calculated either way.
         </p>
       </div>
       <button type="button" className="ghost-button" onClick={onOpenSettings}>
@@ -129,85 +134,10 @@ function AiView({ onOpenSettings, onDrill }: Props) {
       </button>
     </div>
 
-    <AnalysisContextNote analysis={feed?.analysis} />
-    {feed?.missing_data && <p className="warning-text">{feed.missing_data}</p>}
-
-    {nothing ? <div className="calm-empty">
-      <strong>Nothing stands out in {monthLabel}</strong>
-      <p>
-        SignalSpace checked your weekday pattern, merchant visits, category
-        ranges, recurring prices, and the same month a year earlier. Nothing crossed
-        the threshold worth interrupting you for.
-      </p>
-    </div> : <div className="insight-list">
-      {concerns.map((insight) => <InsightCard
-        key={insight.id}
-        insight={insight}
-        canExplain={ready}
-        onExplain={explainInsight}
-        onDrill={onDrill}
-      />)}
-      {feed?.positive && <InsightCard
-        insight={feed.positive}
-        canExplain={ready}
-        onExplain={explainInsight}
-        onDrill={onDrill}
-      />}
-    </div>}
-
-    {settings && <article className="form-card ai-profile-card">
-      <div className="chart-card-head">
-        <div>
-          <span className="eyebrow">Personalize the advice</span>
-          <h3>What should SignalSpace help with?</h3>
-        </div>
-        {savingProfile && <span className="badge">Saving…</span>}
-      </div>
-      <div className="form-grid">
-        <label>Current focus
-          <select value={settings.focus} disabled={savingProfile}
-            onChange={(event) => void updateProfile({ focus: event.target.value })}>
-            {settings.focus_options.map((option) =>
-              <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-          <small>This changes what the AI prioritizes, never the calculations.</small>
-        </label>
-        <label>Coaching style
-          <select value={settings.style} disabled={savingProfile}
-            onChange={(event) => void updateProfile({ style: event.target.value })}>
-            {settings.style_options.map((option) =>
-              <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-          <small>Choose how concise or detailed the explanation should be.</small>
-        </label>
-      </div>
-      <details className="formula-details ai-essential-picker">
-        <summary>Categories I consider essential</summary>
-        <p className="guidance">
-          The coach will avoid suggesting cuts here unless you ask about one.
-        </p>
-        <div className="ai-category-grid">
-          {settings.essential_category_options.map((category) => {
-            const checked = settings.essential_categories.includes(category);
-            return <label className="check-label" key={category}>
-              <input type="checkbox" checked={checked} disabled={savingProfile}
-                onChange={() => {
-                  const next = checked
-                    ? settings.essential_categories.filter((item) => item !== category)
-                    : [...settings.essential_categories, category];
-                  void updateProfile({ essentialCategories: next });
-                }} />
-              {category}
-            </label>;
-          })}
-        </div>
-      </details>
-    </article>}
-
     {!ready ? <article className="form-card ai-onboarding-card">
-      <h3>Connect a provider to have findings explained</h3>
+      <h3>Connect a provider to ask questions</h3>
       <p className="guidance">
-        The findings above are calculated locally and work without this. An AI
+        The findings below are calculated locally and work without this. An AI
         adds a short explanation and one suggested action. Choose MiniMax, or a
         model running on this computer so nothing leaves it at all.
       </p>
@@ -221,13 +151,12 @@ function AiView({ onOpenSettings, onDrill }: Props) {
           <span className="eyebrow ai-eyebrow">Uses AI</span>
           <h3>Ask anything about your money</h3>
           <p className="chart-explainer">
-            Explaining a finding sends only that finding. A question here sends
-            {" "}{settings?.scope === "summary" ? "your category totals"
+            This sends {settings?.scope === "summary" ? "your category totals"
               : settings?.scope === "merchants"
                 ? "your totals and merchant names"
                 : "your individual transactions"} for {settings?.months} month
-            {settings?.months === 1 ? "" : "s"}, which is a great deal more.
-            Change what is shared in AI settings.
+            {settings?.months === 1 ? "" : "s"}. Explaining a single finding
+            below sends only that finding, which is far less.
           </p>
         </div>
       </div>
@@ -265,6 +194,96 @@ function AiView({ onOpenSettings, onDrill }: Props) {
         {result.answer}
       </div>}
     </article>}
+
+    {/* The same findings live in Insights with their working and their
+        transactions. Here they are only a starting point for a question, so
+        the heading says where they came from and the cards stay short. */}
+    <h3 className="insight-section">
+      {ready ? "Or have one of these explained" : "Worked out on this computer"}
+    </h3>
+    <AnalysisContextNote analysis={feed?.analysis} />
+    {feed?.missing_data && <p className="warning-text">{feed.missing_data}</p>}
+
+    {nothing ? <div className="calm-empty">
+      <strong>Nothing stands out in {monthLabel}</strong>
+      <p>
+        SignalSpace checked your weekday pattern, merchant visits, category
+        ranges, recurring prices, and the same month a year earlier. Nothing crossed
+        the threshold worth interrupting you for.
+      </p>
+    </div> : <div className="insight-list">
+      {concerns.map((insight) => <InsightCard
+        key={insight.id}
+        insight={insight}
+        canExplain={ready}
+        onExplain={explainInsight}
+        onDrill={onDrill}
+      />)}
+      {feed?.positive && <InsightCard
+        insight={feed.positive}
+        canExplain={ready}
+        onExplain={explainInsight}
+        onDrill={onDrill}
+      />}
+    </div>}
+
+    {/* Two selects and a checkbox list. Useful once, then in the way. */}
+    {settings && <details className="chart-card settings-collapse ai-profile-card">
+      <summary>
+        How the coach should answer
+        <span>
+          {settings.focus_options.find((o) => o.value === settings.focus)?.label
+            ?? "any focus"}
+          {" · "}
+          {settings.style_options.find((o) => o.value === settings.style)?.label
+            ?? "any style"}
+          {settings.essential_categories.length > 0
+            && ` · ${settings.essential_categories.length} essential`}
+        </span>
+      </summary>
+      <p className="guidance">
+        These change what the AI prioritizes and how long its answers are.
+        Neither touches a calculation.
+      </p>
+      <div className="form-grid">
+        <label>Current focus
+          <select value={settings.focus} disabled={savingProfile}
+            onChange={(event) => void updateProfile({ focus: event.target.value })}>
+            {settings.focus_options.map((option) =>
+              <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label>Coaching style
+          <select value={settings.style} disabled={savingProfile}
+            onChange={(event) => void updateProfile({ style: event.target.value })}>
+            {settings.style_options.map((option) =>
+              <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <details className="formula-details ai-essential-picker">
+        <summary>Categories I consider essential</summary>
+        <p className="guidance">
+          The coach will avoid suggesting cuts here unless you ask about one.
+        </p>
+        <div className="ai-category-grid">
+          {settings.essential_category_options.map((category) => {
+            const checked = settings.essential_categories.includes(category);
+            return <label className="check-label" key={category}>
+              <input type="checkbox" checked={checked} disabled={savingProfile}
+                onChange={() => {
+                  const next = checked
+                    ? settings.essential_categories.filter((item) => item !== category)
+                    : [...settings.essential_categories, category];
+                  void updateProfile({ essentialCategories: next });
+                }} />
+              {category}
+            </label>;
+          })}
+        </div>
+      </details>
+      {savingProfile && <span className="badge">Saving…</span>}
+    </details>}
   </section>;
 }
 
