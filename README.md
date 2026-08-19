@@ -30,22 +30,29 @@ The questions it is built to answer:
 
 ## Install it
 
-[Download SignalSpaceFinance-setup.exe](https://github.com/benthompsondev/ledger-local-finance/releases/latest/download/SignalSpaceFinance-setup.exe) and run it. That is the
-whole thing. You do not need Python, Node or Rust to
-use SignalSpace; the installer bundles everything, including the Python engine.
+1. **[Download SignalSpaceFinance-setup.exe](https://github.com/benthompsondev/ledger-local-finance/releases/latest/download/SignalSpaceFinance-setup.exe)** and run it.
+2. If Windows shows **"Windows protected your PC"**, click **More info**, then
+   **Run anyway**.
+3. Open SignalSpace. It starts on a short checklist telling you what to do.
+4. Import a CSV from your bank. Home and Insights fill in from there.
 
-That link always resolves to the newest release, so it keeps working and
-does not need updating when a new version ships. A versioned copy is
-published beside it for release history, and the versioned file is what
-the updater and its signature refer to.
+You do not need Python, Node or Rust; the installer bundles everything,
+including the Python engine. It installs for your user only, so there is no
+admin prompt, and installing over an older version keeps your data.
 
-It installs for your user only, so no admin prompt. Installing over an older
-version keeps your data.
+That download link always resolves to the newest release, so it keeps working
+without being edited each time. A versioned copy is published beside it for
+release history, and the versioned file is what the updater and its signature
+refer to.
 
-**Windows will warn you the first time.** The installer is not Authenticode
-signed, so SmartScreen may show "Windows protected your PC". Click More info,
-then Run anyway. The release page includes a SHA-256 checksum if you want to
-verify the download.
+![The Getting started checklist a new profile opens on](site/assets/getting-started.png)
+
+**Why Windows warns you.** SignalSpace has no Authenticode publisher
+certificate, which is the paid code-signing that stops SmartScreen appearing.
+Every release publishes a SHA-256 checksum you can verify the download
+against. Updates are separate: in-app update downloads *are* cryptographically
+signed, and SignalSpace refuses to install one whose signature does not
+match.
 
 ### Updating
 

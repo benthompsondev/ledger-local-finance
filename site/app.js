@@ -1,4 +1,16 @@
 const tours = {
+  start: {
+    kicker: "The first five minutes",
+    title: "It tells you what to do before you have any data",
+    copy: "A new profile opens on a short checklist instead of an empty dashboard: where your data lives, which file to bring, and what happens once it lands. It disappears once you have imported something, and Settings can bring it back.",
+    points: [
+      "No account to create and nothing to sign in to",
+      "CSV is the format to use; PDF import is Beta and only reads some layouts",
+      "Plan waits until you have enough months for it to mean anything",
+    ],
+    image: "assets/getting-started.png",
+    alt: "SignalSpace Getting started checklist on a new empty profile",
+  },
   home: {
     kicker: "A useful weekly check-in",
     title: "Start with what changed, not a wall of charts",
@@ -90,3 +102,7 @@ tabs.forEach((tab, index) => {
     selectTour(tabs[next].dataset.tour);
   });
 });
+
+// The first tab owns the panel on load, so the static markup never drifts
+// from whichever step is selected.
+selectTour("start");
