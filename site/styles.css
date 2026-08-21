@@ -113,7 +113,7 @@ h3 { font-size: 1.25rem; line-height: 1.25; margin-bottom: 12px; }
 .section { padding-top: 122px; }
 .section-heading { max-width: 720px; margin-bottom: 36px; }
 .section-heading > p:last-child, .split p, .feature-grid p, .architecture-note, .honest li, .cta p { color: var(--muted); }
-.tour-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tour-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .tour-tabs button {
   border: 1px solid var(--line);
   border-radius: 8px;

@@ -18,6 +18,7 @@ PREFS = (SRC / "preferences.ts").read_text(encoding="utf-8")
 SETTINGS = (SRC / "SettingsView.tsx").read_text(encoding="utf-8")
 PROFILES_PANEL = (SRC / "ProfilesPanel.tsx").read_text(encoding="utf-8")
 BUILD = (REPO / "scripts" / "build_native_desktop.ps1").read_text(encoding="utf-8")
+SITE_CSS = (REPO / "site" / "styles.css").read_text(encoding="utf-8")
 
 
 # ── onboarding appears only when it should ──────────────────────────────
@@ -45,7 +46,9 @@ def test_dismissal_is_recorded_per_profile() -> None:
 def test_the_guide_can_be_reopened_from_settings() -> None:
     assert "onShowGuide" in SETTINGS
     assert "Show the getting started guide" in SETTINGS
-    assert "onShowGuide={reopenGuide}" in APP
+    # Established profiles must not get a button whose action is suppressed
+    # by Home's empty-profile guard.
+    assert "onShowGuide={profile?.transactions===0?reopenGuide:undefined}" in APP
     assert "saveGettingStartedDismissed(profile.id,false)" in APP
 
 
@@ -83,6 +86,10 @@ def test_plan_is_explained_rather_than_demanded() -> None:
     """Plan needs finished months, so day one must not ask for one."""
     assert "Plan comes later" in GUIDE
     assert "a few complete months behind it" in GUIDE
+
+
+def test_public_tour_tabs_wrap_instead_of_clipping_a_screen() -> None:
+    assert ".tour-tabs { display: flex; flex-wrap: wrap;" in SITE_CSS
 
 
 # ── placeholder ─────────────────────────────────────────────────────────

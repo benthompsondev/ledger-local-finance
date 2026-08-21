@@ -40,7 +40,7 @@ export default function App(){
   const[profile,setProfile]=useState<{id:string;name:string;count:number;transactions:number}|null>(null);
   // Bumped when the getting-started card is dismissed or re-opened, so
   // Home re-reads the stored answer without another engine round trip.
-  const[guideVersion,setGuideVersion]=useState(0);
+  const[,setGuideVersion]=useState(0);
   const[profileVersion,setProfileVersion]=useState(0);
   useEffect(()=>{const update=()=>setDensity(readDensity());window.addEventListener("spendshape-preferences-changed",update);return()=>window.removeEventListener("spendshape-preferences-changed",update);},[]);
   // Home owns first-run database initialization. Delay this small secondary
@@ -50,7 +50,7 @@ export default function App(){
   useEffect(()=>{void loadProfiles().then(p=>{const active=p.profiles.find(x=>x.active);setProfile(active?{id:active.id,name:active.name,count:p.profiles.length,transactions:active.transaction_count}:null);}).catch(()=>setProfile(null));},[dataVersion]);
   useEffect(()=>{const timer=window.setTimeout(()=>{void loadReviewSummary().then(v=>setReviewCount(v.count)).catch(()=>setReviewCount(0));},dataVersion===0?1500:0);return()=>window.clearTimeout(timer);},[dataVersion]);
   const showGuide=!!profile&&profile.transactions===0
-    &&!readGettingStartedDismissed(profile.id)&&guideVersion>=0;
+    &&!readGettingStartedDismissed(profile.id);
   const reopenGuide=()=>{if(!profile)return;saveGettingStartedDismissed(profile.id,false);setGuideVersion(v=>v+1);setScreen("home");};
   const changed=()=>setDataVersion(v=>v+1);
   const profileChanged=()=>{setTxPrefill(null);setProfileVersion(v=>v+1);setDataVersion(v=>v+1);};
@@ -68,6 +68,6 @@ export default function App(){
     {screen==="insights"&&<InsightsView refreshToken={dataVersion} onDrill={drill} onNavigate={goTo} onDataChanged={changed}/>}
     {screen==="transactions"&&<TransactionsView refreshToken={dataVersion} onDataChanged={changed} prefill={txPrefill} onPrefillApplied={()=>setTxPrefill(null)}/>}
     {screen==="ai"&&<AiView onOpenSettings={()=>goTo("settings#ai-assist")} onDrill={d=>drill({category:d.category,search:d.merchant,startDate:d.start_date,endDate:d.end_date})}/>}
-    {screen==="settings"&&<SettingsView key={profileVersion} onDataChanged={changed} onProfileChanged={profileChanged} focusAnchor={focusAnchor} focusToken={focusToken} onShowGuide={reopenGuide}/>}
+    {screen==="settings"&&<SettingsView key={profileVersion} onDataChanged={changed} onProfileChanged={profileChanged} focusAnchor={focusAnchor} focusToken={focusToken} onShowGuide={profile?.transactions===0?reopenGuide:undefined}/>}
   </main>;
 }
