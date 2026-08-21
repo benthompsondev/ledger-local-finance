@@ -107,8 +107,20 @@ wrong link it actually is.
 
 ## 5. Upload the release files
 
-`latest.json` must be attached to the GitHub release, because the endpoint is
-`/releases/latest/download/latest.json`.
+Five files go on the GitHub release. Each one is load-bearing, and the set is
+easy to get wrong because only two of them are named anywhere else:
+
+| File | Why it has to be there |
+|---|---|
+| `SignalSpaceFinance_<version>_x64-setup.exe` | The installer the manifest URL points at, and the exact filename its detached signature covers. |
+| `SignalSpaceFinance_<version>_x64-setup.exe.sig` | That detached signature. Without it the updater downloads the release and refuses it. |
+| `SignalSpaceFinance-setup.exe` | The same bytes under a name that never changes. Every download button in the README and on the public site points at `/releases/latest/download/SignalSpaceFinance-setup.exe`, and GitHub resolves that only if an asset with exactly that name is on the newest release. Forget it and the primary download button 404s until the release after it. `scripts/build_native_desktop.ps1` writes this copy beside the versioned installer and fails the build if the two do not hash identically. |
+| `latest.json` | The updater endpoint is `/releases/latest/download/latest.json`. |
+| `SHA256SUMS.txt` | So somebody can check what they downloaded against something. Written by hand at release time; nothing in the repo generates it. |
+
+The versioned installer and the permanent-name copy are the same file twice on
+purpose. Renaming instead of copying would strand the `.sig`, which names the
+versioned file.
 
 ## GitHub secrets, when releases move to Actions
 
