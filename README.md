@@ -285,6 +285,16 @@ scripts/                Build, demo data, diagnostics, privacy guards.
 The older Streamlit files still in the repository are retired. Everything in
 this README refers to the native desktop application.
 
+## More of my work
+
+The other local-first apps are [CloakScan](https://github.com/benthompsondev/cloakscan),
+which strips secrets out of code and logs before you share them, and
+[UsageLoop](https://github.com/benthompsondev/usageloop), which schedules Codex
+usage windows. My PowerShell automation portfolio is
+[Enterprise PowerShell Systems](https://github.com/benthompsondev/enterprise-powershell-systems).
+
+The rest is on [benthompsondev.github.io](https://benthompsondev.github.io/).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
