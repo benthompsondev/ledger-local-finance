@@ -295,6 +295,9 @@ usage windows. My PowerShell automation portfolio is
 
 The rest is on [benthompsondev.github.io](https://benthompsondev.github.io/).
 
+If SignalSpace Finance saved you time, you can
+[support continued development on GitHub Sponsors](https://github.com/sponsors/benthompsondev).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
