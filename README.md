@@ -65,7 +65,7 @@ latest release by hand this once.
 
 ## Status
 
-**Version on `main`: 3.1.1. Latest signed public beta: 3.1.1.** The app is now
+**Version on `main`: 3.2.0. Latest signed public beta: 3.2.0.** The app is now
 SignalSpace Finance. Existing installs update in place, keep their current
 database, and can add separate profiles for another set of finances.
 
